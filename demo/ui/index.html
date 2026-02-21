@@ -193,6 +193,50 @@
     color: var(--accent);
   }
 
+  .mode-btn.disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    position: relative;
+  }
+
+  .mode-btn.disabled:hover {
+    border-color: var(--border);
+    color: var(--text-dim);
+  }
+
+  .mode-btn .lock-icon {
+    font-size: 10px;
+    margin-left: 4px;
+  }
+
+  .embed-hint {
+    display: none;
+    max-width: 720px;
+    margin: 12px auto 0;
+    padding: 10px 16px;
+    background: rgba(234, 179, 8, 0.08);
+    border: 1px solid rgba(234, 179, 8, 0.2);
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--yellow);
+    font-family: var(--mono);
+    text-align: center;
+  }
+
+  .embed-hint.visible { display: block; }
+
+  @keyframes flash {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; transform: scale(1.02); }
+  }
+
+  .embed-hint code {
+    background: rgba(234, 179, 8, 0.15);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+
   .source-filter {
     padding: 8px 14px;
     border-radius: 20px;
@@ -493,13 +537,17 @@
 
     <div class="controls">
       <button class="mode-btn active" data-mode="keyword" onclick="setMode(this)">keyword</button>
-      <button class="mode-btn" data-mode="semantic" onclick="setMode(this)">semantic</button>
-      <button class="mode-btn" data-mode="hybrid" onclick="setMode(this)">hybrid</button>
+      <button class="mode-btn" data-mode="semantic" id="btnSemantic" onclick="setMode(this)">semantic</button>
+      <button class="mode-btn" data-mode="hybrid" id="btnHybrid" onclick="setMode(this)">hybrid</button>
 
       <select class="source-filter" id="sourceFilter">
         <option value="">all sources</option>
         <option value="filesystem">filesystem</option>
       </select>
+    </div>
+
+    <div class="embed-hint" id="embedHint">
+      🔒 semantic &amp; hybrid require embeddings · set <code>[embedding] provider = "openai"</code> in config
     </div>
 
     <div class="stats-bar" id="statsBar" style="display: none;">
@@ -533,8 +581,9 @@
 const API = 'http://127.0.0.1:7331';
 let currentMode = 'keyword';
 let serverConnected = false;
+let embeddingsEnabled = false;
 
-// Check server health
+// Check server health and probe embeddings capability
 async function checkHealth() {
   try {
     const r = await fetch(`${API}/health`);
@@ -543,12 +592,29 @@ async function checkHealth() {
     document.getElementById('statusText').textContent = `v${data.version} · connected`;
     serverConnected = true;
 
-    // Also fetch sources
+    // Fetch sources
     const sr = await fetch(`${API}/tools/sources`);
     const sources = await sr.json();
     const configured = sources.sources.filter(s => s.configured).length;
     const total = sources.sources.length;
-    document.getElementById('statusText').textContent = `v${data.version} · ${configured}/${total} sources`;
+
+    // Probe if embeddings are enabled by attempting a semantic search
+    const probe = await fetch(`${API}/tools/search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: '__probe__', mode: 'semantic', limit: 1 }),
+    });
+    const probeData = await probe.json();
+
+    if (!probe.ok && probeData.error?.code === 'embeddings_disabled') {
+      embeddingsEnabled = false;
+      document.getElementById('statusText').textContent = `v${data.version} · ${configured}/${total} sources · keyword only`;
+    } else {
+      embeddingsEnabled = true;
+      document.getElementById('statusText').textContent = `v${data.version} · ${configured}/${total} sources · all modes`;
+    }
+
+    updateModeButtons();
   } catch(e) {
     document.getElementById('statusDot').classList.remove('connected');
     document.getElementById('statusText').textContent = 'disconnected — start: ctx serve mcp';
@@ -556,10 +622,50 @@ async function checkHealth() {
   }
 }
 
+function updateModeButtons() {
+  const btnSemantic = document.getElementById('btnSemantic');
+  const btnHybrid = document.getElementById('btnHybrid');
+  const hint = document.getElementById('embedHint');
+
+  if (embeddingsEnabled) {
+    btnSemantic.classList.remove('disabled');
+    btnHybrid.classList.remove('disabled');
+    btnSemantic.innerHTML = 'semantic';
+    btnHybrid.innerHTML = 'hybrid';
+    hint.classList.remove('visible');
+  } else {
+    btnSemantic.classList.add('disabled');
+    btnHybrid.classList.add('disabled');
+    btnSemantic.innerHTML = 'semantic <span class="lock-icon">🔒</span>';
+    btnHybrid.innerHTML = 'hybrid <span class="lock-icon">🔒</span>';
+    hint.classList.add('visible');
+
+    // If user was on a disabled mode, switch back to keyword
+    if (currentMode === 'semantic' || currentMode === 'hybrid') {
+      currentMode = 'keyword';
+      document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+      document.querySelector('[data-mode="keyword"]').classList.add('active');
+    }
+  }
+}
+
 function setMode(btn) {
+  const mode = btn.dataset.mode;
+
+  // Prevent selecting disabled modes
+  if (!embeddingsEnabled && (mode === 'semantic' || mode === 'hybrid')) {
+    const hint = document.getElementById('embedHint');
+    hint.classList.add('visible');
+    // Flash the hint
+    hint.style.animation = 'none';
+    hint.offsetHeight; // reflow
+    hint.style.animation = 'flash 0.6s ease';
+    return;
+  }
+
   document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  currentMode = btn.dataset.mode;
+  currentMode = mode;
 }
 
 function trySuggestion(btn) {
