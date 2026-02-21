@@ -1,0 +1,11 @@
+/target
+/data
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+.env
+.DS_Store
+*.swp
+*.swo
+*~
+
