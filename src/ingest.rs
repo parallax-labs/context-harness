@@ -8,6 +8,7 @@ use crate::chunk::chunk_text;
 use crate::config::Config;
 use crate::connector_fs;
 use crate::db;
+use crate::embed_cmd;
 use crate::models::SourceItem;
 
 pub async fn run_sync(
@@ -81,6 +82,8 @@ pub async fn run_sync(
 
     let mut docs_upserted = 0u64;
     let mut chunks_written = 0u64;
+    let mut embeddings_written = 0u64;
+    let mut embeddings_pending = 0u64;
     let mut max_updated: i64 = checkpoint.unwrap_or(0);
 
     for item in &items {
@@ -88,6 +91,12 @@ pub async fn run_sync(
         let chunks = chunk_text(&doc_id, &item.body, config.chunking.max_tokens);
         let chunk_count = chunks.len() as u64;
         replace_chunks(&pool, &doc_id, &chunks).await?;
+
+        // Inline embedding (non-fatal)
+        let (emb_ok, emb_pending) = embed_cmd::embed_chunks_inline(config, &pool, &chunks).await;
+        embeddings_written += emb_ok;
+        embeddings_pending += emb_pending;
+
         docs_upserted += 1;
         chunks_written += chunk_count;
 
@@ -104,6 +113,10 @@ pub async fn run_sync(
     println!("  fetched: {} items", items.len());
     println!("  upserted documents: {}", docs_upserted);
     println!("  chunks written: {}", chunks_written);
+    if config.embedding.is_enabled() {
+        println!("  embeddings written: {}", embeddings_written);
+        println!("  embeddings pending: {}", embeddings_pending);
+    }
     println!("  checkpoint: {}", max_updated);
     println!("ok");
 
@@ -171,6 +184,20 @@ async fn replace_chunks(
     chunks: &[crate::models::Chunk],
 ) -> Result<()> {
     let mut tx = pool.begin().await?;
+
+    // Delete old embeddings for this document's chunks
+    sqlx::query(
+        "DELETE FROM chunk_vectors WHERE chunk_id IN (SELECT id FROM chunks WHERE document_id = ?)",
+    )
+    .bind(document_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "DELETE FROM embeddings WHERE chunk_id IN (SELECT id FROM chunks WHERE document_id = ?)",
+    )
+    .bind(document_id)
+    .execute(&mut *tx)
+    .await?;
 
     // Delete old FTS entries for this document's chunks
     sqlx::query("DELETE FROM chunks_fts WHERE document_id = ?")

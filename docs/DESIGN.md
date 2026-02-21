@@ -13,12 +13,16 @@ is implemented via explicit modules and traits.
 - `chunk.rs` — Paragraph-boundary chunker
 - `ingest.rs` — Ingestion pipeline orchestration
 - `config.rs` — Configuration parsing and validation
+- `embedding.rs` — EmbeddingProvider trait, OpenAI/Disabled providers, cosine similarity
 
 Guarantees:
 - Document model exists
 - Chunk model exists
 - normalize(SourceItem) -> Document
 - chunk(Document) -> Vec<Chunk>
+- embed(Vec<String>) -> Vec<Vec<f32>> (via provider trait)
+- cosine_similarity(a, b) -> f32
+- vec_to_blob / blob_to_vec for storage
 
 ---
 
@@ -45,24 +49,44 @@ Guarantees:
   - get_checkpoint
   - search_keyword
   - get_document
+  - upsert_embedding
+  - find_pending_chunks
 
 Database tables guaranteed:
 - documents
 - chunks
 - checkpoints
 - chunks_fts (FTS5)
+- embeddings (Phase 2)
+- chunk_vectors (Phase 2)
 
 ---
 
 ### retrieval/ (src/)
 
-- `search.rs` — Keyword search with BM25 scoring
+- `search.rs` — Keyword, semantic, and hybrid search
 
 Guarantees:
-- Keyword search (FTS5)
-- Document-level grouping
-- Score normalization to [0, 1]
-- Deterministic tie-breaking
+- Keyword search (FTS5 with BM25)
+- Semantic search (cosine similarity over stored vectors)
+- Hybrid search (weighted merge per HYBRID_SCORING.md)
+- Min-max score normalization to [0, 1]
+- Document-level grouping (MAX aggregation)
+- Deterministic tie-breaking (score desc, updated_at desc, id asc)
+
+---
+
+### embedding/ (src/)
+
+- `embedding.rs` — Provider trait and implementations
+- `embed_cmd.rs` — embed pending / embed rebuild commands
+
+Guarantees:
+- EmbeddingProvider trait with model_name() and dims()
+- DisabledProvider (returns error on embed)
+- OpenAIProvider (API calls with retry/backoff)
+- Inline embedding during sync (non-fatal)
+- Staleness detection via SHA256 hash of chunk text
 
 ---
 
@@ -84,7 +108,7 @@ SourceItem -> normalize() -> Document
 Document -> upsert_document()
 Document -> chunk()
 Chunks -> replace_chunks()
-Chunks -> embed() if enabled
+Chunks -> embed() if enabled (non-fatal)
 Checkpoint updated
 ```
 
@@ -99,6 +123,8 @@ Checkpoint updated
 | sync        | ingest::run_sync() |
 | search      | search::run_search() |
 | get         | get::run_get() |
+| embed pending | embed_cmd::run_embed_pending() |
+| embed rebuild | embed_cmd::run_embed_rebuild() |
 
 ---
 
@@ -109,4 +135,4 @@ If a CLI flag or tool schema changes, this document must be updated.
 The public contract is defined by:
 - USAGE.md
 - SCHEMAS.md
-
+- HYBRID_SCORING.md

@@ -60,8 +60,7 @@ pub async fn run_migrations(config: &Config) -> Result<()> {
     .execute(&pool)
     .await?;
 
-    // Create FTS5 virtual table over chunks
-    // FTS5 CREATE is not idempotent natively, so we check first
+    // Create FTS5 virtual table over chunks (not idempotent natively, check first)
     let fts_exists: bool = sqlx::query_scalar(
         "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='chunks_fts'",
     )
@@ -82,6 +81,37 @@ pub async fn run_migrations(config: &Config) -> Result<()> {
         .await?;
     }
 
+    // Phase 2: Embeddings metadata table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS embeddings (
+            chunk_id TEXT PRIMARY KEY,
+            model TEXT NOT NULL,
+            dims INTEGER NOT NULL,
+            created_at INTEGER NOT NULL,
+            hash TEXT NOT NULL,
+            FOREIGN KEY (chunk_id) REFERENCES chunks(id)
+        )
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
+    // Phase 2: Chunk vectors table (stores embedding blobs)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS chunk_vectors (
+            chunk_id TEXT PRIMARY KEY,
+            document_id TEXT NOT NULL,
+            embedding BLOB NOT NULL,
+            FOREIGN KEY (chunk_id) REFERENCES chunks(id),
+            FOREIGN KEY (document_id) REFERENCES documents(id)
+        )
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
     // Create indexes
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_chunks_document_id ON chunks(document_id)")
         .execute(&pool)
@@ -91,6 +121,11 @@ pub async fn run_migrations(config: &Config) -> Result<()> {
         .await?;
     sqlx::query(
         "CREATE INDEX IF NOT EXISTS idx_documents_updated_at ON documents(updated_at DESC)",
+    )
+    .execute(&pool)
+    .await?;
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_chunk_vectors_document_id ON chunk_vectors(document_id)",
     )
     .execute(&pool)
     .await?;

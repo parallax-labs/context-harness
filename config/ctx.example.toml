@@ -5,8 +5,25 @@ path = "./data/ctx.sqlite"
 max_tokens = 700
 overlap_tokens = 80
 
+# Embedding configuration (Phase 2)
+# provider: "disabled" (no embeddings), "openai" (OpenAI API)
+# When provider != "disabled", model and dims are required
+[embedding]
+provider = "disabled"
+# model = "text-embedding-3-small"
+# dims = 1536
+# batch_size = 64
+# max_retries = 5
+# timeout_secs = 30
+
 [retrieval]
 final_limit = 12
+hybrid_alpha = 0.6         # weight for vector signal (keyword weight = 1 - alpha)
+candidate_k_keyword = 80   # FTS candidates to fetch
+candidate_k_vector = 80    # vector candidates to fetch
+group_by = "document"
+doc_agg = "max"
+max_chunks_per_doc = 3
 
 [server]
 bind = "127.0.0.1:7331"
@@ -16,4 +33,3 @@ root = "./"
 include_globs = ["**/*.md", "**/*.txt", "**/*.rs"]
 exclude_globs = ["**/target/**", "**/.git/**"]
 follow_symlinks = false
-

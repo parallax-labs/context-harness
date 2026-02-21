@@ -2,6 +2,8 @@ mod chunk;
 mod config;
 mod connector_fs;
 mod db;
+mod embed_cmd;
+mod embedding;
 mod get;
 mod ingest;
 mod migrate;
@@ -66,7 +68,7 @@ enum Commands {
         /// Search query
         query: String,
 
-        /// Search mode
+        /// Search mode: keyword, semantic, or hybrid
         #[arg(long, default_value = "keyword")]
         mode: String,
 
@@ -87,6 +89,37 @@ enum Commands {
     Get {
         /// Document ID (UUID)
         id: String,
+    },
+
+    /// Manage embeddings
+    Embed {
+        #[command(subcommand)]
+        action: EmbedAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum EmbedAction {
+    /// Embed chunks that are missing or have stale embeddings
+    Pending {
+        /// Maximum number of chunks to embed
+        #[arg(long)]
+        limit: Option<usize>,
+
+        /// Override batch size from config
+        #[arg(long)]
+        batch_size: Option<usize>,
+
+        /// Show counts without writing
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    /// Delete and regenerate all embeddings
+    Rebuild {
+        /// Override batch size from config
+        #[arg(long)]
+        batch_size: Option<usize>,
     },
 }
 
@@ -125,6 +158,18 @@ async fn main() -> anyhow::Result<()> {
         Commands::Get { id } => {
             get::run_get(&cfg, &id).await?;
         }
+        Commands::Embed { action } => match action {
+            EmbedAction::Pending {
+                limit,
+                batch_size,
+                dry_run,
+            } => {
+                embed_cmd::run_embed_pending(&cfg, limit, batch_size, dry_run).await?;
+            }
+            EmbedAction::Rebuild { batch_size } => {
+                embed_cmd::run_embed_rebuild(&cfg, batch_size).await?;
+            }
+        },
     }
 
     Ok(())

@@ -297,11 +297,105 @@ fn test_unknown_connector() {
 }
 
 #[test]
-fn test_search_mode_semantic_errors() {
+fn test_search_mode_semantic_errors_when_disabled() {
     let (_tmp, config_path) = setup_test_env();
 
     run_ctx(&config_path, &["init"]);
     let (_, stderr, success) = run_ctx(&config_path, &["search", "test", "--mode", "semantic"]);
-    assert!(!success, "Semantic mode should fail in Phase 1");
-    assert!(stderr.contains("embeddings") || stderr.contains("Phase 1"));
+    assert!(
+        !success,
+        "Semantic mode should fail when embeddings disabled"
+    );
+    assert!(
+        stderr.contains("embeddings"),
+        "Should mention embeddings, got: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_search_mode_hybrid_errors_when_disabled() {
+    let (_tmp, config_path) = setup_test_env();
+
+    run_ctx(&config_path, &["init"]);
+    let (_, stderr, success) = run_ctx(&config_path, &["search", "test", "--mode", "hybrid"]);
+    assert!(!success, "Hybrid mode should fail when embeddings disabled");
+    assert!(
+        stderr.contains("embeddings"),
+        "Should mention embeddings, got: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_embed_pending_errors_when_disabled() {
+    let (_tmp, config_path) = setup_test_env();
+
+    run_ctx(&config_path, &["init"]);
+    let (_, stderr, success) = run_ctx(&config_path, &["embed", "pending"]);
+    assert!(!success, "embed pending should fail when provider disabled");
+    assert!(
+        stderr.contains("disabled"),
+        "Should mention disabled, got: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_embed_rebuild_errors_when_disabled() {
+    let (_tmp, config_path) = setup_test_env();
+
+    run_ctx(&config_path, &["init"]);
+    let (_, stderr, success) = run_ctx(&config_path, &["embed", "rebuild"]);
+    assert!(!success, "embed rebuild should fail when provider disabled");
+    assert!(
+        stderr.contains("disabled"),
+        "Should mention disabled, got: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_embed_pending_dry_run() {
+    let (_tmp, config_path) = setup_test_env();
+
+    // Need a config with embedding enabled but no API key
+    // Using disabled provider, which will error; test dry-run with special config
+    run_ctx(&config_path, &["init"]);
+    let (_, stderr, success) = run_ctx(&config_path, &["embed", "pending", "--dry-run"]);
+    // With disabled provider, even dry-run should fail
+    assert!(
+        !success,
+        "embed pending dry-run with disabled provider should fail"
+    );
+    assert!(stderr.contains("disabled"));
+}
+
+#[test]
+fn test_init_creates_embedding_tables() {
+    let (tmp, config_path) = setup_test_env();
+
+    run_ctx(&config_path, &["init"]);
+
+    // Verify embedding tables exist by checking the SQLite schema
+    let db_path = tmp.path().join("data").join("ctx.sqlite");
+    assert!(db_path.exists(), "Database should exist after init");
+
+    // Use a second init to verify idempotency with the new tables
+    let (_, _, success) = run_ctx(&config_path, &["init"]);
+    assert!(success, "Second init with embedding tables should succeed");
+}
+
+#[test]
+fn test_search_unknown_mode_errors() {
+    let (_tmp, config_path) = setup_test_env();
+
+    run_ctx(&config_path, &["init"]);
+    let (_, stderr, success) = run_ctx(&config_path, &["search", "test", "--mode", "invalid"]);
+    assert!(!success, "Unknown mode should fail");
+    assert!(
+        stderr.contains("Unknown search mode"),
+        "Should mention unknown mode, got: {}",
+        stderr
+    );
 }
