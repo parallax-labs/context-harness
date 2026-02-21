@@ -711,70 +711,105 @@ function groupByDocument(chunkScores, limit) {
 }
 
 // ── Transformers.js Model Loading ──
-async function loadModel() {
-  if (modelLoading) return;
-  modelLoading = true;
+let _modelPromise = null; // Shared promise so multiple callers wait on the same load
 
+async function loadModel() {
+  // If already ready, return immediately
+  if (modelReady && pipeline && chunkEmbeddings) return;
+
+  // If already loading, wait on the same promise (don't start a second load)
+  if (_modelPromise) return _modelPromise;
+
+  _modelPromise = _doLoadModel();
+  return _modelPromise;
+}
+
+async function _doLoadModel() {
   const prog = document.getElementById('modelProgress');
-  prog.classList.add('visible');
+  const hasCachedEmbeddings = chunkEmbeddings && chunkEmbeddings.length === DATA.chunks.length;
+
+  // Only show progress if we need to embed chunks (not just load pipeline)
+  if (!hasCachedEmbeddings) {
+    prog.classList.add('visible');
+  }
 
   try {
-    const { pipeline: createPipeline, env } = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1');
-
-    // Use browser cache
-    env.allowLocalModels = false;
-
-    document.getElementById('progDetail').textContent = 'Initializing model…';
-    document.getElementById('progFill').style.width = '20%';
-    document.getElementById('progPct').textContent = '20%';
-
-    pipeline = await createPipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', {
-      progress_callback: (p) => {
-        if (p.status === 'progress' && p.progress) {
-          const pct = Math.round(20 + p.progress * 0.4);
-          document.getElementById('progFill').style.width = pct + '%';
-          document.getElementById('progPct').textContent = pct + '%';
-          document.getElementById('progDetail').textContent = `Downloading model: ${p.file || ''}`;
-        }
+    if (!pipeline) {
+      if (!hasCachedEmbeddings) {
+        document.getElementById('progDetail').textContent = 'Loading Transformers.js library…';
+        document.getElementById('progFill').style.width = '5%';
+        document.getElementById('progPct').textContent = '5%';
       }
-    });
 
-    // Embed all chunks
-    document.getElementById('progDetail').textContent = `Embedding ${DATA.chunks.length} chunks…`;
-    document.getElementById('progFill').style.width = '60%';
-    document.getElementById('progPct').textContent = '60%';
+      const { pipeline: createPipeline, env } = await import(
+        'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1/dist/transformers.min.js'
+      );
 
-    chunkEmbeddings = [];
-    for (let i = 0; i < DATA.chunks.length; i++) {
-      const result = await pipeline(DATA.chunks[i].text, { pooling: 'mean', normalize: true });
-      chunkEmbeddings.push(Array.from(result.data));
-      const pct = Math.round(60 + (i / DATA.chunks.length) * 40);
-      document.getElementById('progFill').style.width = pct + '%';
-      document.getElementById('progPct').textContent = pct + '%';
-      document.getElementById('progDetail').textContent = `Embedding chunk ${i + 1}/${DATA.chunks.length}…`;
+      env.allowLocalModels = false;
+
+      if (!hasCachedEmbeddings) {
+        document.getElementById('progDetail').textContent = 'Downloading all-MiniLM-L6-v2 model…';
+        document.getElementById('progFill').style.width = '15%';
+        document.getElementById('progPct').textContent = '15%';
+      }
+
+      pipeline = await createPipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', {
+        progress_callback: (p) => {
+          if (!hasCachedEmbeddings && p.status === 'progress' && p.progress) {
+            const pct = Math.round(15 + p.progress * 0.45);
+            document.getElementById('progFill').style.width = pct + '%';
+            document.getElementById('progPct').textContent = pct + '%';
+            document.getElementById('progDetail').textContent = `Downloading model: ${p.file || ''}`;
+          }
+        }
+      });
     }
 
-    // Cache embeddings in localStorage
-    try {
-      localStorage.setItem('ctx_chunk_embeddings', JSON.stringify(chunkEmbeddings));
-      localStorage.setItem('ctx_chunk_hash', DATA.chunks.map(c => c.id).join(','));
-    } catch (e) { /* storage full, no big deal */ }
+    // Embed all chunks if not cached
+    if (!hasCachedEmbeddings) {
+      prog.classList.add('visible');
+      document.getElementById('progDetail').textContent = `Embedding ${DATA.chunks.length} chunks…`;
+      document.getElementById('progFill').style.width = '60%';
+      document.getElementById('progPct').textContent = '60%';
+
+      chunkEmbeddings = [];
+      for (let i = 0; i < DATA.chunks.length; i++) {
+        const result = await pipeline(DATA.chunks[i].text, { pooling: 'mean', normalize: true });
+        chunkEmbeddings.push(Array.from(result.data));
+        const pct = Math.round(60 + ((i + 1) / DATA.chunks.length) * 40);
+        document.getElementById('progFill').style.width = pct + '%';
+        document.getElementById('progPct').textContent = pct + '%';
+        document.getElementById('progDetail').textContent = `Embedding chunk ${i + 1}/${DATA.chunks.length}…`;
+      }
+
+      // Cache embeddings in localStorage
+      try {
+        localStorage.setItem('ctx_chunk_embeddings', JSON.stringify(chunkEmbeddings));
+        localStorage.setItem('ctx_chunk_hash', DATA.chunks.map(c => c.id).join(','));
+      } catch (e) { /* storage full, no big deal */ }
+    }
 
     modelReady = true;
-    document.getElementById('progFill').style.width = '100%';
-    document.getElementById('progPct').textContent = '100%';
-    document.getElementById('progDetail').textContent = 'Ready! Model and embeddings cached for future visits.';
-    setTimeout(() => prog.classList.remove('visible'), 2000);
+
+    if (prog.classList.contains('visible')) {
+      document.getElementById('progFill').style.width = '100%';
+      document.getElementById('progPct').textContent = '100%';
+      document.getElementById('progDetail').textContent = 'Ready! Model and embeddings cached for future visits.';
+      setTimeout(() => prog.classList.remove('visible'), 2000);
+    }
 
   } catch (e) {
-    document.getElementById('progDetail').textContent = `Error: ${e.message}`;
+    console.error('Model load error:', e);
+    prog.classList.add('visible');
+    document.getElementById('progDetail').textContent = `Error loading model: ${e.message}`;
     document.getElementById('progFill').style.background = 'var(--red)';
-    modelLoading = false;
+    document.getElementById('progFill').style.width = '100%';
+    _modelPromise = null; // Allow retry
     throw e;
   }
 }
 
-// Try to load cached embeddings
+// Try to load cached embeddings from localStorage
 function loadCachedEmbeddings() {
   try {
     const hash = localStorage.getItem('ctx_chunk_hash');
@@ -863,7 +898,12 @@ window.doSearch = async function() {
       </div>`;
 
   } catch (e) {
-    area.innerHTML = `<div class="error-msg">Search error: ${e.message}</div>`;
+    console.error('Search error:', e);
+    const msg = e.message || String(e);
+    const isModelError = msg.includes('model') || msg.includes('pipeline') || msg.includes('transformers') || msg.includes('fetch');
+    area.innerHTML = `<div class="error-msg">${isModelError
+      ? 'Failed to load the AI model for semantic search. This may be due to browser restrictions, ad blockers, or network issues.<br><br>Try <strong>keyword</strong> mode instead, or refresh the page and try again.'
+      : `Search error: ${escapeHtml(msg)}`}</div>`;
   }
 };
 
@@ -936,18 +976,19 @@ async function init() {
     // Build BM25 index
     bm25Index = buildBM25Index(DATA.chunks);
 
-    // Try loading cached embeddings
-    if (loadCachedEmbeddings()) {
-      // Load the pipeline in the background for query embedding
-      import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1').then(async ({ pipeline: createPipeline, env }) => {
-        env.allowLocalModels = false;
-        pipeline = await createPipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
-        modelReady = true;
-      }).catch(() => { /* model not available, semantic disabled */ });
-    }
+    // Try loading cached embeddings, then warm up the pipeline in the background
+    const hasCached = loadCachedEmbeddings();
 
     document.getElementById('statusText').textContent =
       `${DATA.documents.length} docs · ${DATA.chunks.length} chunks · browser`;
+
+    if (hasCached) {
+      // Embeddings are cached — load model pipeline in background (no progress bar)
+      loadModel().catch((e) => {
+        console.warn('Background model load failed (semantic will retry on first query):', e.message);
+        _modelPromise = null; // Allow retry on first search
+      });
+    }
 
   } catch (e) {
     document.getElementById('statusText').textContent = 'error loading data';
