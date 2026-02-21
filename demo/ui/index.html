@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Context Harness — Live Demo</title>
+<style>
+  :root {
+    --bg: #0a0e17;
+    --surface: #111827;
+    --surface-2: #1a2332;
+    --border: #1e2d3d;
+    --text: #e2e8f0;
+    --text-dim: #8892a4;
+    --accent: #3b82f6;
+    --accent-glow: rgba(59, 130, 246, 0.15);
+    --green: #22c55e;
+    --yellow: #eab308;
+    --red: #ef4444;
+    --orange: #f97316;
+    --purple: #a855f7;
+    --radius: 12px;
+    --mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* Header */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--surface);
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-weight: 700;
+    font-size: 18px;
+  }
+
+  .logo-icon {
+    width: 32px;
+    height: 32px;
+    background: linear-gradient(135deg, var(--accent), var(--purple));
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+  }
+
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--red);
+    animation: pulse 2s infinite;
+  }
+
+  .status-dot.connected { background: var(--green); }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  .status-text {
+    font-size: 13px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+
+  /* Layout */
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 32px 24px;
+  }
+
+  /* Hero / Search */
+  .hero {
+    text-align: center;
+    margin-bottom: 32px;
+  }
+
+  .hero h1 {
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    background: linear-gradient(135deg, var(--text), var(--accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .hero p {
+    color: var(--text-dim);
+    font-size: 15px;
+    margin-bottom: 24px;
+  }
+
+  .search-box {
+    display: flex;
+    gap: 0;
+    max-width: 720px;
+    margin: 0 auto;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+
+  .search-box:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+  }
+
+  .search-input {
+    flex: 1;
+    padding: 14px 20px;
+    background: transparent;
+    border: none;
+    color: var(--text);
+    font-size: 16px;
+    outline: none;
+    font-family: inherit;
+  }
+
+  .search-input::placeholder { color: var(--text-dim); }
+
+  .search-btn {
+    padding: 14px 24px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+    white-space: nowrap;
+  }
+
+  .search-btn:hover { background: #2563eb; }
+  .search-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Controls */
+  .controls {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+  }
+
+  .mode-btn {
+    padding: 8px 18px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-dim);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: var(--mono);
+  }
+
+  .mode-btn:hover {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .mode-btn.active {
+    background: var(--accent-glow);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .source-filter {
+    padding: 8px 14px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-dim);
+    font-size: 13px;
+    font-family: var(--mono);
+    outline: none;
+    cursor: pointer;
+  }
+
+  .source-filter:focus { border-color: var(--accent); }
+
+  /* Stats bar */
+  .stats-bar {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    margin-top: 16px;
+    padding: 12px;
+    background: var(--surface);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    max-width: 720px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .stat {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+
+  .stat-value {
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  /* Results */
+  .results-section {
+    margin-top: 32px;
+  }
+
+  .results-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+
+  .results-count {
+    font-size: 14px;
+    color: var(--text-dim);
+  }
+
+  .results-time {
+    font-size: 13px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+
+  .result-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .result-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+
+  .result-card.expanded {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+
+  .result-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+  }
+
+  .result-title {
+    font-weight: 600;
+    font-size: 16px;
+    color: var(--text);
+  }
+
+  .result-score {
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-weight: 600;
+    flex-shrink: 0;
+    margin-left: 12px;
+  }
+
+  .score-high { background: rgba(34, 197, 94, 0.15); color: var(--green); }
+  .score-mid { background: rgba(234, 179, 8, 0.15); color: var(--yellow); }
+  .score-low { background: rgba(239, 68, 68, 0.15); color: var(--red); }
+
+  .result-meta {
+    display: flex;
+    gap: 16px;
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+
+  .result-meta span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .result-snippet {
+    font-size: 14px;
+    color: var(--text-dim);
+    line-height: 1.6;
+    border-left: 2px solid var(--border);
+    padding-left: 12px;
+  }
+
+  .result-snippet mark {
+    background: var(--accent-glow);
+    color: var(--accent);
+    border-radius: 2px;
+    padding: 0 2px;
+  }
+
+  /* Document detail panel */
+  .doc-detail {
+    margin-top: 12px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    display: none;
+  }
+
+  .doc-detail.visible { display: block; }
+
+  .doc-body {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text);
+    max-height: 400px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    font-family: var(--mono);
+  }
+
+  .doc-chunks {
+    margin-top: 12px;
+  }
+
+  .chunk-tag {
+    display: inline-block;
+    padding: 4px 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: var(--mono);
+    color: var(--text-dim);
+    margin: 2px 4px 2px 0;
+  }
+
+  /* Empty state */
+  .empty-state {
+    text-align: center;
+    padding: 64px 24px;
+    color: var(--text-dim);
+  }
+
+  .empty-state .icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.5;
+  }
+
+  .empty-state h3 {
+    font-size: 18px;
+    margin-bottom: 8px;
+    color: var(--text);
+  }
+
+  .empty-state p { font-size: 14px; }
+
+  /* Suggestions */
+  .suggestions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 20px;
+  }
+
+  .suggestion {
+    padding: 8px 16px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-dim);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .suggestion:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-glow);
+  }
+
+  /* Loading */
+  .loading {
+    text-align: center;
+    padding: 48px;
+    color: var(--text-dim);
+  }
+
+  .spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 16px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Error */
+  .error-msg {
+    text-align: center;
+    padding: 24px;
+    color: var(--red);
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    border-radius: var(--radius);
+    font-family: var(--mono);
+    font-size: 14px;
+  }
+
+  /* Responsive */
+  @media (max-width: 640px) {
+    .container { padding: 16px; }
+    .hero h1 { font-size: 22px; }
+    .stats-bar { flex-direction: column; gap: 8px; }
+    .result-header { flex-direction: column; gap: 8px; }
+    .result-score { margin-left: 0; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">⚡</div>
+    <span>Context Harness</span>
+  </div>
+  <div class="status-bar">
+    <div class="status-dot" id="statusDot"></div>
+    <span class="status-text" id="statusText">Connecting...</span>
+  </div>
+</header>
+
+<div class="container">
+
+  <div class="hero">
+    <h1>Acme Engineering Knowledge Base</h1>
+    <p>Search across architecture decisions, incident playbooks, team docs, and more — powered by Context Harness MCP server.</p>
+
+    <div class="search-box">
+      <input type="text" class="search-input" id="searchInput"
+             placeholder="Search your knowledge base..."
+             autocomplete="off">
+      <button class="search-btn" id="searchBtn" onclick="doSearch()">Search</button>
+    </div>
+
+    <div class="controls">
+      <button class="mode-btn active" data-mode="keyword" onclick="setMode(this)">keyword</button>
+      <button class="mode-btn" data-mode="semantic" onclick="setMode(this)">semantic</button>
+      <button class="mode-btn" data-mode="hybrid" onclick="setMode(this)">hybrid</button>
+
+      <select class="source-filter" id="sourceFilter">
+        <option value="">all sources</option>
+        <option value="filesystem">filesystem</option>
+      </select>
+    </div>
+
+    <div class="stats-bar" id="statsBar" style="display: none;">
+      <div class="stat">results: <span class="stat-value" id="statCount">0</span></div>
+      <div class="stat">mode: <span class="stat-value" id="statMode">keyword</span></div>
+      <div class="stat">time: <span class="stat-value" id="statTime">0ms</span></div>
+    </div>
+  </div>
+
+  <div id="resultsArea">
+    <div class="empty-state" id="emptyState">
+      <div class="icon">🔍</div>
+      <h3>Search your knowledge base</h3>
+      <p>Try one of these queries to get started:</p>
+      <div class="suggestions">
+        <button class="suggestion" onclick="trySuggestion(this)">incident response</button>
+        <button class="suggestion" onclick="trySuggestion(this)">Kafka consumer lag</button>
+        <button class="suggestion" onclick="trySuggestion(this)">Rust error handling</button>
+        <button class="suggestion" onclick="trySuggestion(this)">deployment rollback</button>
+        <button class="suggestion" onclick="trySuggestion(this)">on-call rotation</button>
+        <button class="suggestion" onclick="trySuggestion(this)">API authentication</button>
+        <button class="suggestion" onclick="trySuggestion(this)">data pipeline</button>
+        <button class="suggestion" onclick="trySuggestion(this)">security secrets</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const API = 'http://127.0.0.1:7331';
+let currentMode = 'keyword';
+let serverConnected = false;
+
+// Check server health
+async function checkHealth() {
+  try {
+    const r = await fetch(`${API}/health`);
+    const data = await r.json();
+    document.getElementById('statusDot').classList.add('connected');
+    document.getElementById('statusText').textContent = `v${data.version} · connected`;
+    serverConnected = true;
+
+    // Also fetch sources
+    const sr = await fetch(`${API}/tools/sources`);
+    const sources = await sr.json();
+    const configured = sources.sources.filter(s => s.configured).length;
+    const total = sources.sources.length;
+    document.getElementById('statusText').textContent = `v${data.version} · ${configured}/${total} sources`;
+  } catch(e) {
+    document.getElementById('statusDot').classList.remove('connected');
+    document.getElementById('statusText').textContent = 'disconnected — start: ctx serve mcp';
+    serverConnected = false;
+  }
+}
+
+function setMode(btn) {
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentMode = btn.dataset.mode;
+}
+
+function trySuggestion(btn) {
+  document.getElementById('searchInput').value = btn.textContent;
+  doSearch();
+}
+
+async function doSearch() {
+  const query = document.getElementById('searchInput').value.trim();
+  if (!query) return;
+
+  const source = document.getElementById('sourceFilter').value;
+  const area = document.getElementById('resultsArea');
+
+  area.innerHTML = '<div class="loading"><div class="spinner"></div>Searching...</div>';
+  document.getElementById('statsBar').style.display = 'none';
+
+  const t0 = performance.now();
+
+  try {
+    const body = {
+      query,
+      mode: currentMode,
+      limit: 12,
+    };
+    if (source) {
+      body.filters = { source };
+    }
+
+    const r = await fetch(`${API}/tools/search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    const elapsed = Math.round(performance.now() - t0);
+
+    if (!r.ok) {
+      const err = await r.json();
+      area.innerHTML = `<div class="error-msg">Error: ${err.error?.message || r.statusText}</div>`;
+      return;
+    }
+
+    const data = await r.json();
+    const results = data.results || [];
+
+    // Stats
+    document.getElementById('statsBar').style.display = 'flex';
+    document.getElementById('statCount').textContent = results.length;
+    document.getElementById('statMode').textContent = currentMode;
+    document.getElementById('statTime').textContent = `${elapsed}ms`;
+
+    if (results.length === 0) {
+      area.innerHTML = `
+        <div class="empty-state">
+          <div class="icon">📭</div>
+          <h3>No results found</h3>
+          <p>Try a different query or search mode.</p>
+        </div>`;
+      return;
+    }
+
+    area.innerHTML = `
+      <div class="results-section">
+        <div class="results-header">
+          <span class="results-count">${results.length} result${results.length !== 1 ? 's' : ''}</span>
+          <span class="results-time">${elapsed}ms</span>
+        </div>
+        ${results.map((r, i) => renderResult(r, i)).join('')}
+      </div>`;
+
+  } catch(e) {
+    area.innerHTML = `<div class="error-msg">Cannot reach server at ${API}<br><br>Start the server: <strong>ctx serve mcp --config demo/config/ctx.toml</strong></div>`;
+  }
+}
+
+function renderResult(r, idx) {
+  const title = r.title || r.source_id || '(untitled)';
+  const score = r.score.toFixed(2);
+  const scoreClass = r.score >= 0.7 ? 'score-high' : r.score >= 0.4 ? 'score-mid' : 'score-low';
+  const snippet = formatSnippet(r.snippet);
+  const date = r.updated_at ? r.updated_at.split('T')[0] : '';
+
+  return `
+    <div class="result-card" onclick="toggleDetail(${idx}, '${r.id}')">
+      <div class="result-header">
+        <span class="result-title">${escapeHtml(title)}</span>
+        <span class="result-score ${scoreClass}">${score}</span>
+      </div>
+      <div class="result-meta">
+        <span>📁 ${escapeHtml(r.source)}</span>
+        <span>📄 ${escapeHtml(r.source_id)}</span>
+        ${date ? `<span>📅 ${date}</span>` : ''}
+      </div>
+      <div class="result-snippet">${snippet}</div>
+      <div class="doc-detail" id="detail-${idx}"></div>
+    </div>`;
+}
+
+function formatSnippet(text) {
+  if (!text) return '';
+  let s = escapeHtml(text);
+  // Highlight FTS markers
+  s = s.replace(/&gt;&gt;&gt;/g, '<mark>').replace(/&lt;&lt;&lt;/g, '</mark>');
+  return s;
+}
+
+async function toggleDetail(idx, docId) {
+  const el = document.getElementById(`detail-${idx}`);
+  if (el.classList.contains('visible')) {
+    el.classList.remove('visible');
+    el.innerHTML = '';
+    return;
+  }
+
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Loading document...</div>';
+  el.classList.add('visible');
+
+  try {
+    const r = await fetch(`${API}/tools/get`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: docId }),
+    });
+
+    if (!r.ok) {
+      el.innerHTML = '<div class="error-msg">Failed to load document</div>';
+      return;
+    }
+
+    const doc = await r.json();
+
+    el.innerHTML = `
+      <div class="doc-chunks">
+        ${doc.chunks.length} chunk${doc.chunks.length !== 1 ? 's' : ''}:
+        ${doc.chunks.map(c => `<span class="chunk-tag">chunk ${c.index} · ${c.text.length} chars</span>`).join('')}
+      </div>
+      <div class="doc-body">${escapeHtml(doc.body)}</div>
+    `;
+  } catch(e) {
+    el.innerHTML = '<div class="error-msg">Connection error</div>';
+  }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Enter key
+document.getElementById('searchInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') doSearch();
+});
+
+// Init
+checkHealth();
+setInterval(checkHealth, 10000);
+</script>
+
+</body>
+</html>
+
