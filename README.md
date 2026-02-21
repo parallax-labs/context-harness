@@ -6,7 +6,7 @@
 
 ---
 
-Context Harness is a generalized framework for ingesting external knowledge sources into a local, queryable memory store (SQLite + embeddings) and exposing it to developer tools via CLI and MCP server.
+Context Harness is a generalized framework for ingesting external knowledge sources into a local, queryable memory store (SQLite + embeddings) and exposing it to developer tools via CLI and MCP-compatible HTTP server.
 
 ## Features
 
@@ -14,7 +14,7 @@ Context Harness is a generalized framework for ingesting external knowledge sour
 - **Local-first storage** — SQLite with FTS5 for keyword search
 - **Embedding pipeline** — OpenAI embeddings with automatic batching, retry, and staleness detection
 - **Hybrid retrieval** — keyword + semantic + weighted merge (configurable alpha)
-- **MCP server** — expose context to Cursor and other AI tools (Phase 3)
+- **MCP server** — expose context to Cursor and other AI tools via HTTP
 - **CLI-first** — everything accessible via the `ctx` command
 - **Incremental sync** — checkpointed, idempotent, deterministic
 
@@ -68,10 +68,37 @@ ctx embed pending --config ./config/ctx.toml
 ctx embed rebuild --config ./config/ctx.toml
 ```
 
+### 7. MCP Server
+
+Start the HTTP server for integration with Cursor, Claude, and other MCP-compatible tools:
+
+```bash
+ctx serve mcp --config ./config/ctx.toml
+```
+
+The server exposes:
+- `POST /tools/search` — context.search
+- `POST /tools/get` — context.get
+- `GET /tools/sources` — context.sources
+- `GET /health` — health check
+
+**Cursor integration** — add to your MCP config:
+
+```json
+{
+  "mcpServers": {
+    "context-harness": {
+      "command": "ctx",
+      "args": ["--config", "/path/to/ctx.toml", "serve", "mcp"]
+    }
+  }
+}
+```
+
 ## Architecture
 
 ```
-Connectors → Normalization → Chunking → Embedding → SQLite Store → Query Engine → CLI / MCP
+Connectors → Normalization → Chunking → Embedding → SQLite Store → Query Engine → CLI / MCP Server
 ```
 
 ### Data Flow
@@ -82,7 +109,7 @@ Connectors → Normalization → Chunking → Embedding → SQLite Store → Que
 4. FTS5 index enables keyword search over chunks
 5. Chunks are embedded (OpenAI or disabled) and vectors stored as blobs
 6. Query engine supports keyword, semantic, and hybrid retrieval
-7. Results exposed via CLI and MCP server
+7. Results exposed via CLI and MCP-compatible HTTP server
 
 ## CLI Commands
 
@@ -95,6 +122,29 @@ Connectors → Normalization → Chunking → Embedding → SQLite Store → Que
 | `ctx get <id>` | Retrieve a document by ID |
 | `ctx embed pending` | Backfill missing embeddings |
 | `ctx embed rebuild` | Delete and regenerate all embeddings |
+| `ctx serve mcp` | Start MCP-compatible HTTP server |
+
+## HTTP API
+
+All endpoints return JSON matching the schemas in [`docs/SCHEMAS.md`](docs/SCHEMAS.md).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/tools/search` | Search indexed documents |
+| POST | `/tools/get` | Retrieve a document by ID |
+| GET | `/tools/sources` | List connector status |
+| GET | `/health` | Health check |
+
+Errors follow a consistent format:
+
+```json
+{
+  "error": {
+    "code": "not_found",
+    "message": "document not found: abc-123"
+  }
+}
+```
 
 ## Embedding Configuration
 
@@ -122,6 +172,13 @@ hybrid_alpha = 0.6  # 0.0 = keyword only, 1.0 = semantic only
 ```
 
 See [`docs/HYBRID_SCORING.md`](docs/HYBRID_SCORING.md) for the full scoring specification.
+
+## Server Configuration
+
+```toml
+[server]
+bind = "127.0.0.1:7331"
+```
 
 ## Configuration
 

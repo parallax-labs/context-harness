@@ -9,6 +9,7 @@ mod ingest;
 mod migrate;
 mod models;
 mod search;
+mod server;
 mod sources;
 
 use clap::{Parser, Subcommand};
@@ -96,6 +97,12 @@ enum Commands {
         #[command(subcommand)]
         action: EmbedAction,
     },
+
+    /// Start the MCP-compatible HTTP server
+    Serve {
+        #[command(subcommand)]
+        service: ServeService,
+    },
 }
 
 #[derive(Subcommand)]
@@ -121,6 +128,12 @@ enum EmbedAction {
         #[arg(long)]
         batch_size: Option<usize>,
     },
+}
+
+#[derive(Subcommand)]
+enum ServeService {
+    /// Start the MCP tool server
+    Mcp,
 }
 
 #[tokio::main]
@@ -168,6 +181,11 @@ async fn main() -> anyhow::Result<()> {
             }
             EmbedAction::Rebuild { batch_size } => {
                 embed_cmd::run_embed_rebuild(&cfg, batch_size).await?;
+            }
+        },
+        Commands::Serve { service } => match service {
+            ServeService::Mcp => {
+                server::run_server(&cfg).await?;
             }
         },
     }

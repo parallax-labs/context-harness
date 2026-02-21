@@ -115,7 +115,6 @@ fn default_timeout_secs() -> u64 {
 }
 
 #[derive(Debug, Deserialize, Clone)]
-#[allow(dead_code)]
 pub struct ServerConfig {
     pub bind: String,
 }

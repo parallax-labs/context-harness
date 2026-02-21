@@ -1,5 +1,6 @@
 use anyhow::{bail, Result};
 use chrono::NaiveDate;
+use serde::Serialize;
 use sqlx::{Row, SqlitePool};
 use std::collections::HashMap;
 
@@ -7,17 +8,30 @@ use crate::config::Config;
 use crate::db;
 use crate::embedding;
 
-pub async fn run_search(
+/// A search result matching SCHEMAS.md `context.search` response shape.
+#[derive(Debug, Clone, Serialize)]
+pub struct SearchResultItem {
+    pub id: String,
+    pub score: f64,
+    pub title: Option<String>,
+    pub source: String,
+    pub source_id: String,
+    pub updated_at: String, // ISO8601
+    pub snippet: String,
+    pub source_url: Option<String>,
+}
+
+/// Core search function returning structured results (used by CLI and server).
+pub async fn search_documents(
     config: &Config,
     query: &str,
     mode: &str,
-    source_filter: Option<String>,
-    since: Option<String>,
+    source_filter: Option<&str>,
+    since: Option<&str>,
     limit: Option<i64>,
-) -> Result<()> {
+) -> Result<Vec<SearchResultItem>> {
     if query.trim().is_empty() {
-        println!("No results.");
-        return Ok(());
+        return Ok(Vec::new());
     }
 
     match mode {
@@ -28,7 +42,6 @@ pub async fn run_search(
         ),
     }
 
-    // Semantic/hybrid require embeddings
     if (mode == "semantic" || mode == "hybrid") && !config.embedding.is_enabled() {
         bail!(
             "Mode '{}' requires embeddings. Set [embedding] provider in config.",
@@ -40,7 +53,6 @@ pub async fn run_search(
     let final_limit = limit.unwrap_or(config.retrieval.final_limit);
     let alpha = config.retrieval.hybrid_alpha;
 
-    // Collect candidates from each channel
     let keyword_candidates = if mode == "keyword" || mode == "hybrid" {
         fetch_keyword_candidates(&pool, query, config.retrieval.candidate_k_keyword).await?
     } else {
@@ -54,16 +66,13 @@ pub async fn run_search(
     };
 
     if keyword_candidates.is_empty() && vector_candidates.is_empty() {
-        println!("No results.");
         pool.close().await;
-        return Ok(());
+        return Ok(Vec::new());
     }
 
-    // Normalize scores
     let norm_keyword = normalize_scores(&keyword_candidates);
     let norm_vector = normalize_scores(&vector_candidates);
 
-    // Build keyword/vector lookup by chunk_id
     let kw_map: HashMap<&str, f64> = norm_keyword
         .iter()
         .map(|(c, s)| (c.chunk_id.as_str(), *s))
@@ -73,7 +82,6 @@ pub async fn run_search(
         .map(|(c, s)| (c.chunk_id.as_str(), *s))
         .collect();
 
-    // Merge all unique chunk candidates
     let mut all_chunks: HashMap<String, &ChunkCandidate> = HashMap::new();
     for c in &keyword_candidates {
         all_chunks.entry(c.chunk_id.clone()).or_insert(c);
@@ -82,17 +90,13 @@ pub async fn run_search(
         all_chunks.entry(c.chunk_id.clone()).or_insert(c);
     }
 
-    // Compute hybrid score per chunk
     let effective_alpha = match mode {
         "keyword" => 0.0,
         "semantic" => 1.0,
-        "hybrid" => alpha,
         _ => alpha,
     };
 
     struct ScoredChunk {
-        #[allow(dead_code)]
-        chunk_id: String,
         document_id: String,
         hybrid_score: f64,
         snippet: String,
@@ -104,9 +108,7 @@ pub async fn run_search(
             let k = kw_map.get(chunk_id.as_str()).copied().unwrap_or(0.0);
             let v = vec_map.get(chunk_id.as_str()).copied().unwrap_or(0.0);
             let hybrid = (1.0 - effective_alpha) * k + effective_alpha * v;
-
             ScoredChunk {
-                chunk_id: chunk_id.clone(),
                 document_id: cand.document_id.clone(),
                 hybrid_score: hybrid,
                 snippet: cand.snippet.clone(),
@@ -114,7 +116,6 @@ pub async fn run_search(
         })
         .collect();
 
-    // Group by document using MAX aggregation
     struct DocResult {
         doc_id: String,
         doc_score: f64,
@@ -143,18 +144,7 @@ pub async fn run_search(
         }
     }
 
-    // Fetch document metadata and apply filters
-    struct DisplayResult {
-        id: String,
-        title: Option<String>,
-        source: String,
-        updated_at: i64,
-        source_url: Option<String>,
-        score: f64,
-        snippet: String,
-    }
-
-    let mut results: Vec<DisplayResult> = Vec::new();
+    let mut results: Vec<SearchResultItem> = Vec::new();
 
     for doc_result in doc_map.values() {
         let doc_row = sqlx::query(
@@ -167,16 +157,15 @@ pub async fn run_search(
         if let Some(row) = doc_row {
             let source: String = row.get("source");
             let updated_at: i64 = row.get("updated_at");
+            let source_id: String = row.get("source_id");
 
-            // Apply source filter
-            if let Some(ref src) = source_filter {
-                if &source != src {
+            if let Some(src) = source_filter {
+                if source != src {
                     continue;
                 }
             }
 
-            // Apply since filter
-            if let Some(ref since_str) = since {
+            if let Some(since_str) = since {
                 let since_date = NaiveDate::parse_from_str(since_str, "%Y-%m-%d")?;
                 let since_ts = since_date
                     .and_hms_opt(0, 0, 0)
@@ -188,25 +177,22 @@ pub async fn run_search(
                 }
             }
 
-            results.push(DisplayResult {
+            let updated_at_iso = format_ts_iso(updated_at);
+
+            results.push(SearchResultItem {
                 id: row.get("id"),
+                score: doc_result.doc_score,
                 title: row.get("title"),
                 source,
-                updated_at,
-                source_url: row.get("source_url"),
-                score: doc_result.doc_score,
+                source_id,
+                updated_at: updated_at_iso,
                 snippet: doc_result.best_snippet.clone(),
+                source_url: row.get("source_url"),
             });
         }
     }
 
-    if results.is_empty() {
-        println!("No results.");
-        pool.close().await;
-        return Ok(());
-    }
-
-    // Sort: score desc, updated_at desc, id asc (deterministic)
+    // Sort: score desc, updated_at desc (string works for ISO8601), id asc
     results.sort_by(|a, b| {
         b.score
             .partial_cmp(&a.score)
@@ -217,13 +203,36 @@ pub async fn run_search(
 
     results.truncate(final_limit as usize);
 
-    // Print results
+    pool.close().await;
+    Ok(results)
+}
+
+/// CLI entry point — calls search_documents and prints results.
+pub async fn run_search(
+    config: &Config,
+    query: &str,
+    mode: &str,
+    source_filter: Option<String>,
+    since: Option<String>,
+    limit: Option<i64>,
+) -> Result<()> {
+    let results = search_documents(
+        config,
+        query,
+        mode,
+        source_filter.as_deref(),
+        since.as_deref(),
+        limit,
+    )
+    .await?;
+
+    if results.is_empty() {
+        println!("No results.");
+        return Ok(());
+    }
+
     for (i, result) in results.iter().enumerate() {
         let title_display = result.title.as_deref().unwrap_or("(untitled)");
-        let date = chrono::DateTime::from_timestamp(result.updated_at, 0)
-            .map(|dt| dt.format("%Y-%m-%d").to_string())
-            .unwrap_or_default();
-
         println!(
             "{}. [{:.2}] {} / {}",
             i + 1,
@@ -231,7 +240,7 @@ pub async fn run_search(
             result.source,
             title_display
         );
-        println!("    updated: {}", date);
+        println!("    updated: {}", result.updated_at);
         println!("    source: {}", result.source);
         if let Some(ref url) = result.source_url {
             println!("    url: {}", url);
@@ -244,8 +253,13 @@ pub async fn run_search(
         println!();
     }
 
-    pool.close().await;
     Ok(())
+}
+
+fn format_ts_iso(ts: i64) -> String {
+    chrono::DateTime::from_timestamp(ts, 0)
+        .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+        .unwrap_or_else(|| ts.to_string())
 }
 
 // ============ Candidate types ============
@@ -287,7 +301,7 @@ async fn fetch_keyword_candidates(
             ChunkCandidate {
                 chunk_id: row.get("chunk_id"),
                 document_id: row.get("document_id"),
-                raw_score: -rank, // negate so higher = better
+                raw_score: -rank,
                 snippet: row.get("snippet"),
             }
         })
@@ -307,7 +321,6 @@ async fn fetch_vector_candidates(
     let provider = embedding::create_provider(&config.embedding)?;
     let query_vec = embedding::embed_query(provider.as_ref(), &config.embedding, query).await?;
 
-    // Fetch all vectors and compute cosine similarity in Rust
     let rows = sqlx::query(
         r#"
         SELECT cv.chunk_id, cv.document_id, cv.embedding,
@@ -334,7 +347,6 @@ async fn fetch_vector_candidates(
         })
         .collect();
 
-    // Sort by similarity desc and take top K
     candidates.sort_by(|a, b| {
         b.raw_score
             .partial_cmp(&a.raw_score)
@@ -347,7 +359,6 @@ async fn fetch_vector_candidates(
 
 // ============ Score normalization ============
 
-/// Min-max normalize scores to [0, 1] per the HYBRID_SCORING spec.
 fn normalize_scores(candidates: &[ChunkCandidate]) -> Vec<(&ChunkCandidate, f64)> {
     if candidates.is_empty() {
         return Vec::new();
@@ -375,7 +386,7 @@ fn normalize_scores(candidates: &[ChunkCandidate]) -> Vec<(&ChunkCandidate, f64)
         .collect()
 }
 
-// ============ Score normalization tests ============
+// ============ Tests ============
 
 #[cfg(test)]
 mod tests {
@@ -412,9 +423,6 @@ mod tests {
             make_candidate("c3", "d3", 0.0),
         ];
         let result = normalize_scores(&candidates);
-        // c1: (10-0)/(10-0) = 1.0
-        // c2: (5-0)/(10-0) = 0.5
-        // c3: (0-0)/(10-0) = 0.0
         assert!((result[0].1 - 1.0).abs() < 1e-9);
         assert!((result[1].1 - 0.5).abs() < 1e-9);
         assert!((result[2].1 - 0.0).abs() < 1e-9);
@@ -427,7 +435,6 @@ mod tests {
             make_candidate("c2", "d2", 3.0),
         ];
         let result = normalize_scores(&candidates);
-        // All equal => all 1.0
         for (_, score) in &result {
             assert!((*score - 1.0).abs() < 1e-9);
         }
@@ -452,7 +459,6 @@ mod tests {
 
     #[test]
     fn test_hybrid_alpha_zero_equals_keyword() {
-        // alpha=0 => hybrid = k, keyword ordering preserved
         let kw = vec![
             make_candidate("c1", "d1", 10.0),
             make_candidate("c2", "d2", 5.0),
@@ -497,7 +503,6 @@ mod tests {
 
     #[test]
     fn test_hybrid_alpha_one_equals_vector() {
-        // alpha=1 => hybrid = v, vector ordering preserved
         let kw = vec![
             make_candidate("c1", "d1", 10.0),
             make_candidate("c2", "d2", 5.0),

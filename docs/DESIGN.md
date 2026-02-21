@@ -57,8 +57,8 @@ Database tables guaranteed:
 - chunks
 - checkpoints
 - chunks_fts (FTS5)
-- embeddings (Phase 2)
-- chunk_vectors (Phase 2)
+- embeddings
+- chunk_vectors
 
 ---
 
@@ -73,6 +73,7 @@ Guarantees:
 - Min-max score normalization to [0, 1]
 - Document-level grouping (MAX aggregation)
 - Deterministic tie-breaking (score desc, updated_at desc, id asc)
+- `search_documents()` returns `Vec<SearchResultItem>` for reuse by CLI and server
 
 ---
 
@@ -90,11 +91,26 @@ Guarantees:
 
 ---
 
+### server/ (src/)
+
+- `server.rs` — Axum HTTP server (MCP-compatible)
+
+Guarantees:
+- `POST /tools/search` → context.search (SCHEMAS.md)
+- `POST /tools/get` → context.get (SCHEMAS.md)
+- `GET /tools/sources` → context.sources (SCHEMAS.md)
+- `GET /health` → health check
+- Error responses follow error schema (code + message)
+- CORS enabled
+- Structured error codes: bad_request, not_found, embeddings_disabled, internal
+
+---
+
 ### interfaces/ (src/)
 
 - `main.rs` — CLI with clap
-- `get.rs` — Document retrieval
-- `sources.rs` — Connector listing
+- `get.rs` — Document retrieval (reusable `get_document()` + CLI printer)
+- `sources.rs` — Connector listing (reusable `get_sources()` + CLI printer)
 
 ---
 
@@ -125,6 +141,16 @@ Checkpoint updated
 | get         | get::run_get() |
 | embed pending | embed_cmd::run_embed_pending() |
 | embed rebuild | embed_cmd::run_embed_rebuild() |
+| serve mcp   | server::run_server() |
+
+## HTTP-to-Module Mapping
+
+| Endpoint | Handler | Core Function |
+|----------|---------|---------------|
+| POST /tools/search | handle_search | search::search_documents() |
+| POST /tools/get | handle_get | get::get_document() |
+| GET /tools/sources | handle_sources | sources::get_sources() |
+| GET /health | handle_health | — |
 
 ---
 

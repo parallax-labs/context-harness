@@ -13,7 +13,7 @@ Context Harness is a local-first context indexing framework that:
 - Normalizes into a Document model
 - Chunks and embeds content
 - Stores in SQLite
-- Exposes retrieval via CLI and MCP-compatible server
+- Exposes retrieval via CLI and MCP-compatible HTTP server
 
 ---
 
@@ -203,6 +203,40 @@ Required behavior:
 - Re-embed all chunks for the configured model
 - Print summary (total, embedded, failed)
 - Error if provider disabled
+
+---
+
+### 8. serve mcp
+
+Start the MCP-compatible HTTP tool server.
+
+```bash
+ctx serve mcp
+```
+
+Required behavior:
+- Bind to `[server].bind` address
+- Expose endpoints per SCHEMAS.md:
+  - `POST /tools/search` — context.search
+  - `POST /tools/get` — context.get
+  - `GET /tools/sources` — context.sources
+  - `GET /health` — health check
+- All responses must match SCHEMAS.md exactly
+- All errors must follow error schema
+- CORS enabled for cross-origin requests
+
+---
+
+## HTTP Endpoints
+
+See [SCHEMAS.md](SCHEMAS.md) for complete request/response schemas.
+
+| Method | Path | Tool | Description |
+|--------|------|------|-------------|
+| POST | /tools/search | context.search | Search indexed documents |
+| POST | /tools/get | context.get | Retrieve a document by ID |
+| GET | /tools/sources | context.sources | List connector status |
+| GET | /health | — | Health check |
 
 ---
 

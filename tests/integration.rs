@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use tempfile::TempDir;
 
 fn ctx_binary() -> PathBuf {
@@ -398,4 +398,364 @@ fn test_search_unknown_mode_errors() {
         "Should mention unknown mode, got: {}",
         stderr
     );
+}
+
+// ============ Phase 3: MCP Server Integration Tests ============
+
+/// Find an available port for the test server.
+fn find_free_port() -> u16 {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.local_addr().unwrap().port()
+}
+
+/// Set up a test environment with a specific server port configured.
+fn setup_server_env(port: u16) -> (TempDir, PathBuf) {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path().to_path_buf();
+
+    let config_dir = root.join("config");
+    fs::create_dir_all(&config_dir).unwrap();
+    let data_dir = root.join("data");
+    fs::create_dir_all(&data_dir).unwrap();
+
+    let files_dir = root.join("files");
+    fs::create_dir_all(&files_dir).unwrap();
+    fs::write(
+        files_dir.join("alpha.md"),
+        "# Alpha Document\n\nThis is the alpha document about Rust programming.\n\nIt contains information about cargo and crates.",
+    ).unwrap();
+    fs::write(
+        files_dir.join("beta.md"),
+        "# Beta Document\n\nThis document discusses Python and machine learning.\n\nDeep learning frameworks like PyTorch are covered.",
+    ).unwrap();
+
+    let config_content = format!(
+        r#"[db]
+path = "{}/data/ctx.sqlite"
+
+[chunking]
+max_tokens = 700
+overlap_tokens = 80
+
+[retrieval]
+final_limit = 12
+
+[server]
+bind = "127.0.0.1:{}"
+
+[connectors.filesystem]
+root = "{}/files"
+include_globs = ["**/*.md"]
+exclude_globs = []
+follow_symlinks = false
+"#,
+        root.display(),
+        port,
+        root.display()
+    );
+
+    let config_path = config_dir.join("ctx.toml");
+    fs::write(&config_path, config_content).unwrap();
+
+    (tmp, config_path)
+}
+
+/// Start the MCP server in the background, wait for it to be ready, return the child process.
+fn start_server(config_path: &Path) -> std::process::Child {
+    let binary = ctx_binary();
+    let child = Command::new(&binary)
+        .arg("--config")
+        .arg(config_path.to_str().unwrap())
+        .args(["serve", "mcp"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|e| panic!("Failed to start server: {}", e));
+
+    child
+}
+
+/// Wait for the server to be ready by polling the health endpoint.
+fn wait_for_server(port: u16) {
+    let url = format!("http://127.0.0.1:{}/health", port);
+    for _ in 0..50 {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        if let Ok(resp) = reqwest::blocking::get(&url) {
+            if resp.status().is_success() {
+                return;
+            }
+        }
+    }
+    panic!("Server did not become ready within 5 seconds");
+}
+
+#[test]
+fn test_server_health() {
+    let port = find_free_port();
+    let (_tmp, config_path) = setup_server_env(port);
+
+    run_ctx(&config_path, &["init"]);
+
+    let mut server = start_server(&config_path);
+    wait_for_server(port);
+
+    let url = format!("http://127.0.0.1:{}/health", port);
+    let resp = reqwest::blocking::get(&url).unwrap();
+    assert_eq!(resp.status(), 200);
+
+    let body: serde_json::Value = resp.json().unwrap();
+    assert_eq!(body["status"], "ok");
+    assert!(body["version"].is_string());
+
+    server.kill().ok();
+    server.wait().ok();
+}
+
+#[test]
+fn test_server_sources() {
+    let port = find_free_port();
+    let (_tmp, config_path) = setup_server_env(port);
+
+    run_ctx(&config_path, &["init"]);
+
+    let mut server = start_server(&config_path);
+    wait_for_server(port);
+
+    let url = format!("http://127.0.0.1:{}/tools/sources", port);
+    let resp = reqwest::blocking::get(&url).unwrap();
+    assert_eq!(resp.status(), 200);
+
+    let body: serde_json::Value = resp.json().unwrap();
+    let sources = body["sources"].as_array().unwrap();
+    assert!(!sources.is_empty());
+
+    // Validate schema shape per SCHEMAS.md
+    let fs_source = &sources[0];
+    assert_eq!(fs_source["name"], "filesystem");
+    assert!(fs_source["configured"].is_boolean());
+    assert!(fs_source["healthy"].is_boolean());
+
+    server.kill().ok();
+    server.wait().ok();
+}
+
+#[test]
+fn test_server_search() {
+    let port = find_free_port();
+    let (_tmp, config_path) = setup_server_env(port);
+
+    run_ctx(&config_path, &["init"]);
+    run_ctx(&config_path, &["sync", "filesystem"]);
+
+    let mut server = start_server(&config_path);
+    wait_for_server(port);
+
+    let url = format!("http://127.0.0.1:{}/tools/search", port);
+    let client = reqwest::blocking::Client::new();
+    let resp = client
+        .post(&url)
+        .json(&serde_json::json!({
+            "query": "Rust programming",
+            "mode": "keyword",
+            "limit": 5
+        }))
+        .send()
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+
+    let body: serde_json::Value = resp.json().unwrap();
+    let results = body["results"].as_array().unwrap();
+    assert!(!results.is_empty(), "Should have search results");
+
+    // Validate schema shape per SCHEMAS.md
+    let first = &results[0];
+    assert!(first["id"].is_string());
+    assert!(first["score"].is_f64());
+    assert!(first["source"].is_string());
+    assert!(first["source_id"].is_string());
+    assert!(first["updated_at"].is_string());
+    assert!(first["snippet"].is_string());
+
+    server.kill().ok();
+    server.wait().ok();
+}
+
+#[test]
+fn test_server_search_empty_query() {
+    let port = find_free_port();
+    let (_tmp, config_path) = setup_server_env(port);
+
+    run_ctx(&config_path, &["init"]);
+
+    let mut server = start_server(&config_path);
+    wait_for_server(port);
+
+    let url = format!("http://127.0.0.1:{}/tools/search", port);
+    let client = reqwest::blocking::Client::new();
+    let resp = client
+        .post(&url)
+        .json(&serde_json::json!({
+            "query": "",
+            "mode": "keyword"
+        }))
+        .send()
+        .unwrap();
+
+    assert_eq!(resp.status(), 400);
+
+    let body: serde_json::Value = resp.json().unwrap();
+    assert!(body["error"]["code"].is_string());
+    assert!(body["error"]["message"].is_string());
+
+    server.kill().ok();
+    server.wait().ok();
+}
+
+#[test]
+fn test_server_search_semantic_disabled() {
+    let port = find_free_port();
+    let (_tmp, config_path) = setup_server_env(port);
+
+    run_ctx(&config_path, &["init"]);
+
+    let mut server = start_server(&config_path);
+    wait_for_server(port);
+
+    let url = format!("http://127.0.0.1:{}/tools/search", port);
+    let client = reqwest::blocking::Client::new();
+    let resp = client
+        .post(&url)
+        .json(&serde_json::json!({
+            "query": "test",
+            "mode": "semantic"
+        }))
+        .send()
+        .unwrap();
+
+    assert_eq!(resp.status(), 400);
+
+    let body: serde_json::Value = resp.json().unwrap();
+    assert_eq!(body["error"]["code"], "embeddings_disabled");
+
+    server.kill().ok();
+    server.wait().ok();
+}
+
+#[test]
+fn test_server_get_document() {
+    let port = find_free_port();
+    let (_tmp, config_path) = setup_server_env(port);
+
+    run_ctx(&config_path, &["init"]);
+    run_ctx(&config_path, &["sync", "filesystem"]);
+
+    // Get a doc ID via CLI search
+    let (search_out, _, _) = run_ctx(&config_path, &["search", "Rust"]);
+    let doc_id = search_out
+        .lines()
+        .find(|l| l.trim().starts_with("id:"))
+        .and_then(|l| l.split("id:").nth(1))
+        .map(|s| s.trim().to_string())
+        .expect("Should find a document ID");
+
+    let mut server = start_server(&config_path);
+    wait_for_server(port);
+
+    let url = format!("http://127.0.0.1:{}/tools/get", port);
+    let client = reqwest::blocking::Client::new();
+    let resp = client
+        .post(&url)
+        .json(&serde_json::json!({ "id": doc_id }))
+        .send()
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+
+    let body: serde_json::Value = resp.json().unwrap();
+
+    // Validate schema shape per SCHEMAS.md
+    assert_eq!(body["id"], doc_id);
+    assert!(body["source"].is_string());
+    assert!(body["source_id"].is_string());
+    assert!(body["created_at"].is_string());
+    assert!(body["updated_at"].is_string());
+    assert!(body["content_type"].is_string());
+    assert!(body["body"].is_string());
+    assert!(body["metadata"].is_object());
+    assert!(body["chunks"].is_array());
+
+    let chunks = body["chunks"].as_array().unwrap();
+    assert!(!chunks.is_empty());
+    assert!(chunks[0]["index"].is_number());
+    assert!(chunks[0]["text"].is_string());
+
+    server.kill().ok();
+    server.wait().ok();
+}
+
+#[test]
+fn test_server_get_not_found() {
+    let port = find_free_port();
+    let (_tmp, config_path) = setup_server_env(port);
+
+    run_ctx(&config_path, &["init"]);
+
+    let mut server = start_server(&config_path);
+    wait_for_server(port);
+
+    let url = format!("http://127.0.0.1:{}/tools/get", port);
+    let client = reqwest::blocking::Client::new();
+    let resp = client
+        .post(&url)
+        .json(&serde_json::json!({ "id": "nonexistent-id" }))
+        .send()
+        .unwrap();
+
+    assert_eq!(resp.status(), 404);
+
+    let body: serde_json::Value = resp.json().unwrap();
+    assert_eq!(body["error"]["code"], "not_found");
+
+    server.kill().ok();
+    server.wait().ok();
+}
+
+#[test]
+fn test_server_search_with_filters() {
+    let port = find_free_port();
+    let (_tmp, config_path) = setup_server_env(port);
+
+    run_ctx(&config_path, &["init"]);
+    run_ctx(&config_path, &["sync", "filesystem"]);
+
+    let mut server = start_server(&config_path);
+    wait_for_server(port);
+
+    let url = format!("http://127.0.0.1:{}/tools/search", port);
+    let client = reqwest::blocking::Client::new();
+
+    // Search with source filter
+    let resp = client
+        .post(&url)
+        .json(&serde_json::json!({
+            "query": "document",
+            "mode": "keyword",
+            "limit": 5,
+            "filters": {
+                "source": "filesystem"
+            }
+        }))
+        .send()
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().unwrap();
+    let results = body["results"].as_array().unwrap();
+    for r in results {
+        assert_eq!(r["source"], "filesystem");
+    }
+
+    server.kill().ok();
+    server.wait().ok();
 }
