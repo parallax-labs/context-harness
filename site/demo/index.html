@@ -910,7 +910,11 @@ window.doSearch = async function() {
 function renderResult(r, idx) {
   const score = r.score.toFixed(2);
   const scoreClass = r.score >= 0.7 ? 'score-high' : r.score >= 0.4 ? 'score-mid' : 'score-low';
-  const date = r.updated_at ? r.updated_at.split('T')[0] : '';
+  let date = '';
+  if (r.updated_at) {
+    if (typeof r.updated_at === 'string') date = r.updated_at.split('T')[0];
+    else if (typeof r.updated_at === 'number') date = new Date(r.updated_at * 1000).toISOString().split('T')[0];
+  }
 
   const scoreExplain = r.score >= 0.7
     ? 'Strong match — this chunk had high relevance to your query'
