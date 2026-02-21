@@ -17,7 +17,9 @@
             </a>
             <div class="nav-links">
                 <a href="#features">Features</a>
+                <a href="#use-cases">Use Cases</a>
                 <a href="#architecture">Architecture</a>
+                <a href="demo/">Live Demo</a>
                 <a href="#quickstart">Get Started</a>
                 <a href="https://github.com/parallax-labs/context-harness" class="nav-github" target="_blank" rel="noopener">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
@@ -226,6 +228,86 @@ include_globs = ["**/*.md"]</code></pre>
         </div>
     </section>
 
+    <section id="use-cases" class="use-cases">
+        <div class="container">
+            <h2 class="section-title">Built for real workflows</h2>
+            <p class="section-sub">From offline-first web apps to AI-powered development — Context Harness fits where you need it</p>
+
+            <div class="use-case-grid">
+                <div class="use-case-card featured">
+                    <div class="use-case-badge">Primary Use Case</div>
+                    <div class="use-case-icon">🧩</div>
+                    <h3>Offline-First RAG for Web Apps</h3>
+                    <p>Pre-build your knowledge base at build time. Ship the SQLite database as a static asset. Your web app gets retrieval-augmented generation <strong>without a backend</strong> — the entire search engine runs in the browser via WASM.</p>
+                    <div class="use-case-tags">
+                        <span class="tag">Static Hosting</span>
+                        <span class="tag">No API Keys</span>
+                        <span class="tag">Works Offline</span>
+                    </div>
+                </div>
+
+                <div class="use-case-card featured">
+                    <div class="use-case-badge">Primary Use Case</div>
+                    <div class="use-case-icon">🤖</div>
+                    <h3>AI Agent Context via MCP</h3>
+                    <p>Point Context Harness at your repo's docs, ADRs, and runbooks. Start the MCP server. Now <strong>Cursor, Claude, and any MCP-compatible agent</strong> can search your project knowledge — no copy-pasting, no wasted context windows.</p>
+                    <div class="use-case-tags">
+                        <span class="tag">Cursor</span>
+                        <span class="tag">Claude</span>
+                        <span class="tag">MCP Protocol</span>
+                    </div>
+                </div>
+
+                <div class="use-case-card featured">
+                    <div class="use-case-badge">Primary Use Case</div>
+                    <div class="use-case-icon">📝</div>
+                    <h3>Personal Knowledge Agent</h3>
+                    <p>Index your Obsidian vault, meeting notes, or research docs. Vectorize everything. Connect it to your AI tools and ask questions across your entire body of knowledge — <em>"What did we decide about the auth migration?"</em></p>
+                    <div class="use-case-tags">
+                        <span class="tag">Obsidian</span>
+                        <span class="tag">Notes</span>
+                        <span class="tag">Personal AI</span>
+                    </div>
+                </div>
+
+                <div class="use-case-card">
+                    <div class="use-case-icon">📚</div>
+                    <h3>Documentation Site Search</h3>
+                    <p>Replace Algolia or DocSearch with self-hosted semantic search. Build the index at deploy time, serve from a CDN. <strong>No third-party dependencies, no API keys, no usage limits.</strong></p>
+                    <div class="use-case-tags">
+                        <span class="tag">Self-Hosted</span>
+                        <span class="tag">CDN-Ready</span>
+                    </div>
+                </div>
+
+                <div class="use-case-card">
+                    <div class="use-case-icon">🏗️</div>
+                    <h3>Engineering Onboarding</h3>
+                    <p>Index incident reports, post-mortems, architecture decisions, and runbooks. New engineers query naturally: <em>"How do we handle database failovers?"</em> instead of searching Confluence for 45 minutes.</p>
+                    <div class="use-case-tags">
+                        <span class="tag">Knowledge Base</span>
+                        <span class="tag">Natural Language</span>
+                    </div>
+                </div>
+
+                <div class="use-case-card">
+                    <div class="use-case-icon">🔗</div>
+                    <h3>Multi-Source Knowledge Hub</h3>
+                    <p>Connect filesystem, GitHub issues, Jira tickets, and Slack threads into a single searchable index. Break down knowledge silos and query everything from one place.</p>
+                    <div class="use-case-tags">
+                        <span class="tag">Multi-Connector</span>
+                        <span class="tag">Unified Search</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="use-case-cta">
+                <a href="demo/" class="btn btn-primary">Try the Live Demo →</a>
+                <span class="use-case-cta-note">Runs entirely in your browser — no server, no API keys</span>
+            </div>
+        </div>
+    </section>
+
     <section id="quickstart" class="quickstart">
         <div class="container">
             <h2 class="section-title">Get started in 60 seconds</h2>
@@ -333,7 +415,7 @@ EOF</code></pre>
             });
         }, observerOptions);
 
-        document.querySelectorAll('.feature-card, .arch-step, .step, .arch-detail-card').forEach(el => {
+        document.querySelectorAll('.feature-card, .arch-step, .step, .arch-detail-card, .use-case-card').forEach(el => {
             observer.observe(el);
         });
 

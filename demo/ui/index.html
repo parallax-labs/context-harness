@@ -1039,9 +1039,42 @@
     </div>
   </div>
 
-  <!-- Section 4: What's in the Knowledge Base -->
+  <!-- Section 4: Use Cases -->
   <div class="about-section">
-    <h2><span class="num">4</span> What's in the Knowledge Base</h2>
+    <h2><span class="num">4</span> Use Cases</h2>
+    <p>Context Harness is designed for workflows where AI tools need access to structured knowledge:</p>
+
+    <div class="concept-grid">
+      <div class="concept-card" style="border-color: var(--accent); box-shadow: 0 0 16px var(--accent-glow);">
+        <h3>🧩 Offline-First RAG for Web Apps</h3>
+        <p>Pre-build your knowledge base at build time. Ship documents + chunks + embeddings as static assets. Your web app gets retrieval-augmented generation <strong>with zero backend infrastructure</strong>. Check out the <a href="https://parallax-labs.github.io/context-harness/demo/" target="_blank" style="color:var(--accent)">browser-only demo</a> — it runs entirely on GitHub Pages.</p>
+      </div>
+      <div class="concept-card" style="border-color: var(--accent); box-shadow: 0 0 16px var(--accent-glow);">
+        <h3>🤖 AI Agent Context in Your IDE</h3>
+        <p>Point Context Harness at your repo's docs, ADRs, and runbooks. Start the MCP server with <code>ctx serve mcp</code>. Now Cursor, Claude, and any MCP-compatible agent can search your project knowledge — no copy-pasting, no wasted context windows.</p>
+      </div>
+      <div class="concept-card" style="border-color: var(--accent); box-shadow: 0 0 16px var(--accent-glow);">
+        <h3>📝 Personal Knowledge Agent</h3>
+        <p>Index your Obsidian vault, meeting notes, or research docs. Vectorize everything. Connect it to your AI tools and ask questions across your entire knowledge — <em style="color:var(--accent)">"What did we decide about the auth migration?"</em></p>
+      </div>
+      <div class="concept-card">
+        <h3>📚 Documentation Site Search</h3>
+        <p>Replace Algolia or DocSearch with self-hosted semantic search. Build the index at deploy time, serve from a CDN. No third-party dependencies, no API keys, no usage limits.</p>
+      </div>
+      <div class="concept-card">
+        <h3>🏗️ Engineering Onboarding</h3>
+        <p>Index incident reports, post-mortems, architecture decisions, and runbooks. New engineers query naturally instead of searching Confluence for 45 minutes.</p>
+      </div>
+      <div class="concept-card">
+        <h3>🔗 Multi-Source Knowledge Hub</h3>
+        <p>Connect filesystem, GitHub issues, Jira tickets, and Slack threads into a single searchable index. Break down knowledge silos across your organization.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section 5: What's in the Knowledge Base -->
+  <div class="about-section">
+    <h2><span class="num">5</span> What's in the Knowledge Base</h2>
     <p>This demo indexes a fictional <strong>"Acme Engineering Handbook"</strong> — 11 documents covering the kind of knowledge engineering teams produce:</p>
 
     <div class="concept-grid">
@@ -1074,7 +1107,7 @@
 
   <!-- Section 5: Architecture -->
   <div class="about-section">
-    <h2><span class="num">5</span> System Architecture</h2>
+    <h2><span class="num">6</span> System Architecture</h2>
     <p>Context Harness is written in <strong>Rust</strong> and compiles to a single binary called <code>ctx</code>. Here's how the pieces fit together:</p>
 
     <div class="about-code"><span class="comment"># Initialize the SQLite database (creates tables, FTS index)</span>
@@ -1100,7 +1133,7 @@
 
   <!-- Section 6: Running it yourself -->
   <div class="about-section">
-    <h2><span class="num">6</span> Run It Yourself</h2>
+    <h2><span class="num">7</span> Run It Yourself</h2>
     <p>The full demo runs with a single command:</p>
 
     <div class="about-code"><span class="comment"># Clone, build, and run the demo</span>

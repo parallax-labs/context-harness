@@ -6,7 +6,9 @@ max_tokens = 500
 overlap_tokens = 50
 
 [embedding]
-provider = "disabled"
+provider = "openai"
+model = "text-embedding-3-small"
+dims = 1536
 
 [retrieval]
 final_limit = 12
