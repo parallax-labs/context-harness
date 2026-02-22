@@ -42,7 +42,10 @@ pub async fn run_sync(
         "filesystem" => connector_fs::scan_filesystem(config)?,
         "git" => connector_git::scan_git(config)?,
         "s3" => connector_s3::scan_s3(config).await?,
-        _ => bail!("Unknown connector: '{}'. Available: filesystem, git, s3", connector),
+        _ => bail!(
+            "Unknown connector: '{}'. Available: filesystem, git, s3",
+            connector
+        ),
     };
 
     // Filter by checkpoint (skip files not modified since checkpoint)

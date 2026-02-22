@@ -52,11 +52,7 @@ pub fn scan_git(config: &Config) -> Result<Vec<SourceItem>> {
         Some(dir) => dir.clone(),
         None => {
             // Default: sibling to the DB file
-            let db_parent = config
-                .db
-                .path
-                .parent()
-                .unwrap_or_else(|| Path::new("."));
+            let db_parent = config.db.path.parent().unwrap_or_else(|| Path::new("."));
             let url_hash = short_hash(&git_config.url);
             db_parent.join(".git-cache").join(url_hash)
         }
@@ -325,4 +321,3 @@ fn build_globset(patterns: &[String]) -> Result<GlobSet> {
     }
     Ok(builder.build()?)
 }
-

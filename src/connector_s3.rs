@@ -50,10 +50,7 @@ pub async fn scan_s3(config: &Config) -> Result<Vec<SourceItem>> {
     // Build glob sets
     let include_set = build_globset(&s3_config.include_globs)?;
 
-    let mut default_excludes = vec![
-        "**/.git/**".to_string(),
-        "**/node_modules/**".to_string(),
-    ];
+    let mut default_excludes = vec!["**/.git/**".to_string(), "**/node_modules/**".to_string()];
     default_excludes.extend(s3_config.exclude_globs.clone());
     let exclude_set = build_globset(&default_excludes)?;
 
@@ -295,11 +292,7 @@ async fn download_object(
     key: &str,
 ) -> Result<String> {
     let host = s3_host(s3_config);
-    let encoded_key = key
-        .split('/')
-        .map(uri_encode)
-        .collect::<Vec<_>>()
-        .join("/");
+    let encoded_key = key.split('/').map(uri_encode).collect::<Vec<_>>().join("/");
     let url = format!("https://{}/{}", host, encoded_key);
 
     let now = Utc::now();
@@ -366,9 +359,10 @@ async fn download_object(
         req_builder = req_builder.header("x-amz-security-token", token);
     }
 
-    let resp = req_builder.send().await.map_err(|e| {
-        anyhow::anyhow!("Failed to get s3://{}/{}: {}", s3_config.bucket, key, e)
-    })?;
+    let resp = req_builder
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to get s3://{}/{}: {}", s3_config.bucket, key, e))?;
 
     if !resp.status().is_success() {
         let status = resp.status();
@@ -401,8 +395,7 @@ fn hex_sha256(data: &[u8]) -> String {
 }
 
 fn hmac_sha256(key: &[u8], data: &[u8]) -> Vec<u8> {
-    let mut mac =
-        HmacSha256::new_from_slice(key).expect("HMAC can take key of any size");
+    let mut mac = HmacSha256::new_from_slice(key).expect("HMAC can take key of any size");
     mac.update(data);
     mac.finalize().into_bytes().to_vec()
 }
@@ -412,7 +405,10 @@ fn hex_hmac_sha256(key: &[u8], data: &[u8]) -> String {
 }
 
 fn derive_signing_key(secret_key: &str, date_stamp: &str, region: &str, service: &str) -> Vec<u8> {
-    let k_date = hmac_sha256(format!("AWS4{}", secret_key).as_bytes(), date_stamp.as_bytes());
+    let k_date = hmac_sha256(
+        format!("AWS4{}", secret_key).as_bytes(),
+        date_stamp.as_bytes(),
+    );
     let k_region = hmac_sha256(&k_date, region.as_bytes());
     let k_service = hmac_sha256(&k_region, service.as_bytes());
     hmac_sha256(&k_service, b"aws4_request")
