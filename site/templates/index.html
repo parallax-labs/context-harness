@@ -14,7 +14,7 @@
         <div class="nav-links">
             <a href="#features">Features</a>
             <a href="#architecture">Architecture</a>
-            <a href="{{ get_url(path='docs/_index.md') }}">Docs</a>
+            <a href="{{ get_url(path='@/docs/_index.md') }}">Docs</a>
             <a href="{{ get_url(path='demo/') }}">Demo</a>
             <a href="#quickstart">Get Started</a>
             <a href="{{ config.extra.github_url }}" class="nav-github" target="_blank" rel="noopener">
@@ -260,7 +260,7 @@ include_globs = ["**/*.md"]</code></pre>
         </div>
 
         <div class="use-case-cta">
-            <a href="{{ get_url(path='docs/_index.md') }}" class="btn btn-primary">Read the Documentation →</a>
+            <a href="{{ get_url(path='@/docs/_index.md') }}" class="btn btn-primary">Read the Documentation →</a>
             <span class="use-case-cta-note">Everything you need to set up Context Harness for your project</span>
         </div>
     </div>
@@ -328,7 +328,7 @@ EOF</code></pre>
             </div>
             <div class="footer-links">
                 <a href="{{ config.extra.github_url }}" target="_blank" rel="noopener">GitHub</a>
-                <a href="{{ get_url(path='docs/_index.md') }}">Docs</a>
+                <a href="{{ get_url(path='@/docs/_index.md') }}">Docs</a>
                 <a href="{{ config.extra.github_url }}/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
             </div>
         </div>
