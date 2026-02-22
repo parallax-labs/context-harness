@@ -20,6 +20,26 @@
 //!
 //! Cloned repos are cached locally (default: alongside the SQLite DB in
 //! `data/.git-cache/<url-hash>/`). Subsequent syncs do `git fetch && reset`.
+//!
+//! # Metadata Extraction
+//!
+//! For each file, the connector extracts:
+//! - **`updated_at`** — last commit timestamp from `git log -1 --format=%ct`
+//! - **`author`** — last committer name from `git log -1 --format=%an`
+//! - **`source_url`** — web URL (GitHub/GitLab blob link) for the file
+//! - **`metadata_json`** — JSON with `git_sha` and `repo_url`
+//!
+//! # Web URL Generation
+//!
+//! The connector auto-detects GitHub and GitLab URLs and generates
+//! browsable blob links:
+//!
+//! | Input URL | Generated URL |
+//! |-----------|--------------|
+//! | `git@github.com:org/repo.git` | `https://github.com/org/repo/blob/<sha>/<path>` |
+//! | `https://github.com/org/repo.git` | `https://github.com/org/repo/blob/<sha>/<path>` |
+//! | `git@gitlab.com:org/repo.git` | `https://gitlab.com/org/repo/-/blob/<sha>/<path>` |
+//! | Other | `git://<url>/<path>` |
 
 use anyhow::{bail, Context, Result};
 use chrono::{TimeZone, Utc};
@@ -32,14 +52,24 @@ use walkdir::WalkDir;
 use crate::config::Config;
 use crate::models::SourceItem;
 
-/// Scan a Git repository and produce SourceItems.
+/// Scan a Git repository and produce [`SourceItem`]s.
 ///
-/// Workflow:
+/// # Workflow
+///
 /// 1. Determine a local cache directory for the clone.
 /// 2. Clone (shallow if configured) or pull to update.
 /// 3. Walk files under the configured `root` subdirectory.
 /// 4. Apply include/exclude globs.
-/// 5. Extract per-file metadata from git log.
+/// 5. Extract per-file metadata from `git log`.
+/// 6. Generate web-browsable URLs.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The Git connector is not configured
+/// - `git` binary is not available
+/// - Clone or pull fails
+/// - The configured `root` subdirectory does not exist in the repo
 pub fn scan_git(config: &Config) -> Result<Vec<SourceItem>> {
     let git_config = config
         .connectors
@@ -126,6 +156,9 @@ pub fn scan_git(config: &Config) -> Result<Vec<SourceItem>> {
     Ok(items)
 }
 
+/// Clone a Git repository into the cache directory.
+///
+/// Supports shallow clones (`--depth 1`) and single-branch checkout.
 fn git_clone(url: &str, branch: &str, shallow: bool, dest: &Path) -> Result<()> {
     std::fs::create_dir_all(dest)
         .with_context(|| format!("Failed to create cache directory: {}", dest.display()))?;
@@ -150,6 +183,7 @@ fn git_clone(url: &str, branch: &str, shallow: bool, dest: &Path) -> Result<()> 
     Ok(())
 }
 
+/// Update an existing cached repository via fetch + hard reset.
 fn git_pull(repo_dir: &Path, branch: &str) -> Result<()> {
     // Fetch the latest changes
     let output = Command::new("git")
@@ -179,6 +213,7 @@ fn git_pull(repo_dir: &Path, branch: &str) -> Result<()> {
     Ok(())
 }
 
+/// Get the HEAD commit SHA of a repository.
 fn git_head_sha(repo_dir: &Path) -> Result<String> {
     let output = Command::new("git")
         .args(["rev-parse", "HEAD"])
@@ -193,7 +228,9 @@ fn git_head_sha(repo_dir: &Path) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-/// Get the last commit timestamp for a specific file.
+/// Get the last commit timestamp (Unix epoch) for a specific file.
+///
+/// Returns `None` if the file has no Git history or `git log` fails.
 fn git_file_last_commit_time(repo_dir: &Path, file_path: &Path) -> Option<i64> {
     let output = Command::new("git")
         .args(["log", "-1", "--format=%ct", "--"])
@@ -210,7 +247,9 @@ fn git_file_last_commit_time(repo_dir: &Path, file_path: &Path) -> Option<i64> {
     ts_str.trim().parse::<i64>().ok()
 }
 
-/// Get the last commit author for a specific file.
+/// Get the last commit author name for a specific file.
+///
+/// Returns `None` if the file has no Git history or `git log` fails.
 fn git_file_last_author(repo_dir: &Path, file_path: &Path) -> Option<String> {
     let output = Command::new("git")
         .args(["log", "-1", "--format=%an", "--"])
@@ -231,6 +270,10 @@ fn git_file_last_author(repo_dir: &Path, file_path: &Path) -> Option<String> {
     }
 }
 
+/// Convert a file in the cloned repo to a [`SourceItem`].
+///
+/// Extracts Git metadata (commit timestamp, author) and generates
+/// a web-browsable URL for GitHub/GitLab repositories.
 fn file_to_source_item(
     path: &Path,
     relative_path: &str,
@@ -282,6 +325,9 @@ fn file_to_source_item(
 }
 
 /// Attempt to build a web-browsable URL from the git remote URL.
+///
+/// Supports GitHub (`git@github.com:` and `https://github.com/`) and
+/// GitLab (`git@gitlab.com:`) URL formats. Falls back to `git://` URI.
 fn build_web_url(repo_url: &str, sha: &str, relative_path: &str) -> String {
     // Convert git@github.com:org/repo.git → https://github.com/org/repo/blob/<sha>/<path>
     if let Some(rest) = repo_url.strip_prefix("git@github.com:") {
@@ -308,12 +354,14 @@ fn build_web_url(repo_url: &str, sha: &str, relative_path: &str) -> String {
     format!("git://{}/{}", repo_url, relative_path)
 }
 
+/// Generate a short (12-char) SHA-256 hash of input, used for cache directory naming.
 fn short_hash(input: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(input.as_bytes());
     format!("{:x}", hasher.finalize())[..12].to_string()
 }
 
+/// Build a [`GlobSet`] from a list of glob pattern strings.
 fn build_globset(patterns: &[String]) -> Result<GlobSet> {
     let mut builder = GlobSetBuilder::new();
     for pattern in patterns {

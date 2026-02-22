@@ -1,7 +1,19 @@
 //! Document retrieval by ID.
 //!
 //! Fetches a full document and its associated chunks from the database.
-//! Used by both the `ctx get` CLI command and `POST /tools/get` HTTP endpoint.
+//! Used by both the `ctx get` CLI command and the `POST /tools/get` HTTP endpoint.
+//!
+//! # Usage
+//!
+//! ```bash
+//! # Retrieve a document by UUID
+//! ctx get 550e8400-e29b-41d4-a716-446655440000
+//! ```
+//!
+//! # Response Shape
+//!
+//! The response matches the `context.get` schema defined in `docs/SCHEMAS.md`,
+//! including full document metadata, body text, and all chunks ordered by index.
 
 use anyhow::{bail, Result};
 use serde::Serialize;
@@ -10,30 +22,69 @@ use sqlx::Row;
 use crate::config::Config;
 use crate::db;
 
-/// Document response matching SCHEMAS.md `context.get` response shape.
+/// Full document response including metadata, body, and chunks.
+///
+/// This struct matches the `context.get` response shape defined in
+/// `docs/SCHEMAS.md`. It is serialized as JSON by the HTTP server
+/// and printed in a human-readable format by the CLI.
+///
+/// # Fields
+///
+/// All timestamps are formatted as ISO 8601 strings in UTC.
 #[derive(Debug, Clone, Serialize)]
 pub struct DocumentResponse {
+    /// The unique UUID of the document.
     pub id: String,
+    /// The connector that ingested this document (e.g., `"filesystem"`, `"git"`, `"s3"`).
     pub source: String,
+    /// The source-specific identifier (e.g., file path, S3 key).
     pub source_id: String,
+    /// Optional URL pointing to the original source location.
     pub source_url: Option<String>,
+    /// Optional human-readable title.
     pub title: Option<String>,
+    /// Optional author attribution.
     pub author: Option<String>,
-    pub created_at: String, // ISO8601
-    pub updated_at: String, // ISO8601
+    /// Creation timestamp in ISO 8601 format.
+    pub created_at: String,
+    /// Last modification timestamp in ISO 8601 format.
+    pub updated_at: String,
+    /// MIME content type (e.g., `"text/plain"`, `"text/markdown"`).
     pub content_type: String,
+    /// The full body text of the document.
     pub body: String,
+    /// Additional metadata as a JSON object.
     pub metadata: serde_json::Value,
+    /// Ordered list of text chunks derived from the document body.
     pub chunks: Vec<ChunkResponse>,
 }
 
+/// A single chunk within a document response.
 #[derive(Debug, Clone, Serialize)]
 pub struct ChunkResponse {
+    /// Zero-based index of this chunk within the document.
     pub index: i64,
+    /// The text content of this chunk.
     pub text: String,
 }
 
-/// Core get function returning structured data (used by CLI and server).
+/// Retrieves a document by its UUID, including all associated chunks.
+///
+/// This is the core retrieval function used by both the CLI (`ctx get`)
+/// and the HTTP server (`POST /tools/get`).
+///
+/// # Arguments
+///
+/// - `config` — application configuration (for database path).
+/// - `id` — the UUID of the document to retrieve.
+///
+/// # Returns
+///
+/// A [`DocumentResponse`] containing the document's metadata, body, and chunks.
+///
+/// # Errors
+///
+/// Returns an error if the document is not found or a database error occurs.
 pub async fn get_document(config: &Config, id: &str) -> Result<DocumentResponse> {
     let pool = db::connect(config).await?;
 
@@ -92,7 +143,12 @@ pub async fn get_document(config: &Config, id: &str) -> Result<DocumentResponse>
     })
 }
 
-/// CLI entry point — calls get_document and prints to stdout.
+/// CLI entry point for `ctx get <id>`.
+///
+/// Calls [`get_document`] and prints the result in a human-readable format
+/// to stdout: metadata fields, then body text, then each chunk.
+///
+/// Exits with a non-zero status code if the document is not found.
 pub async fn run_get(config: &Config, id: &str) -> Result<()> {
     let doc = match get_document(config, id).await {
         Ok(d) => d,
@@ -136,6 +192,9 @@ pub async fn run_get(config: &Config, id: &str) -> Result<()> {
     Ok(())
 }
 
+/// Formats a Unix timestamp (seconds since epoch) as an ISO 8601 string.
+///
+/// Falls back to the raw timestamp string if the conversion fails.
 fn format_ts_iso(ts: i64) -> String {
     chrono::DateTime::from_timestamp(ts, 0)
         .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())

@@ -457,6 +457,110 @@ header {
 }
 .chat-llm-progress.visible { display: block; }
 
+/* ── Tool Call Cards ── */
+.tool-call-card {
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 8px 0;
+  font-size: 12px;
+  transition: border-color 0.2s;
+}
+.tool-call-card:hover { border-color: rgba(20,184,166,0.4); }
+
+.tool-call-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+.tool-call-icon { font-size: 14px; flex-shrink: 0; }
+.tool-call-name {
+  font-weight: 600;
+  color: var(--teal);
+  font-family: var(--mono);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.tool-call-args {
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 11px;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tool-call-status {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  font-family: var(--mono);
+}
+.tool-call-status.success { color: var(--green); }
+.tool-call-status.error { color: var(--red); }
+
+.tool-call-detail {
+  display: none;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  max-height: 200px;
+  overflow-y: auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.tool-call-detail.open { display: block; }
+
+.tool-thinking {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.tool-thinking-spinner {
+  width: 14px; height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--teal);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.agent-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 12px 0;
+}
+
+.settings-divider-line {
+  height: 1px;
+  background: var(--border);
+  margin: 12px 0;
+}
+
+.tool-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.tool-badge-search { background: rgba(20,184,166,0.15); color: var(--teal); }
+.tool-badge-get { background: rgba(168,85,247,0.15); color: var(--purple); }
+.tool-badge-list { background: rgba(59,130,246,0.15); color: var(--accent); }
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
   .layout { grid-template-columns: 1fr; }
@@ -595,6 +699,31 @@ header {
                 <input type="password" class="settings-apikey-input" id="apikeyInput" placeholder="sk-…">
                 <div class="settings-hint">Stored in localStorage. Never leaves your browser.</div>
               </div>
+              <div class="settings-divider-line"></div>
+              <div class="settings-label">Tool Execution</div>
+              <div class="settings-radio-group">
+                <label class="settings-radio selected" id="radioLocal" onclick="selectToolMode('local')">
+                  <input type="radio" name="toolmode" value="local" checked>
+                  <div class="settings-radio-dot"></div>
+                  <div class="settings-radio-info">
+                    <div class="settings-radio-name">📦 Browser (Offline)</div>
+                    <div class="settings-radio-desc">Agent tools run client-side using pre-indexed data. No server needed.</div>
+                  </div>
+                </label>
+                <label class="settings-radio" id="radioMcp" onclick="selectToolMode('mcp')">
+                  <input type="radio" name="toolmode" value="mcp">
+                  <div class="settings-radio-dot"></div>
+                  <div class="settings-radio-info">
+                    <div class="settings-radio-name">🔌 MCP Server</div>
+                    <div class="settings-radio-desc">Connect to a running <code style="font-size:11px">ctx serve mcp</code> for live data.</div>
+                  </div>
+                </label>
+              </div>
+              <div class="settings-apikey-row" id="mcpUrlRow">
+                <div class="settings-label">MCP Server URL</div>
+                <input type="text" class="settings-apikey-input" id="mcpUrlInput" placeholder="http://localhost:3636" value="http://localhost:3636">
+                <div class="settings-hint" id="mcpStatus">Not connected — start <code style="font-size:10px">ctx serve mcp</code> locally</div>
+              </div>
             </div>
           </div>
         </div>
@@ -608,16 +737,16 @@ header {
 
       <div class="chat-messages" id="chatMessages">
         <div class="chat-welcome" id="chatWelcome">
-          <div class="chat-welcome-title">Ask anything about Context Harness</div>
+          <div class="chat-welcome-title">Agent-Powered Documentation Chat</div>
           <div class="chat-welcome-sub">
-            I'll search the documentation, find the relevant sections, and explain them to you.
-            Choose a backend in Settings — WebLLM runs fully offline, or paste an OpenAI key for faster responses.
+            Ask questions and watch the agent use Context Harness MCP tools — search, retrieve, and synthesize answers.
+            The same tools available to Cursor and other AI editors, running right here in your browser.
           </div>
           <div class="chat-suggestions" id="chatSuggestions">
             <button class="chat-suggestion" onclick="askSuggestion(this)">How do I set up the Git connector?</button>
-            <button class="chat-suggestion" onclick="askSuggestion(this)">What is hybrid search?</button>
-            <button class="chat-suggestion" onclick="askSuggestion(this)">How do embeddings work?</button>
-            <button class="chat-suggestion" onclick="askSuggestion(this)">Explain the MCP server endpoints</button>
+            <button class="chat-suggestion" onclick="askSuggestion(this)">What search modes are available?</button>
+            <button class="chat-suggestion" onclick="askSuggestion(this)">Show me the S3 connector config</button>
+            <button class="chat-suggestion" onclick="askSuggestion(this)">How does the chunking algorithm work?</button>
           </div>
         </div>
       </div>
@@ -1112,37 +1241,256 @@ document.addEventListener('keydown', (e) => {
 });
 
 /* ====================================================================
-   CHAT SYSTEM
+   CHAT SYSTEM — Agent with MCP Tool Calling
+   The LLM calls search/get_document/list_sources tools in a loop,
+   executing them client-side (from data.json) or against a local
+   MCP server. This is the same tool protocol used by Cursor/Claude.
    ==================================================================== */
 
-let chatHistory = []; // { role: 'user'|'assistant', content: string, sources?: [] }
-let chatBackend = 'webllm'; // 'webllm' | 'openai'
+let chatHistory = [];   // { role, content, sources? }
+let chatBackend = 'webllm';   // 'webllm' | 'openai'
+let toolMode = 'local';       // 'local' | 'mcp'
+let mcpServerUrl = 'http://localhost:3636';
 let webllmEngine = null;
 let webllmReady = false;
 let webllmLoading = false;
 let _webllmPromise = null;
 let chatGenerating = false;
 
-// ── Chat Settings ──
-function initChatSettings() {
-  // Restore backend choice
-  const saved = localStorage.getItem('ctx_chat_backend');
-  if (saved === 'openai' || saved === 'webllm') {
-    chatBackend = saved;
+const MAX_TOOL_ROUNDS = 6;
+
+// ── MCP Tool Definitions (OpenAI function-calling format) ──
+const AGENT_TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'search',
+      description: 'Search the Context Harness documentation index. Returns ranked document chunks with relevance scores. Use this to find information about features, configuration, APIs, architecture, and usage patterns. Always search before answering.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Natural language search query. Be specific.' },
+          mode:  { type: 'string', enum: ['keyword', 'hybrid'], description: 'Search mode. "hybrid" combines keyword + semantic for best results. Default: "hybrid".' },
+          limit: { type: 'number', description: 'Max results to return. Default: 5.' }
+        },
+        required: ['query']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_document',
+      description: 'Retrieve the full content of a specific document by its UUID. Use after search when you need more context than the snippet provides.',
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Document UUID from search results.' }
+        },
+        required: ['id']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_sources',
+      description: 'List all configured data source connectors and how many documents each has indexed.',
+      parameters: { type: 'object', properties: {} }
+    }
   }
+];
+
+// ── Agent System Prompt ──
+function buildAgentSystemPrompt() {
+  return `You are an expert documentation assistant for Context Harness, a local-first context indexing and retrieval framework for AI tools, written in Rust.
+
+You have access to tools that let you search and retrieve documentation. Use them to find accurate information before answering.
+
+## How to use your tools:
+
+1. **Always search first** — use the \`search\` tool with a clear query before answering any question. Do not guess.
+2. **Read full documents** — if a search snippet looks relevant but incomplete, use \`get_document\` to read the full text.
+3. **Try different queries** — if your first search doesn't find what you need, rephrase and search again.
+4. **Be thorough** — it's better to search twice than to give an incomplete answer.
+
+## Response guidelines:
+
+- Be concise, accurate, and helpful.
+- Use markdown: code blocks for code, bold for emphasis, lists for steps.
+- Cite sources naturally (e.g., "According to USAGE.md…" or "The search module implements…").
+- If you can't find the answer, say so honestly.
+- Show exact configuration and code from the documentation when relevant.`;
+}
+
+// ══════════════════════════════════════════════
+//  Tool Execution Layer
+// ══════════════════════════════════════════════
+
+async function executeToolCall(name, args) {
+  if (toolMode === 'mcp') {
+    try { return await executeToolViaMCP(name, args); }
+    catch (e) {
+      console.warn('MCP tool call failed, falling back to local:', e);
+      return executeToolLocally(name, args);
+    }
+  }
+  return executeToolLocally(name, args);
+}
+
+// ── Client-side tool execution (from data.json) ──
+async function executeToolLocally(name, args) {
+  if (name === 'search') {
+    const mode = args.mode || 'hybrid';
+    const limit = args.limit || 5;
+    let results;
+    if (mode === 'keyword') results = bm25Search(args.query || '');
+    else results = await hybridSearch(args.query || '', limit);
+    return { results: results.slice(0, limit) };
+  }
+
+  if (name === 'get_document') {
+    const doc = DATA.documents.find(d => d.id === args.id);
+    if (!doc) return { error: `Document not found: ${args.id}` };
+    return {
+      id: doc.id,
+      title: doc.title,
+      source: doc.source,
+      source_id: doc.source_id,
+      source_url: doc.source_url,
+      body: doc.body,
+      chunk_count: DATA.chunks.filter(c => c.document_id === doc.id).length
+    };
+  }
+
+  if (name === 'list_sources') {
+    const sourceMap = {};
+    DATA.documents.forEach(d => {
+      const src = d.source || 'unknown';
+      if (!sourceMap[src]) sourceMap[src] = { name: src, document_count: 0 };
+      sourceMap[src].document_count++;
+    });
+    return { sources: Object.values(sourceMap) };
+  }
+
+  return { error: `Unknown tool: ${name}` };
+}
+
+// ── MCP server tool execution ──
+async function executeToolViaMCP(name, args) {
+  const routes = { search: '/tools/search', get_document: '/tools/get', list_sources: '/tools/sources' };
+  const endpoint = routes[name];
+  if (!endpoint) return { error: `Unknown tool: ${name}` };
+
+  const method = name === 'list_sources' ? 'GET' : 'POST';
+  const resp = await fetch(mcpServerUrl + endpoint, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: method === 'POST' ? JSON.stringify(name === 'get_document' ? { id: args.id } : args) : undefined,
+  });
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({ error: { message: resp.statusText } }));
+    throw new Error(err.error?.message || `MCP ${resp.status}`);
+  }
+  return resp.json();
+}
+
+// ══════════════════════════════════════════════
+//  Tool Call UI
+// ══════════════════════════════════════════════
+
+function appendToolCallCard(bubble, tc) {
+  const card = document.createElement('div');
+  card.className = 'tool-call-card';
+
+  const icons = { search: '🔍', get_document: '📖', list_sources: '📋' };
+  const badges = { search: 'tool-badge-search', get_document: 'tool-badge-get', list_sources: 'tool-badge-list' };
+  const icon = icons[tc.name] || '🔧';
+  const badgeClass = badges[tc.name] || 'tool-badge-search';
+
+  let argsSummary = '';
+  if (tc.name === 'search') argsSummary = `"${tc.args.query || ''}"`;
+  else if (tc.name === 'get_document') argsSummary = tc.args.id ? tc.args.id.substring(0, 12) + '…' : '';
+
+  card.innerHTML = `
+    <div class="tool-call-header" onclick="this.parentElement.querySelector('.tool-call-detail')?.classList.toggle('open')">
+      <span class="tool-call-icon">${icon}</span>
+      <span class="tool-badge ${badgeClass}">${tc.name}</span>
+      <span class="tool-call-args">${escapeHtml(argsSummary)}</span>
+      <span class="tool-call-status">running…</span>
+    </div>
+    <div class="tool-call-detail"></div>
+  `;
+
+  bubble.appendChild(card);
+  document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight;
+  return card;
+}
+
+function updateToolCallCard(card, result, toolName) {
+  const status = card.querySelector('.tool-call-status');
+  const detail = card.querySelector('.tool-call-detail');
+
+  if (result.error) {
+    status.textContent = '✗ error';
+    status.classList.add('error');
+    detail.textContent = result.error;
+    detail.classList.add('open');
+    return;
+  }
+
+  status.classList.add('success');
+
+  if (toolName === 'search') {
+    const n = result.results?.length || 0;
+    status.textContent = `✓ ${n} result${n !== 1 ? 's' : ''}`;
+    if (n > 0) {
+      detail.innerHTML = result.results.map(r =>
+        `<div style="margin-bottom:4px"><strong>${escapeHtml(r.source_id || r.title || '')}</strong> <span style="color:var(--green)">${(r.score||0).toFixed(2)}</span></div><div style="color:var(--text-muted);margin-bottom:8px">${escapeHtml((r.snippet || r.text || '').substring(0, 150))}…</div>`
+      ).join('');
+    }
+  } else if (toolName === 'get_document') {
+    const title = result.source_id || result.title || result.id;
+    const len = result.body ? result.body.length : 0;
+    status.textContent = `✓ ${len.toLocaleString()} chars`;
+    detail.textContent = `${title}\n\n${(result.body || '').substring(0, 500)}…`;
+  } else if (toolName === 'list_sources') {
+    const n = result.sources?.length || 0;
+    status.textContent = `✓ ${n} source${n !== 1 ? 's' : ''}`;
+    detail.textContent = (result.sources || []).map(s => `${s.name}: ${s.document_count} docs`).join('\n');
+  }
+}
+
+// ══════════════════════════════════════════════
+//  Chat Settings
+// ══════════════════════════════════════════════
+
+function initChatSettings() {
+  // Restore backend
+  const saved = localStorage.getItem('ctx_chat_backend');
+  if (saved === 'openai' || saved === 'webllm') chatBackend = saved;
+
+  // Restore tool mode
+  const savedTool = localStorage.getItem('ctx_tool_mode');
+  if (savedTool === 'mcp' || savedTool === 'local') toolMode = savedTool;
+
+  // Restore MCP URL
+  const savedUrl = localStorage.getItem('ctx_mcp_url');
+  if (savedUrl) { mcpServerUrl = savedUrl; document.getElementById('mcpUrlInput').value = savedUrl; }
 
   // Restore API key
   const key = localStorage.getItem('ctx_chat_apikey');
   if (key) document.getElementById('apikeyInput').value = key;
 
   updateBackendUI();
+  updateToolModeUI();
 
   // Settings toggle
   document.getElementById('settingsBtn').addEventListener('click', (e) => {
     e.stopPropagation();
     document.getElementById('settingsDropdown').classList.toggle('open');
   });
-
   document.addEventListener('click', (e) => {
     const dd = document.getElementById('settingsDropdown');
     if (dd.classList.contains('open') && !dd.contains(e.target) && e.target !== document.getElementById('settingsBtn')) {
@@ -1158,6 +1506,13 @@ function initChatSettings() {
     updateBackendUI();
   });
 
+  // MCP URL input
+  document.getElementById('mcpUrlInput').addEventListener('change', (e) => {
+    mcpServerUrl = e.target.value.trim() || 'http://localhost:3636';
+    localStorage.setItem('ctx_mcp_url', mcpServerUrl);
+    if (toolMode === 'mcp') testMcpConnection();
+  });
+
   // Chat input auto-resize
   const chatInput = document.getElementById('chatInput');
   chatInput.addEventListener('input', () => {
@@ -1165,22 +1520,52 @@ function initChatSettings() {
     chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
   });
   chatInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendChatMessage();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }
   });
+
+  // If MCP mode was saved, test connection
+  if (toolMode === 'mcp') testMcpConnection();
 }
 
 function selectBackend(backend) {
   chatBackend = backend;
   localStorage.setItem('ctx_chat_backend', backend);
-
   document.getElementById('radioWebllm').classList.toggle('selected', backend === 'webllm');
   document.getElementById('radioOpenai').classList.toggle('selected', backend === 'openai');
   document.getElementById('apikeyRow').classList.toggle('visible', backend === 'openai');
-
   updateBackendUI();
+}
+
+function selectToolMode(mode) {
+  toolMode = mode;
+  localStorage.setItem('ctx_tool_mode', mode);
+  document.getElementById('radioLocal').classList.toggle('selected', mode === 'local');
+  document.getElementById('radioMcp').classList.toggle('selected', mode === 'mcp');
+  document.getElementById('mcpUrlRow').classList.toggle('visible', mode === 'mcp');
+  updateToolModeUI();
+  if (mode === 'mcp') testMcpConnection();
+}
+
+function updateToolModeUI() {
+  document.getElementById('radioLocal').classList.toggle('selected', toolMode === 'local');
+  document.getElementById('radioMcp').classList.toggle('selected', toolMode === 'mcp');
+  document.getElementById('mcpUrlRow').classList.toggle('visible', toolMode === 'mcp');
+}
+
+async function testMcpConnection() {
+  const el = document.getElementById('mcpStatus');
+  el.textContent = 'Testing connection…';
+  try {
+    const resp = await fetch(mcpServerUrl + '/health', { signal: AbortSignal.timeout(3000) });
+    if (resp.ok) {
+      const data = await resp.json();
+      el.innerHTML = `<span style="color:var(--green)">✓ Connected</span> — v${data.version || '?'}`;
+    } else {
+      el.innerHTML = `<span style="color:var(--red)">✗ HTTP ${resp.status}</span>`;
+    }
+  } catch (e) {
+    el.innerHTML = `<span style="color:var(--text-muted)">✗ Not reachable</span> — start <code style="font-size:10px">ctx serve mcp</code>`;
+  }
 }
 
 function updateBackendUI() {
@@ -1191,39 +1576,28 @@ function updateBackendUI() {
     document.getElementById('radioWebllm').classList.add('selected');
     document.getElementById('radioOpenai').classList.remove('selected');
     document.getElementById('apikeyRow').classList.remove('visible');
-
     if (webllmReady) {
-      bdot.className = 'bdot bdot-ready';
-      label.textContent = 'WebLLM ready';
+      bdot.className = 'bdot bdot-ready'; label.textContent = 'WebLLM ready';
     } else if (webllmLoading) {
-      bdot.className = 'bdot bdot-loading';
-      label.textContent = 'Loading model…';
+      bdot.className = 'bdot bdot-loading'; label.textContent = 'Loading model…';
     } else {
       bdot.className = 'bdot bdot-off';
-      label.textContent = 'WebLLM (click Send to load)';
-      // Check WebGPU support
-      if (!navigator.gpu) {
-        label.textContent = 'WebGPU not supported — use API key';
-        bdot.className = 'bdot bdot-off';
-      }
+      label.textContent = navigator.gpu ? 'WebLLM (click Send to load)' : 'WebGPU not supported — use API key';
     }
   } else {
     document.getElementById('radioOpenai').classList.add('selected');
     document.getElementById('radioWebllm').classList.remove('selected');
     document.getElementById('apikeyRow').classList.add('visible');
-
     const key = localStorage.getItem('ctx_chat_apikey');
-    if (key) {
-      bdot.className = 'bdot bdot-ready';
-      label.textContent = 'OpenAI API ready';
-    } else {
-      bdot.className = 'bdot bdot-off';
-      label.textContent = 'Enter API key';
-    }
+    bdot.className = key ? 'bdot bdot-ready' : 'bdot bdot-off';
+    label.textContent = key ? 'OpenAI API ready' : 'Enter API key';
   }
 }
 
-// ── WebLLM Backend ──
+// ══════════════════════════════════════════════
+//  WebLLM Engine
+// ══════════════════════════════════════════════
+
 async function ensureWebLLM() {
   if (webllmReady && webllmEngine) return webllmEngine;
   if (_webllmPromise) return _webllmPromise;
@@ -1235,13 +1609,11 @@ async function ensureWebLLM() {
   _webllmPromise = (async () => {
     webllmLoading = true;
     updateBackendUI();
-
     const prog = document.getElementById('chatLlmProgress');
     prog.classList.add('visible');
 
     try {
       const webllm = await import('https://esm.run/@mlc-ai/web-llm');
-
       const modelId = 'Qwen3-4B-q4f16_1-MLC';
 
       document.getElementById('chatProgDetail').textContent = 'Loading Qwen3-4B…';
@@ -1260,18 +1632,15 @@ async function ensureWebLLM() {
       webllmReady = true;
       webllmLoading = false;
       updateBackendUI();
-
       document.getElementById('chatProgFill').style.width = '100%';
       document.getElementById('chatProgPct').textContent = '100%';
       document.getElementById('chatProgDetail').textContent = 'Model ready!';
       setTimeout(() => prog.classList.remove('visible'), 1500);
-
       return webllmEngine;
     } catch (e) {
       webllmLoading = false;
       _webllmPromise = null;
       updateBackendUI();
-
       document.getElementById('chatProgDetail').textContent = `Error: ${e.message}`;
       document.getElementById('chatProgFill').style.background = 'var(--red)';
       throw e;
@@ -1281,68 +1650,285 @@ async function ensureWebLLM() {
   return _webllmPromise;
 }
 
-// ── RAG Pipeline ──
-async function retrieveContext(query) {
-  // Use hybrid search (BM25 + semantic if available) to find relevant chunks
-  const results = await hybridSearch(query, 5);
+// ══════════════════════════════════════════════
+//  Streaming with Tool Call Detection
+// ══════════════════════════════════════════════
 
-  // Deduplicate by document
+// Unified stream parser: detects tool calls vs text content
+async function parseStreamResponse(asyncIterator, bubble, existingContent) {
+  let fullText = existingContent || '';
+  const toolCalls = {};
+  let hasToolCalls = false;
+
+  for await (const chunk of asyncIterator) {
+    const choice = chunk.choices?.[0];
+    if (!choice) continue;
+    const delta = choice.delta || {};
+
+    // Accumulate tool call deltas
+    if (delta.tool_calls) {
+      hasToolCalls = true;
+      for (const tc of delta.tool_calls) {
+        const idx = tc.index ?? 0;
+        if (!toolCalls[idx]) toolCalls[idx] = { id: '', name: '', arguments: '' };
+        if (tc.id) toolCalls[idx].id = tc.id;
+        if (tc.function?.name) toolCalls[idx].name += tc.function.name;
+        if (tc.function?.arguments != null) toolCalls[idx].arguments += tc.function.arguments;
+      }
+    }
+
+    // Stream text content
+    if (delta.content) {
+      fullText += delta.content;
+      bubble.innerHTML = renderMarkdown(fullText) + '<span style="opacity:0.4">▌</span>';
+      document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight;
+    }
+  }
+
+  if (hasToolCalls) {
+    const calls = Object.values(toolCalls).map(tc => ({
+      id: tc.id || `call_${Date.now()}_${tc.name}`,
+      name: tc.name,
+      args: (() => { try { return JSON.parse(tc.arguments || '{}'); } catch { return {}; } })(),
+    }));
+    return { type: 'tool_calls', calls };
+  }
+
+  return { type: 'text', text: fullText };
+}
+
+// OpenAI streaming → async iterator of parsed chunks
+async function* streamOpenAIChunks(resp) {
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed === 'data: [DONE]') continue;
+      if (!trimmed.startsWith('data: ')) continue;
+      try { yield JSON.parse(trimmed.slice(6)); } catch { /* skip */ }
+    }
+  }
+}
+
+// Call OpenAI with tools, return parsed stream result
+async function openaiWithTools(messages, bubble, forceNoTools) {
+  const apiKey = localStorage.getItem('ctx_chat_apikey');
+  if (!apiKey) throw new Error('No OpenAI API key configured. Open Settings to add one.');
+
+  const body = {
+    model: 'gpt-4o-mini',
+    messages,
+    stream: true,
+    max_tokens: 2048,
+    temperature: 0.3,
+  };
+  if (!forceNoTools) {
+    body.tools = AGENT_TOOLS;
+    body.tool_choice = 'auto';
+  }
+
+  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+    body: JSON.stringify(body),
+  });
+
+  if (!resp.ok) {
+    const err = await resp.text();
+    throw new Error(`OpenAI API error (${resp.status}): ${err}`);
+  }
+
+  return parseStreamResponse(streamOpenAIChunks(resp), bubble, '');
+}
+
+// Call WebLLM with tools, return parsed stream result
+async function webllmWithTools(messages, bubble, forceNoTools) {
+  const engine = await ensureWebLLM();
+
+  const opts = { messages, stream: true, max_tokens: 2048, temperature: 0.3 };
+  if (!forceNoTools) {
+    opts.tools = AGENT_TOOLS;
+    opts.tool_choice = 'auto';
+  }
+
+  let completion;
+  try {
+    completion = await engine.chat.completions.create(opts);
+  } catch (e) {
+    // If model doesn't support tools, retry without
+    if (!forceNoTools && (e.message?.includes('tool') || e.message?.includes('function'))) {
+      console.warn('WebLLM tool calling failed, retrying without tools:', e.message);
+      delete opts.tools;
+      delete opts.tool_choice;
+      completion = await engine.chat.completions.create(opts);
+    } else {
+      throw e;
+    }
+  }
+
+  return parseStreamResponse(completion, bubble, '');
+}
+
+// ══════════════════════════════════════════════
+//  Agent Loop
+// ══════════════════════════════════════════════
+
+async function agentLoop(query, bubble) {
+  const systemPrompt = buildAgentSystemPrompt();
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...chatHistory.slice(-12).map(m => ({ role: m.role, content: m.content })),
+    { role: 'user', content: query },
+  ];
+
+  const allSources = [];
+  // Track content that tool cards have built up in the bubble
+  let toolCardsHTML = '';
+
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    // Show thinking state (keep existing tool cards)
+    if (round === 0) {
+      bubble.innerHTML = '<div class="tool-thinking"><span class="tool-thinking-spinner"></span> Analyzing question…</div>';
+    } else {
+      // Preserve tool cards, update thinking indicator
+      const existing = bubble.querySelectorAll('.tool-call-card');
+      // Thinking indicator is managed by stream parser
+    }
+
+    // On last round, force text output
+    const forceNoTools = round === MAX_TOOL_ROUNDS - 1;
+
+    let result;
+    if (chatBackend === 'openai') {
+      result = await openaiWithTools(messages, bubble, forceNoTools);
+    } else {
+      result = await webllmWithTools(messages, bubble, forceNoTools);
+    }
+
+    if (result.type === 'text') {
+      return { text: result.text, sources: allSources };
+    }
+
+    // ── Execute tool calls ──
+    // Clear the thinking indicator, restore tool cards
+    bubble.innerHTML = toolCardsHTML;
+
+    for (const tc of result.calls) {
+      // Show tool call card
+      const card = appendToolCallCard(bubble, tc);
+
+      // Execute tool
+      const toolResult = await executeToolCall(tc.name, tc.args);
+
+      // Update card with results
+      updateToolCallCard(card, toolResult, tc.name);
+
+      // Collect sources from search results
+      if (tc.name === 'search' && toolResult.results) {
+        for (const r of toolResult.results) {
+          if (!allSources.find(s => s.id === r.id && s.chunk_index === r.chunk_index)) {
+            allSources.push(r);
+          }
+        }
+      }
+
+      // Add to LLM message history
+      messages.push({
+        role: 'assistant',
+        content: null,
+        tool_calls: [{
+          id: tc.id,
+          type: 'function',
+          function: { name: tc.name, arguments: JSON.stringify(tc.args) }
+        }]
+      });
+      messages.push({
+        role: 'tool',
+        tool_call_id: tc.id,
+        content: JSON.stringify(toolResult)
+      });
+    }
+
+    // Save the current bubble HTML (tool cards) so we can preserve them
+    toolCardsHTML = bubble.innerHTML;
+
+    // Add divider before next round or final response
+    const divider = document.createElement('div');
+    divider.className = 'agent-divider';
+    bubble.appendChild(divider);
+    toolCardsHTML = bubble.innerHTML;
+  }
+
+  return { text: '*(Reached maximum tool iterations. Try a more specific question.)*', sources: allSources };
+}
+
+// Fallback: one-shot RAG (no tool calling)
+async function fallbackRAG(query, bubble) {
+  const results = await hybridSearch(query, 5);
   const seen = new Set();
   const unique = [];
   for (const r of results) {
     const key = r.id + ':' + r.chunk_index;
-    if (!seen.has(key)) {
-      seen.add(key);
-      unique.push(r);
-    }
+    if (!seen.has(key)) { seen.add(key); unique.push(r); }
   }
+  const contextChunks = unique.slice(0, 5);
 
-  return unique.slice(0, 5);
-}
+  let contextBlock = contextChunks.length === 0
+    ? '(No relevant documentation found.)'
+    : contextChunks.map((c, i) => `### Source ${i + 1}: ${c.source_id}\n${c.text}`).join('\n\n');
 
-function buildSystemPrompt(contextChunks) {
-  let contextBlock = '';
-  if (contextChunks.length === 0) {
-    contextBlock = '(No relevant documentation found for this question.)';
-  } else {
-    contextBlock = contextChunks.map((c, i) =>
-      `### Source ${i + 1}: ${c.source_id}\n${c.text}`
-    ).join('\n\n');
-  }
-
-  return `You are a documentation assistant for Context Harness, a local-first context indexing and retrieval framework for AI tools written in Rust.
-
-Answer the user's question using ONLY the documentation excerpts provided below. Be concise, accurate, and helpful. Use markdown formatting for code blocks, lists, and emphasis.
-
-If the answer is not in the provided documentation, say "I don't have enough context to answer that fully" and suggest what the user could search for or which documentation section might help.
-
-When referencing information, mention the source filename naturally (e.g. "According to USAGE.md..." or "The search module shows...").
+  const systemPrompt = `You are a documentation assistant for Context Harness, a local-first context indexing framework in Rust.
+Answer using ONLY the documentation below. Be concise and use markdown.
 
 ## Documentation Context
 
 ${contextBlock}`;
-}
 
-function buildMessages(systemPrompt, history) {
-  const msgs = [{ role: 'system', content: systemPrompt }];
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...chatHistory.slice(-12).map(m => ({ role: m.role, content: m.content })),
+    { role: 'user', content: query },
+  ];
 
-  // Keep last 6 user/assistant exchanges for context
-  const recent = history.slice(-12);
-  for (const msg of recent) {
-    msgs.push({ role: msg.role, content: msg.content });
+  let fullText = '';
+  if (chatBackend === 'openai') {
+    const apiKey = localStorage.getItem('ctx_chat_apikey');
+    if (!apiKey) throw new Error('No OpenAI API key. Open Settings.');
+    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({ model: 'gpt-4o-mini', messages, stream: true, max_tokens: 2048, temperature: 0.3 }),
+    });
+    if (!resp.ok) throw new Error(`OpenAI error ${resp.status}`);
+    const result = await parseStreamResponse(streamOpenAIChunks(resp), bubble, '');
+    fullText = result.text;
+  } else {
+    const engine = await ensureWebLLM();
+    const completion = await engine.chat.completions.create({ messages, stream: true, max_tokens: 2048, temperature: 0.3 });
+    const result = await parseStreamResponse(completion, bubble, '');
+    fullText = result.text;
   }
 
-  return msgs;
+  return { text: fullText, sources: contextChunks };
 }
 
-// ── Markdown Renderer ──
+// ══════════════════════════════════════════════
+//  Markdown Renderer
+// ══════════════════════════════════════════════
+
 function renderMarkdown(text) {
   let html = escapeHtml(text);
 
-  // Code blocks: ```lang\ncode\n```
-  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
-    return `<pre><code>${code.trim()}</code></pre>`;
-  });
+  // Code blocks
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => `<pre><code>${code.trim()}</code></pre>`);
 
   // Inline code
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
@@ -1369,11 +1955,11 @@ function renderMarkdown(text) {
   // Links
   html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
 
-  // Paragraphs: split on double newlines
+  // Paragraphs
   html = html.replace(/\n\n/g, '</p><p>');
   html = '<p>' + html + '</p>';
 
-  // Clean up empty paragraphs and fix nesting
+  // Clean up
   html = html.replace(/<p>\s*<(h[123]|pre|ul|ol|blockquote)/g, '<$1');
   html = html.replace(/<\/(h[123]|pre|ul|ol|blockquote)>\s*<\/p>/g, '</$1>');
   html = html.replace(/<p>\s*<\/p>/g, '');
@@ -1381,7 +1967,10 @@ function renderMarkdown(text) {
   return html;
 }
 
-// ── Chat Message Rendering ──
+// ══════════════════════════════════════════════
+//  Chat Message Rendering
+// ══════════════════════════════════════════════
+
 function appendUserMessage(text) {
   const welcome = document.getElementById('chatWelcome');
   if (welcome) welcome.remove();
@@ -1409,30 +1998,53 @@ function createAssistantBubble() {
   `;
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
-
   return div.querySelector('.bubble-assistant');
 }
 
 function updateAssistantBubble(bubble, text, sources) {
-  bubble.innerHTML = renderMarkdown(text);
+  // Preserve tool call cards, replace or append the text response
+  const existingCards = bubble.querySelectorAll('.tool-call-card, .agent-divider');
+  const fragment = document.createDocumentFragment();
+  existingCards.forEach(card => fragment.appendChild(card.cloneNode(true)));
 
-  if (sources && sources.length > 0) {
-    const srcDiv = document.createElement('div');
-    srcDiv.className = 'chat-sources';
-    srcDiv.innerHTML = `
-      <div class="chat-sources-title">Sources</div>
-      ${sources.map(s =>
-        `<a class="chat-source-link" onclick="viewDocument('${s.id}')" title="${s.source_id}">${s.source_id}</a>`
-      ).join('')}
-    `;
-    bubble.appendChild(srcDiv);
+  bubble.innerHTML = '';
+  bubble.appendChild(fragment);
+
+  // Add text response
+  if (text) {
+    const responseDiv = document.createElement('div');
+    responseDiv.innerHTML = renderMarkdown(text);
+    bubble.appendChild(responseDiv);
   }
 
-  const container = document.getElementById('chatMessages');
-  container.scrollTop = container.scrollHeight;
+  // Add source links
+  if (sources && sources.length > 0) {
+    // Deduplicate sources by document id
+    const seen = new Set();
+    const uniqueSources = [];
+    for (const s of sources) {
+      if (!seen.has(s.id)) { seen.add(s.id); uniqueSources.push(s); }
+    }
+    if (uniqueSources.length > 0) {
+      const srcDiv = document.createElement('div');
+      srcDiv.className = 'chat-sources';
+      srcDiv.innerHTML = `
+        <div class="chat-sources-title">Sources</div>
+        ${uniqueSources.map(s =>
+          `<a class="chat-source-link" onclick="viewDocument('${s.id}')" title="${s.source_id}">${s.source_id}</a>`
+        ).join('')}
+      `;
+      bubble.appendChild(srcDiv);
+    }
+  }
+
+  document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight;
 }
 
-// ── Send Message ──
+// ══════════════════════════════════════════════
+//  Send Message (entry point)
+// ══════════════════════════════════════════════
+
 async function sendChatMessage() {
   const input = document.getElementById('chatInput');
   const query = input.value.trim();
@@ -1443,35 +2055,28 @@ async function sendChatMessage() {
   input.value = '';
   input.style.height = 'auto';
 
-  // Add user message
   appendUserMessage(query);
   chatHistory.push({ role: 'user', content: query });
 
-  // Create assistant bubble with typing indicator
   const bubble = createAssistantBubble();
 
   try {
-    // RAG: retrieve relevant context
-    const contextChunks = await retrieveContext(query);
-    const systemPrompt = buildSystemPrompt(contextChunks);
-    const messages = buildMessages(systemPrompt, chatHistory);
-
-    // Stream response from selected backend
-    let fullResponse = '';
-
-    if (chatBackend === 'openai') {
-      fullResponse = await streamOpenAI(messages, bubble);
-    } else {
-      fullResponse = await streamWebLLM(messages, bubble);
-    }
-
-    // Finalize with sources
-    updateAssistantBubble(bubble, fullResponse, contextChunks);
-    chatHistory.push({ role: 'assistant', content: fullResponse, sources: contextChunks });
-
+    // Try agent loop with tool calling
+    const result = await agentLoop(query, bubble);
+    updateAssistantBubble(bubble, result.text, result.sources);
+    chatHistory.push({ role: 'assistant', content: result.text, sources: result.sources });
   } catch (e) {
-    bubble.innerHTML = `<div style="color:var(--red)">Error: ${escapeHtml(e.message)}</div>`;
-    console.error('Chat error:', e);
+    console.warn('Agent loop error:', e);
+    // Fall back to one-shot RAG if tool calling fails
+    try {
+      bubble.innerHTML = '<div class="tool-thinking"><span class="tool-thinking-spinner"></span> Falling back to direct search…</div>';
+      const result = await fallbackRAG(query, bubble);
+      updateAssistantBubble(bubble, result.text, result.sources);
+      chatHistory.push({ role: 'assistant', content: result.text, sources: result.sources });
+    } catch (e2) {
+      bubble.innerHTML = `<div style="color:var(--red)">Error: ${escapeHtml(e2.message)}</div>`;
+      console.error('Fallback RAG also failed:', e2);
+    }
   }
 
   chatGenerating = false;
@@ -1479,115 +2084,32 @@ async function sendChatMessage() {
   input.focus();
 }
 
-// ── OpenAI Streaming ──
-async function streamOpenAI(messages, bubble) {
-  const apiKey = localStorage.getItem('ctx_chat_apikey');
-  if (!apiKey) throw new Error('No OpenAI API key configured. Open Settings to add one.');
+// ══════════════════════════════════════════════
+//  Chat Utilities
+// ══════════════════════════════════════════════
 
-  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages,
-      stream: true,
-      max_tokens: 1024,
-      temperature: 0.3,
-    }),
-  });
-
-  if (!resp.ok) {
-    const err = await resp.text();
-    throw new Error(`OpenAI API error (${resp.status}): ${err}`);
-  }
-
-  const reader = resp.body.getReader();
-  const decoder = new TextDecoder();
-  let fullText = '';
-  let buffer = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed === 'data: [DONE]') continue;
-      if (!trimmed.startsWith('data: ')) continue;
-
-      try {
-        const json = JSON.parse(trimmed.slice(6));
-        const delta = json.choices?.[0]?.delta?.content;
-        if (delta) {
-          fullText += delta;
-          bubble.innerHTML = renderMarkdown(fullText) + '<span style="opacity:0.4">▌</span>';
-          const container = document.getElementById('chatMessages');
-          container.scrollTop = container.scrollHeight;
-        }
-      } catch (e) { /* skip malformed lines */ }
-    }
-  }
-
-  return fullText;
-}
-
-// ── WebLLM Streaming ──
-async function streamWebLLM(messages, bubble) {
-  const engine = await ensureWebLLM();
-
-  let fullText = '';
-
-  const completion = await engine.chat.completions.create({
-    messages,
-    stream: true,
-    max_tokens: 1024,
-    temperature: 0.3,
-  });
-
-  for await (const chunk of completion) {
-    const delta = chunk.choices?.[0]?.delta?.content;
-    if (delta) {
-      fullText += delta;
-      bubble.innerHTML = renderMarkdown(fullText) + '<span style="opacity:0.4">▌</span>';
-      const container = document.getElementById('chatMessages');
-      container.scrollTop = container.scrollHeight;
-    }
-  }
-
-  return fullText;
-}
-
-// ── Chat Utilities ──
 function clearChat() {
   chatHistory = [];
   const container = document.getElementById('chatMessages');
   container.innerHTML = `
     <div class="chat-welcome" id="chatWelcome">
-      <div class="chat-welcome-title">Ask anything about Context Harness</div>
+      <div class="chat-welcome-title">Agent-Powered Documentation Chat</div>
       <div class="chat-welcome-sub">
-        I'll search the documentation, find the relevant sections, and explain them to you.
-        Choose a backend in Settings — WebLLM runs fully offline, or paste an OpenAI key for faster responses.
+        Ask questions and watch the agent use Context Harness MCP tools — search, retrieve, and synthesize answers.
+        The same tools available to Cursor and other AI editors, running right here in your browser.
       </div>
       <div class="chat-suggestions" id="chatSuggestions">
         <button class="chat-suggestion" onclick="askSuggestion(this)">How do I set up the Git connector?</button>
-        <button class="chat-suggestion" onclick="askSuggestion(this)">What is hybrid search?</button>
-        <button class="chat-suggestion" onclick="askSuggestion(this)">How do embeddings work?</button>
-        <button class="chat-suggestion" onclick="askSuggestion(this)">Explain the MCP server endpoints</button>
+        <button class="chat-suggestion" onclick="askSuggestion(this)">What search modes are available?</button>
+        <button class="chat-suggestion" onclick="askSuggestion(this)">Show me the S3 connector config</button>
+        <button class="chat-suggestion" onclick="askSuggestion(this)">How does the chunking algorithm work?</button>
       </div>
     </div>
   `;
 }
 
 function askSuggestion(btn) {
-  const text = btn.textContent;
-  document.getElementById('chatInput').value = text;
+  document.getElementById('chatInput').value = btn.textContent;
   sendChatMessage();
 }
 

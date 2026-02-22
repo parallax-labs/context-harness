@@ -12,6 +12,22 @@
 //! exclude_globs = ["**/drafts/**"]
 //! follow_symlinks = false
 //! ```
+//!
+//! # Default Excludes
+//!
+//! The following directories are always excluded regardless of configuration:
+//! - `**/.git/**`
+//! - `**/target/**`
+//! - `**/node_modules/**`
+//!
+//! # Output
+//!
+//! Each file becomes a [`SourceItem`] with:
+//! - `source`: `"filesystem"`
+//! - `source_id`: relative path from root (e.g. `"guides/deploy.md"`)
+//! - `source_url`: `file://` URI
+//! - `updated_at`: filesystem modification time
+//! - `body`: file contents as UTF-8
 
 use anyhow::{bail, Result};
 use chrono::{TimeZone, Utc};
@@ -22,6 +38,18 @@ use walkdir::WalkDir;
 use crate::config::Config;
 use crate::models::SourceItem;
 
+/// Scan a local directory and produce [`SourceItem`]s.
+///
+/// Walks the configured `root` directory, applies include/exclude globs,
+/// reads each matching file, and returns a sorted list of `SourceItem`s.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The filesystem connector is not configured
+/// - The root directory does not exist
+/// - A glob pattern is invalid
+/// - A directory entry cannot be read
 pub fn scan_filesystem(config: &Config) -> Result<Vec<SourceItem>> {
     let fs_config = config
         .connectors
@@ -80,6 +108,10 @@ pub fn scan_filesystem(config: &Config) -> Result<Vec<SourceItem>> {
     Ok(items)
 }
 
+/// Convert a single file to a [`SourceItem`].
+///
+/// Reads file content, extracts filesystem metadata, and constructs
+/// a `SourceItem` with `source = "filesystem"`.
 fn file_to_source_item(path: &Path, relative_path: &str) -> Result<SourceItem> {
     let metadata = std::fs::metadata(path)?;
     let modified = metadata
@@ -112,6 +144,7 @@ fn file_to_source_item(path: &Path, relative_path: &str) -> Result<SourceItem> {
     })
 }
 
+/// Build a [`GlobSet`] from a list of glob pattern strings.
 fn build_globset(patterns: &[String]) -> Result<GlobSet> {
     let mut builder = GlobSetBuilder::new();
     for pattern in patterns {

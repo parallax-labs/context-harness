@@ -5,8 +5,9 @@
 //! glob-based filtering on object keys, and supports custom endpoints for
 //! S3-compatible services (MinIO, LocalStack).
 //!
-//! Uses only pure-Rust dependencies (hmac, sha2) for AWS signing — no
-//! C library dependencies like aws-lc-sys.
+//! Uses only pure-Rust dependencies (`hmac`, `sha2`) for AWS signing — no
+//! C library dependencies like `aws-lc-sys`, making it compatible with
+//! all build environments including Nix.
 //!
 //! # Configuration
 //!
@@ -19,8 +20,37 @@
 //! # endpoint_url = "http://localhost:9000"   # MinIO
 //! ```
 //!
+//! # Environment Variables
+//!
 //! Credentials are read from environment variables:
-//! `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optionally `AWS_SESSION_TOKEN`.
+//! - `AWS_ACCESS_KEY_ID` — required
+//! - `AWS_SECRET_ACCESS_KEY` — required
+//! - `AWS_SESSION_TOKEN` — optional (for temporary credentials / IAM roles)
+//!
+//! # Authentication
+//!
+//! All S3 requests are signed using
+//! [AWS Signature Version 4](https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-auth-using-authorization-header.html).
+//! The signing implementation uses HMAC-SHA256 (`hmac` + `sha2` crates).
+//!
+//! # Pagination
+//!
+//! Large buckets (1000+ objects) are handled automatically via the
+//! `ListObjectsV2` continuation token mechanism.
+//!
+//! # Content Type Detection
+//!
+//! File extensions are mapped to MIME types:
+//!
+//! | Extension | MIME Type |
+//! |-----------|----------|
+//! | `.md` | `text/markdown` |
+//! | `.txt` | `text/plain` |
+//! | `.json` | `application/json` |
+//! | `.yaml`, `.yml` | `text/yaml` |
+//! | `.rst` | `text/x-rst` |
+//! | `.html`, `.htm` | `text/html` |
+//! | Other | `text/plain` |
 
 use anyhow::{bail, Context, Result};
 use chrono::{TimeZone, Utc};
@@ -33,11 +63,25 @@ use crate::models::SourceItem;
 
 type HmacSha256 = Hmac<Sha256>;
 
-/// Scan an S3 bucket and produce SourceItems.
+/// Scan an S3 bucket and produce [`SourceItem`]s.
 ///
 /// Uses the S3 REST API directly with AWS SigV4 signing.
-/// Credentials are read from environment variables:
-///   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, (optional) AWS_SESSION_TOKEN
+///
+/// # Workflow
+///
+/// 1. Read AWS credentials from environment variables.
+/// 2. List all objects in the bucket (with pagination).
+/// 3. Apply include/exclude glob filters.
+/// 4. Download each matching object's content.
+/// 5. Return sorted `SourceItem`s with S3 metadata.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The S3 connector is not configured
+/// - AWS credentials are not set in environment
+/// - S3 API requests fail (network or auth errors)
+/// - Object listing or download fails
 pub async fn scan_s3(config: &Config) -> Result<Vec<SourceItem>> {
     let s3_config = config
         .connectors
@@ -122,6 +166,7 @@ pub async fn scan_s3(config: &Config) -> Result<Vec<SourceItem>> {
 
 // ============ AWS Credentials ============
 
+/// AWS credentials loaded from environment variables.
 struct AwsCredentials {
     access_key_id: String,
     secret_access_key: String,
@@ -129,6 +174,8 @@ struct AwsCredentials {
 }
 
 impl AwsCredentials {
+    /// Load credentials from `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
+    /// and optionally `AWS_SESSION_TOKEN`.
     fn from_env() -> Result<Self> {
         let access_key_id = std::env::var("AWS_ACCESS_KEY_ID")
             .context("AWS_ACCESS_KEY_ID environment variable not set")?;
@@ -146,13 +193,22 @@ impl AwsCredentials {
 
 // ============ S3 Object Listing ============
 
+/// Metadata for a single S3 object, parsed from `ListObjectsV2` XML response.
 struct S3Object {
+    /// Full object key (path within bucket).
     key: String,
+    /// Last modification timestamp (Unix epoch seconds).
     last_modified: i64,
+    /// Entity tag (content hash), stripped of surrounding quotes.
     etag: String,
+    /// Object size in bytes.
     size: i64,
 }
 
+/// List all objects in the configured S3 bucket, handling pagination.
+///
+/// Uses `ListObjectsV2` with `max-keys=1000` per page. Automatically
+/// follows `NextContinuationToken` until all objects are retrieved.
 async fn list_objects(
     s3_config: &S3ConnectorConfig,
     creds: &AwsCredentials,
@@ -285,6 +341,7 @@ async fn list_objects(
     Ok(objects)
 }
 
+/// Download a single object's content from S3 using a signed GET request.
 async fn download_object(
     s3_config: &S3ConnectorConfig,
     creds: &AwsCredentials,
@@ -375,6 +432,10 @@ async fn download_object(
 
 // ============ AWS SigV4 Helpers ============
 
+/// Compute the S3 hostname for the configured bucket and region.
+///
+/// If a custom `endpoint_url` is set (for MinIO, LocalStack, etc.),
+/// that is used instead of the standard `<bucket>.s3.<region>.amazonaws.com`.
 fn s3_host(s3_config: &S3ConnectorConfig) -> String {
     if let Some(ref endpoint) = s3_config.endpoint_url {
         // Custom endpoint (MinIO, LocalStack, etc.)
@@ -388,22 +449,33 @@ fn s3_host(s3_config: &S3ConnectorConfig) -> String {
     }
 }
 
+/// Compute the hex-encoded SHA-256 hash of data.
 fn hex_sha256(data: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(data);
     hex::encode(hasher.finalize())
 }
 
+/// Compute HMAC-SHA256 of data with the given key.
 fn hmac_sha256(key: &[u8], data: &[u8]) -> Vec<u8> {
     let mut mac = HmacSha256::new_from_slice(key).expect("HMAC can take key of any size");
     mac.update(data);
     mac.finalize().into_bytes().to_vec()
 }
 
+/// Compute hex-encoded HMAC-SHA256.
 fn hex_hmac_sha256(key: &[u8], data: &[u8]) -> String {
     hex::encode(hmac_sha256(key, data))
 }
 
+/// Derive the AWS SigV4 signing key for a given date, region, and service.
+///
+/// ```text
+/// kDate    = HMAC("AWS4" + secret, dateStamp)
+/// kRegion  = HMAC(kDate, region)
+/// kService = HMAC(kRegion, service)
+/// kSigning = HMAC(kService, "aws4_request")
+/// ```
 fn derive_signing_key(secret_key: &str, date_stamp: &str, region: &str, service: &str) -> Vec<u8> {
     let k_date = hmac_sha256(
         format!("AWS4{}", secret_key).as_bytes(),
@@ -414,6 +486,10 @@ fn derive_signing_key(secret_key: &str, date_stamp: &str, region: &str, service:
     hmac_sha256(&k_service, b"aws4_request")
 }
 
+/// URI-encode a string per RFC 3986 (used in SigV4 canonical requests).
+///
+/// Encodes all characters except unreserved characters:
+/// `A-Z a-z 0-9 - _ . ~`
 fn uri_encode(s: &str) -> String {
     let mut result = String::new();
     for byte in s.bytes() {
@@ -431,6 +507,10 @@ fn uri_encode(s: &str) -> String {
 
 // ============ XML Parsing (minimal, no extra deps) ============
 
+/// Parse a `ListObjectsV2` XML response into a list of [`S3Object`]s.
+///
+/// Also returns whether the listing is truncated and the next continuation
+/// token for pagination.
 fn parse_list_objects_response(xml: &str) -> Result<(Vec<S3Object>, bool, Option<String>)> {
     let mut objects = Vec::new();
     let is_truncated = extract_xml_value(xml, "IsTruncated")
@@ -481,6 +561,7 @@ fn parse_list_objects_response(xml: &str) -> Result<(Vec<S3Object>, bool, Option
     Ok((objects, is_truncated, next_token))
 }
 
+/// Extract the text content of an XML tag (simple, non-nested).
 fn extract_xml_value(xml: &str, tag: &str) -> Option<String> {
     let open = format!("<{}>", tag);
     let close = format!("</{}>", tag);
@@ -493,6 +574,7 @@ fn extract_xml_value(xml: &str, tag: &str) -> Option<String> {
     None
 }
 
+/// Detect MIME content type from a file extension.
 fn detect_content_type(key: &str) -> String {
     match key.rsplit('.').next() {
         Some("md") => "text/markdown".to_string(),
@@ -505,6 +587,7 @@ fn detect_content_type(key: &str) -> String {
     }
 }
 
+/// Build a [`GlobSet`] from a list of glob pattern strings.
 fn build_globset(patterns: &[String]) -> Result<GlobSet> {
     let mut builder = GlobSetBuilder::new();
     for pattern in patterns {

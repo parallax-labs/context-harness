@@ -5,18 +5,59 @@
 //! to preserve semantic coherence within each chunk.
 //!
 //! Each chunk receives a deterministic UUID derived from its document ID
-//! and index, plus a SHA-256 hash of its text for staleness detection.
+//! and index, plus a SHA-256 hash of its text for staleness detection
+//! in the embedding pipeline.
+//!
+//! # Algorithm
+//!
+//! 1. Convert `max_tokens` to `max_chars` using a 4 chars/token ratio.
+//! 2. Split text on `\n\n` paragraph boundaries.
+//! 3. Accumulate paragraphs into a buffer until adding the next paragraph
+//!    would exceed `max_chars`.
+//! 4. When exceeded, flush the buffer as a chunk and start a new one.
+//! 5. If a single paragraph exceeds `max_chars`, perform a hard split at
+//!    the nearest newline or space boundary.
+//! 6. Guarantee at least one chunk per document (even for empty text).
+//!
+//! # Example
+//!
+//! ```rust
+//! use context_harness::chunk::chunk_text;
+//!
+//! let chunks = chunk_text("doc-123", "Hello world.\n\nSecond paragraph.", 700);
+//! assert_eq!(chunks.len(), 1);
+//! assert_eq!(chunks[0].chunk_index, 0);
+//! ```
 
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::models::Chunk;
 
-/// Approximate chars-per-token ratio for Phase 1.
+/// Approximate characters-per-token ratio.
+///
+/// This is a rough heuristic (4 chars ≈ 1 token) used for Phase 1.
+/// Future versions may use a proper tokenizer.
 const CHARS_PER_TOKEN: usize = 4;
 
-/// Split text into chunks on paragraph boundaries, respecting max_tokens.
-/// Returns chunks with contiguous indices starting at 0.
+/// Split text into chunks on paragraph boundaries, respecting `max_tokens`.
+///
+/// Returns chunks with contiguous indices starting at 0. Each chunk's
+/// `hash` is the SHA-256 of its text content, used for embedding
+/// staleness detection.
+///
+/// # Arguments
+///
+/// * `document_id` — The parent document's UUID (used in chunk metadata).
+/// * `text` — The full document body to chunk.
+/// * `max_tokens` — Maximum tokens per chunk (converted to chars via `× 4`).
+///
+/// # Guarantees
+///
+/// - At least one chunk is always returned (even for empty text).
+/// - Chunk indices are contiguous: `0, 1, 2, …, N-1`.
+/// - Chunks are split on `\n\n` boundaries when possible.
+/// - Oversized paragraphs are hard-split at space/newline boundaries.
 pub fn chunk_text(document_id: &str, text: &str, max_tokens: usize) -> Vec<Chunk> {
     let max_chars = max_tokens * CHARS_PER_TOKEN;
 
@@ -95,6 +136,7 @@ pub fn chunk_text(document_id: &str, text: &str, max_tokens: usize) -> Vec<Chunk
     chunks
 }
 
+/// Create a single [`Chunk`] with a UUID and SHA-256 content hash.
 fn make_chunk(document_id: &str, index: i64, text: &str) -> Chunk {
     let mut hasher = Sha256::new();
     hasher.update(text.as_bytes());

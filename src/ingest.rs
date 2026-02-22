@@ -3,6 +3,38 @@
 //! Coordinates the full sync flow: connector → normalization → chunking →
 //! embedding → storage. Supports incremental sync via checkpoints and
 //! inline embedding (non-fatal on failure).
+//!
+//! # Sync Pipeline
+//!
+//! The `run_sync` function implements the following pipeline:
+//!
+//! 1. **Load checkpoint** — determines the last successful sync timestamp
+//!    for the specified connector (skipped with `--full`).
+//! 2. **Scan connector** — dispatches to the appropriate connector
+//!    (`filesystem`, `git`, or `s3`) to fetch [`SourceItem`]s.
+//! 3. **Filter** — applies checkpoint, `--since`, `--until`, and `--limit`
+//!    filters to the collected items.
+//! 4. **Upsert documents** — inserts or updates each item in the `documents`
+//!    table, computing a SHA-256 deduplication hash.
+//! 5. **Replace chunks** — deletes old chunks (and their embeddings/FTS entries)
+//!    for the document, then inserts fresh chunks.
+//! 6. **Inline embed** — if embeddings are enabled, embeds new chunks
+//!    immediately (non-fatal: failures are logged but do not abort the sync).
+//! 7. **Update checkpoint** — persists the latest `updated_at` timestamp
+//!    so the next incremental sync can skip unchanged items.
+//!
+//! # Deduplication
+//!
+//! Each document is identified by `(source, source_id)`. If a document with
+//! the same composite key already exists, it is updated via an `ON CONFLICT`
+//! upsert. The `dedup_hash` field is a SHA-256 digest of source + source_id +
+//! updated_at + body, enabling downstream consumers to detect changes.
+//!
+//! # Checkpointing
+//!
+//! Checkpoints are stored in the `checkpoints` table as `(source, cursor)`
+//! pairs. The cursor is the maximum `updated_at` timestamp seen during the
+//! sync. On subsequent runs, only items newer than the checkpoint are processed.
 
 use anyhow::{bail, Result};
 use chrono::NaiveDate;
@@ -19,6 +51,32 @@ use crate::db;
 use crate::embed_cmd;
 use crate::models::SourceItem;
 
+/// Runs the full ingestion pipeline for the specified connector.
+///
+/// This is the entry point for `ctx sync <connector>`. It orchestrates
+/// scanning, filtering, document upsert, chunking, embedding, and
+/// checkpoint updates.
+///
+/// # Arguments
+///
+/// - `config` — application configuration.
+/// - `connector` — the connector name (`"filesystem"`, `"git"`, or `"s3"`).
+/// - `full` — if `true`, ignores the existing checkpoint and reprocesses all items.
+/// - `dry_run` — if `true`, scans and counts items without writing to the database.
+/// - `since` — optional `YYYY-MM-DD` date; only items updated on or after this date are processed.
+/// - `until` — optional `YYYY-MM-DD` date; only items updated on or before this date are processed.
+/// - `limit` — optional maximum number of items to process.
+///
+/// # Returns
+///
+/// A `Result` indicating success or an `anyhow::Error` describing the failure.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The specified connector is unknown.
+/// - The connector fails to scan (e.g., missing configuration, network error).
+/// - A database operation fails.
 pub async fn run_sync(
     config: &Config,
     connector: &str,
@@ -135,6 +193,15 @@ pub async fn run_sync(
     Ok(())
 }
 
+/// Inserts or updates a document in the `documents` table.
+///
+/// Computes a SHA-256 deduplication hash from the item's source, source_id,
+/// updated_at timestamp, and body. If a document with the same `(source, source_id)`
+/// already exists, it is updated with the new data; otherwise a new UUID is assigned.
+///
+/// # Returns
+///
+/// The document's UUID (existing or newly generated).
 async fn upsert_document(pool: &SqlitePool, item: &SourceItem) -> Result<String> {
     // Compute dedup hash
     let mut hasher = Sha256::new();
@@ -189,6 +256,20 @@ async fn upsert_document(pool: &SqlitePool, item: &SourceItem) -> Result<String>
     Ok(doc_id)
 }
 
+/// Atomically replaces all chunks (and their embeddings/FTS entries) for a document.
+///
+/// This function runs inside a single SQLite transaction to ensure consistency:
+/// 1. Deletes old `chunk_vectors` rows for the document's chunks.
+/// 2. Deletes old `embeddings` metadata rows for the document's chunks.
+/// 3. Deletes old `chunks_fts` (FTS5) entries for the document.
+/// 4. Deletes old `chunks` rows for the document.
+/// 5. Inserts new chunks and their corresponding FTS entries.
+///
+/// # Arguments
+///
+/// - `pool` — the database connection pool.
+/// - `document_id` — the UUID of the parent document.
+/// - `chunks` — the new set of chunks to insert.
 async fn replace_chunks(
     pool: &SqlitePool,
     document_id: &str,
@@ -247,6 +328,10 @@ async fn replace_chunks(
     Ok(())
 }
 
+/// Retrieves the last sync checkpoint for a given connector.
+///
+/// Returns `Some(timestamp)` if a checkpoint exists, or `None` if this is
+/// the first sync for the connector.
 async fn get_checkpoint(pool: &SqlitePool, source: &str) -> Result<Option<i64>> {
     let result: Option<String> =
         sqlx::query_scalar("SELECT cursor FROM checkpoints WHERE source = ?")
@@ -257,6 +342,10 @@ async fn get_checkpoint(pool: &SqlitePool, source: &str) -> Result<Option<i64>> 
     Ok(result.and_then(|s| s.parse::<i64>().ok()))
 }
 
+/// Persists the sync checkpoint for a connector.
+///
+/// Uses an upsert to create or update the checkpoint row. The `cursor`
+/// value is typically the maximum `updated_at` timestamp seen during the sync.
 async fn set_checkpoint(pool: &SqlitePool, source: &str, cursor_val: i64) -> Result<()> {
     let now = chrono::Utc::now().timestamp();
     sqlx::query(

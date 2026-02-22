@@ -1,12 +1,28 @@
 //! Search engine with keyword, semantic, and hybrid retrieval modes.
 //!
 //! - **Keyword** — FTS5 full-text search using BM25 scoring.
-//! - **Semantic** — Cosine similarity over stored embedding vectors (sqlite-vec).
+//! - **Semantic** — Cosine similarity over stored embedding vectors.
 //! - **Hybrid** — Weighted merge of keyword and semantic results using min-max
 //!   normalization and configurable `hybrid_alpha` (see `docs/HYBRID_SCORING.md`).
 //!
 //! Results are returned as [`SearchResultItem`] values suitable for both CLI and
 //! HTTP server consumption.
+//!
+//! # Hybrid Scoring Algorithm
+//!
+//! 1. Fetch `candidate_k_keyword` keyword candidates (BM25 rank).
+//! 2. Fetch `candidate_k_vector` vector candidates (cosine similarity).
+//! 3. Normalize both sets to `[0, 1]` using min-max normalization.
+//! 4. Merge: `score = (1 - α) × keyword + α × semantic`.
+//! 5. Group by document (MAX aggregation).
+//! 6. Sort by score (desc), updated_at (desc), id (asc).
+//! 7. Truncate to `final_limit`.
+//!
+//! # Filtering
+//!
+//! Results can be filtered by:
+//! - `--source <name>` — only return documents from a specific connector
+//! - `--since <YYYY-MM-DD>` — only return documents updated after a date
 
 use anyhow::{bail, Result};
 use chrono::NaiveDate;
@@ -18,20 +34,49 @@ use crate::config::Config;
 use crate::db;
 use crate::embedding;
 
-/// A search result matching SCHEMAS.md `context.search` response shape.
+/// A search result matching the `SCHEMAS.md` `context.search` response shape.
+///
+/// Used by both the CLI (`run_search`) and HTTP server (`handle_search`).
+/// Scores are normalized to `[0.0, 1.0]` and sorted descending.
 #[derive(Debug, Clone, Serialize)]
 pub struct SearchResultItem {
+    /// Document UUID.
     pub id: String,
+    /// Relevance score in `[0.0, 1.0]`.
     pub score: f64,
+    /// Document title.
     pub title: Option<String>,
+    /// Connector name.
     pub source: String,
+    /// Identifier within the source.
     pub source_id: String,
-    pub updated_at: String, // ISO8601
+    /// Last modification timestamp (ISO 8601).
+    pub updated_at: String,
+    /// Text excerpt from the best-matching chunk.
     pub snippet: String,
+    /// Web-browsable URL, if available.
     pub source_url: Option<String>,
 }
 
-/// Core search function returning structured results (used by CLI and server).
+/// Core search function returning structured results.
+///
+/// This is the shared implementation used by both `ctx search` (CLI) and
+/// `POST /tools/search` (HTTP server).
+///
+/// # Arguments
+///
+/// * `config` — Application configuration (retrieval tuning, embedding settings).
+/// * `query` — Search query text.
+/// * `mode` — Search mode: `"keyword"`, `"semantic"`, or `"hybrid"`.
+/// * `source_filter` — Optional filter: only return results from this connector.
+/// * `since` — Optional filter: only return documents updated after this date (`YYYY-MM-DD`).
+/// * `limit` — Optional result limit (overrides `retrieval.final_limit`).
+///
+/// # Errors
+///
+/// - Empty query returns an empty result set (not an error).
+/// - Unknown mode returns an error.
+/// - Semantic/hybrid mode with disabled embeddings returns an error.
 pub async fn search_documents(
     config: &Config,
     query: &str,
@@ -217,7 +262,7 @@ pub async fn search_documents(
     Ok(results)
 }
 
-/// CLI entry point — calls search_documents and prints results.
+/// CLI entry point — calls [`search_documents`] and prints results to stdout.
 pub async fn run_search(
     config: &Config,
     query: &str,
@@ -266,6 +311,7 @@ pub async fn run_search(
     Ok(())
 }
 
+/// Format a Unix timestamp as ISO 8601.
 fn format_ts_iso(ts: i64) -> String {
     chrono::DateTime::from_timestamp(ts, 0)
         .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
@@ -274,16 +320,26 @@ fn format_ts_iso(ts: i64) -> String {
 
 // ============ Candidate types ============
 
+/// A candidate chunk from either keyword or vector search.
 #[derive(Debug, Clone)]
 struct ChunkCandidate {
+    /// Chunk UUID.
     chunk_id: String,
+    /// Parent document UUID.
     document_id: String,
+    /// Raw score from the search engine (BM25 rank or cosine similarity).
     raw_score: f64,
+    /// Text excerpt for display.
     snippet: String,
 }
 
 // ============ Keyword search ============
 
+/// Fetch keyword search candidates using FTS5 with BM25 ranking.
+///
+/// Queries the `chunks_fts` virtual table and returns candidates
+/// sorted by BM25 relevance. FTS5 returns negative rank values
+/// (lower = better), which are negated to positive scores.
 async fn fetch_keyword_candidates(
     pool: &SqlitePool,
     query: &str,
@@ -322,6 +378,13 @@ async fn fetch_keyword_candidates(
 
 // ============ Vector search ============
 
+/// Fetch semantic search candidates using cosine similarity.
+///
+/// Embeds the query text, then computes cosine similarity against all
+/// stored chunk vectors. Returns the top `candidate_k` results.
+///
+/// Note: This performs a brute-force scan over all vectors. For large
+/// datasets, consider adding approximate nearest neighbor (ANN) indexing.
 async fn fetch_vector_candidates(
     pool: &SqlitePool,
     config: &Config,
@@ -369,6 +432,17 @@ async fn fetch_vector_candidates(
 
 // ============ Score normalization ============
 
+/// Min-max normalize raw scores to `[0.0, 1.0]`.
+///
+/// If all scores are equal, they are normalized to `1.0`.
+///
+/// # Formula
+///
+/// ```text
+///              score - min
+/// normalized = ───────────
+///              max - min
+/// ```
 fn normalize_scores(candidates: &[ChunkCandidate]) -> Vec<(&ChunkCandidate, f64)> {
     if candidates.is_empty() {
         return Vec::new();

@@ -1,14 +1,84 @@
 //! Database schema migrations.
 //!
-//! Creates all required tables (documents, chunks, checkpoints, chunks_fts,
-//! embeddings, chunk_vectors) and ensures idempotent execution. Designed to be
-//! run via `ctx init`.
+//! Creates all required tables and ensures idempotent execution.
+//! Designed to be run via `ctx init`.
+//!
+//! # Schema
+//!
+//! ```text
+//! ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+//! │  documents   │──┐  │   chunks     │──┐  │  embeddings  │
+//! │              │  │  │              │  │  │              │
+//! │ id (PK)      │  │  │ id (PK)      │  │  │ chunk_id(PK) │
+//! │ source       │  └──│ document_id  │  └──│ model        │
+//! │ source_id    │     │ chunk_index  │     │ dims         │
+//! │ source_url   │     │ text         │     │ created_at   │
+//! │ title        │     │ hash         │     │ hash         │
+//! │ author       │     └──────────────┘     └──────────────┘
+//! │ created_at   │
+//! │ updated_at   │     ┌──────────────┐     ┌──────────────┐
+//! │ content_type │     │  chunks_fts  │     │chunk_vectors │
+//! │ body         │     │  (FTS5)      │     │              │
+//! │ metadata_json│     │ chunk_id     │     │ chunk_id(PK) │
+//! │ raw_json     │     │ document_id  │     │ document_id  │
+//! │ dedup_hash   │     │ text         │     │ embedding    │
+//! └──────────────┘     └──────────────┘     └──────────────┘
+//!
+//! ┌──────────────┐
+//! │ checkpoints  │
+//! │              │
+//! │ source (PK)  │
+//! │ cursor       │
+//! │ updated_at   │
+//! └──────────────┘
+//! ```
+//!
+//! # Tables
+//!
+//! | Table | Purpose |
+//! |-------|---------|
+//! | `documents` | Normalized document metadata and body text |
+//! | `chunks` | Text segments with content hashes |
+//! | `checkpoints` | Incremental sync cursors per connector |
+//! | `chunks_fts` | FTS5 full-text index over chunk text (BM25) |
+//! | `embeddings` | Embedding metadata (model, dims, hash) |
+//! | `chunk_vectors` | Embedding vectors stored as BLOBs |
+//!
+//! # Indexes
+//!
+//! - `idx_chunks_document_id` — fast chunk lookup by document
+//! - `idx_documents_source` — fast document filtering by connector
+//! - `idx_documents_updated_at` — efficient date range queries
+//! - `idx_chunk_vectors_document_id` — fast vector lookup by document
+//!
+//! # Idempotency
+//!
+//! All operations use `CREATE TABLE IF NOT EXISTS` or check for existing
+//! objects before creation. Running `ctx init` multiple times is safe.
 
 use anyhow::Result;
 
 use crate::config::Config;
 use crate::db;
 
+/// Run all database migrations.
+///
+/// Creates all tables, indexes, and virtual tables required by Context
+/// Harness. Safe to call multiple times — all operations are idempotent.
+///
+/// # Tables Created
+///
+/// - `documents` — normalized document storage
+/// - `chunks` — text segments with content hashes
+/// - `checkpoints` — incremental sync cursors
+/// - `chunks_fts` — FTS5 full-text search index
+/// - `embeddings` — embedding metadata (model, dims, staleness hash)
+/// - `chunk_vectors` — embedding vector BLOBs
+///
+/// # Errors
+///
+/// Returns an error if the database connection fails or any SQL statement
+/// cannot be executed.
 pub async fn run_migrations(config: &Config) -> Result<()> {
     let pool = db::connect(config).await?;
 
@@ -87,7 +157,7 @@ pub async fn run_migrations(config: &Config) -> Result<()> {
         .await?;
     }
 
-    // Phase 2: Embeddings metadata table
+    // Embeddings metadata table
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS embeddings (
@@ -103,7 +173,7 @@ pub async fn run_migrations(config: &Config) -> Result<()> {
     .execute(&pool)
     .await?;
 
-    // Phase 2: Chunk vectors table (stores embedding blobs)
+    // Chunk vectors table (stores embedding BLOBs)
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS chunk_vectors (
@@ -118,7 +188,7 @@ pub async fn run_migrations(config: &Config) -> Result<()> {
     .execute(&pool)
     .await?;
 
-    // Create indexes
+    // Create indexes for common query patterns
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_chunks_document_id ON chunks(document_id)")
         .execute(&pool)
         .await?;
