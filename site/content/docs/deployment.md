@@ -1,6 +1,6 @@
 +++
 title = "Deployment"
-description = "Deploy Context Harness in CI/CD, Docker, and production environments."
+description = "Deploy Context Harness in CI/CD, Docker, and production."
 weight = 10
 
 [extra]
@@ -9,15 +9,12 @@ sidebar_group = "Reference"
 sidebar_order = 10
 +++
 
-Context Harness is a single binary that runs anywhere Rust compiles. This guide covers common deployment patterns.
+### CI/CD — build the index at deploy time
 
-## CI/CD Pipeline
-
-The most common pattern: build the index in CI and deploy a static search index alongside your documentation.
-
-### GitHub Actions Example
+The most common pattern: build the search index in CI and deploy it as a static asset alongside your docs.
 
 ```yaml
+# .github/workflows/docs.yml
 name: Build & Deploy Docs
 on:
   push:
@@ -28,11 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: actions/cache@v4
+      - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/bin/
@@ -40,27 +34,20 @@ jobs:
             target/
           key: cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build and index docs
+      - name: Build and index
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           cargo build --release
-          chmod +x scripts/build-docs.sh
-          ./scripts/build-docs.sh
+          ./target/release/ctx init
+          ./target/release/ctx sync git --full
+          ./target/release/ctx embed pending  # Optional
 
       - name: Deploy
         uses: actions/deploy-pages@v4
 ```
 
-### What `build-docs.sh` Does
-
-1. Builds the `ctx` binary
-2. Generates rustdoc API reference → `site/api/`
-3. Indexes the repo's docs + source via the Git connector
-4. Exports the index as `data.json` → `site/docs/data.json`
-5. Cleans up temporary files
-
-## Docker
+### Docker
 
 ```dockerfile
 FROM rust:1.82-slim AS builder
@@ -78,8 +65,6 @@ ENTRYPOINT ["ctx"]
 CMD ["serve", "mcp", "--config", "/app/config/ctx.toml"]
 ```
 
-Build and run:
-
 ```bash
 $ docker build -t context-harness .
 $ docker run -p 7331:7331 \
@@ -88,9 +73,24 @@ $ docker run -p 7331:7331 \
     context-harness
 ```
 
-## Systemd Service
+### Static site search (no server)
 
-For long-running MCP server on Linux:
+For docs sites that need search but no backend:
+
+1. Run `ctx sync` + export `data.json` in CI
+2. Include `ctx-search.js` in your HTML
+3. Search runs entirely in the browser — no server needed at runtime
+
+```html
+<script src="/ctx-search.js"
+    data-json="/data.json"
+    data-placeholder="Search docs...">
+</script>
+```
+
+### Systemd service
+
+For a persistent MCP server on Linux:
 
 ```ini
 [Unit]
@@ -109,30 +109,12 @@ Environment=OPENAI_API_KEY=sk-...
 WantedBy=multi-user.target
 ```
 
-## Static Site (Browser-Only)
+### Production checklist
 
-For documentation sites that need search but no server:
-
-1. Run `scripts/build-docs.sh` in CI to generate `data.json`
-2. Include `ctx-search.js` in your HTML
-3. The search widget runs entirely in the browser
-
-```html
-<script src="/ctx-search.js"></script>
-<script>
-  window.CTX_SEARCH_DATA = '/data.json';
-</script>
-```
-
-No server needed at runtime — all search happens client-side over the exported index.
-
-## Production Checklist
-
-- [ ] Set `OPENAI_API_KEY` as a CI secret (not in code)
-- [ ] Use `--release` builds for performance
-- [ ] Cache cargo artifacts in CI for faster builds
-- [ ] Set `shallow = true` on Git connectors in CI
-- [ ] Use `[server].bind = "0.0.0.0:7331"` for Docker
-- [ ] Monitor `/health` endpoint
-- [ ] Rotate API keys periodically
-
+- Set `OPENAI_API_KEY` as a CI secret (never in code)
+- Use `--release` builds for performance
+- Cache cargo artifacts in CI for faster builds
+- Set `shallow = true` on Git connectors in CI
+- Use `[server].bind = "0.0.0.0:7331"` for Docker
+- Monitor the `/health` endpoint
+- Rotate API keys periodically

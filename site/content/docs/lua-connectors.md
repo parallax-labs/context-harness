@@ -1,6 +1,6 @@
 +++
 title = "Lua Scripted Connectors"
-description = "Write custom data source connectors in Lua without compiling Rust."
+description = "Write custom data source connectors in Lua — no Rust compilation needed."
 weight = 5
 
 [extra]
@@ -9,170 +9,150 @@ sidebar_group = "Extensibility"
 sidebar_order = 5
 +++
 
-Lua scripted connectors let you add custom data sources to Context Harness by writing a simple Lua script. No Rust compilation needed — scripts run in a sandboxed Lua 5.4 VM with access to HTTP, JSON, filesystem, and other host APIs.
+Lua scripted connectors let you add any data source to Context Harness by writing a simple Lua script. The script runs in a sandboxed Lua 5.4 VM with access to HTTP, JSON, filesystem, and other host APIs. No Rust compilation needed.
 
-## How It Works
+### How it works
 
 1. Write a `.lua` file that implements `connector.scan(config) → items[]`
-2. Configure it in `ctx.toml` under `[connectors.script.<name>]`
+2. Add it to `ctx.toml` under `[connectors.script.<name>]`
 3. Run `ctx sync script:<name>` to ingest
 
-## Configuration
+### Example: GitHub Issues
 
-```toml
-[connectors.script.jira]
-path = "connectors/jira.lua"
-timeout = 30
-url = "https://mycompany.atlassian.net"
-project = "ENG"
-api_token = "${JIRA_API_TOKEN}"
-```
-
-- `path` — path to the `.lua` script
-- `timeout` — execution timeout in seconds (default: 30)
-- All other keys become the `config` table passed to `connector.scan()`
-- Values support `${VAR_NAME}` environment variable expansion
-
-## Script Contract
-
-Every connector script must define a `connector` table with metadata and a `scan()` function:
+Here's a complete connector that ingests GitHub issues:
 
 ```lua
 connector = {
-    name = "jira",
+    name = "github-issues",
     version = "0.1.0",
-    description = "Ingest Jira issues",
+    description = "Ingest GitHub issues as searchable documents",
 }
 
 function connector.scan(config)
-    -- config contains all keys from ctx.toml (url, project, api_token, etc.)
     local items = {}
+    local page = 1
 
-    -- Fetch data using the http host API
-    local resp = http.get(config.url .. "/rest/api/3/search", {
-        headers = {
-            ["Authorization"] = "Basic " .. base64.encode("user:" .. config.api_token),
-        },
-    })
-    local data = json.decode(resp.body)
+    while true do
+        local url = string.format(
+            "https://api.github.com/repos/%s/%s/issues?state=all&per_page=100&page=%d",
+            config.owner, config.repo, page
+        )
 
-    for _, issue in ipairs(data.issues) do
-        table.insert(items, {
-            source_id  = issue.key,
-            title      = issue.fields.summary,
-            body       = issue.fields.description or "",
-            author     = issue.fields.reporter.displayName,
-            created_at = issue.fields.created,
-            updated_at = issue.fields.updated,
-            source_url = config.url .. "/browse/" .. issue.key,
-            metadata   = { status = issue.fields.status.name },
+        local resp = http.get(url, {
+            headers = {
+                ["Authorization"] = "Bearer " .. config.token,
+                ["Accept"] = "application/vnd.github.v3+json",
+            },
         })
+
+        if resp.status ~= 200 then
+            log.error("GitHub API returned " .. resp.status)
+            break
+        end
+
+        local issues = json.decode(resp.body)
+        if #issues == 0 then break end
+
+        for _, issue in ipairs(issues) do
+            -- Build a rich body with labels and comments
+            local body = "# " .. issue.title .. "\n\n"
+            body = body .. (issue.body or "") .. "\n\n"
+            body = body .. "**State:** " .. issue.state .. "\n"
+
+            if issue.labels then
+                local label_names = {}
+                for _, l in ipairs(issue.labels) do
+                    table.insert(label_names, l.name)
+                end
+                body = body .. "**Labels:** " .. table.concat(label_names, ", ") .. "\n"
+            end
+
+            table.insert(items, {
+                source_id  = tostring(issue.number),
+                title      = "[#" .. issue.number .. "] " .. issue.title,
+                body       = body,
+                author     = issue.user.login,
+                created_at = issue.created_at,
+                updated_at = issue.updated_at,
+                source_url = issue.html_url,
+                metadata   = {
+                    state  = issue.state,
+                    labels = table.concat(label_names or {}, ","),
+                },
+            })
+        end
+
+        page = page + 1
+        sleep(0.5)  -- Rate limiting
     end
 
+    log.info("Fetched " .. #items .. " issues")
     return items
 end
 ```
 
-### Return Schema
+### Configuration
 
-Each item in the returned array must have:
+```toml
+[connectors.script.github-issues]
+path = "connectors/github-issues.lua"
+timeout = 60
+owner = "parallax-labs"
+repo = "context-harness"
+token = "${GITHUB_TOKEN}"
+```
+
+All keys besides `path` and `timeout` become the `config` table passed to `connector.scan()`. Values with `${VAR}` are expanded from environment variables.
+
+### Script contract
+
+Every connector script must define:
+
+- `connector.name` — identifier string
+- `connector.version` — semver string
+- `connector.description` — human-readable description
+- `connector.scan(config)` — function returning an array of items
+
+Each returned item can have:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `source_id` | string | **yes** | Unique identifier within this source |
-| `body` | string | **yes** | Document content |
+| `source_id` | string | **yes** | Unique ID within this source |
+| `body` | string | **yes** | Document content (markdown, text, etc.) |
 | `title` | string | no | Document title |
 | `author` | string | no | Author name |
 | `created_at` | string | no | ISO 8601 timestamp |
 | `updated_at` | string | no | ISO 8601 timestamp |
-| `source_url` | string | no | Web URL for viewing |
+| `source_url` | string | no | Web URL for viewing the original |
 | `content_type` | string | no | MIME type (default: `text/plain`) |
-| `metadata` | table | no | Arbitrary key-value metadata |
+| `metadata` | table | no | Arbitrary key-value pairs |
 
-## Host APIs
+### Host APIs available in scripts
 
-Scripts have access to these sandboxed APIs:
+| API | Functions | Example |
+|-----|-----------|---------|
+| **`http`** | `get`, `post`, `put` | `http.get(url, {headers={...}})` → `{status, body, headers}` |
+| **`json`** | `encode`, `decode` | `json.decode('{"key":"val"}')` → table |
+| **`env`** | `get` | `env.get("API_KEY")` → string |
+| **`log`** | `info`, `warn`, `error`, `debug` | `log.info("Processing...")` |
+| **`fs`** | `read`, `list` | `fs.read("path/to/file")` → string |
+| **`base64`** | `encode`, `decode` | `base64.encode("hello")` → `"aGVsbG8="` |
+| **`crypto`** | `sha256`, `hmac_sha256` | `crypto.sha256("data")` → hex string |
+| **`sleep`** | (global) | `sleep(1.5)` — pause 1.5 seconds |
 
-### `http` — HTTP Client
-
-```lua
-local resp = http.get(url, { headers = { ... } })
-local resp = http.post(url, body, { headers = { ... } })
-local resp = http.put(url, body, { headers = { ... } })
--- resp.status, resp.body, resp.headers
-```
-
-### `json` — JSON Encoding
-
-```lua
-local data = json.decode('{"key": "value"}')
-local str  = json.encode({ key = "value" })
-```
-
-### `env` — Environment Variables
-
-```lua
-local key = env.get("API_KEY")
-```
-
-### `log` — Logging
-
-```lua
-log.info("Processing item: " .. id)
-log.warn("Missing field")
-log.error("API call failed")
-log.debug("Debug details")
-```
-
-### `fs` — Sandboxed File Access
-
-```lua
-local content = fs.read("path/to/file.txt")
-local files   = fs.list("directory/")
-```
-
-### `base64` — Encoding
-
-```lua
-local encoded = base64.encode("hello")
-local decoded = base64.decode(encoded)
-```
-
-### `crypto` — Hashing
-
-```lua
-local hash = crypto.sha256("data")
-local hmac = crypto.hmac_sha256("key", "data")
-```
-
-### `sleep` — Delay
-
-```lua
-sleep(1.5)  -- sleep 1.5 seconds
-```
-
-## CLI Commands
-
-### Scaffold a New Connector
+### CLI commands
 
 ```bash
-$ ctx connector init my-connector
-# Created connectors/my-connector.lua
+# Scaffold a new connector with a template:
+$ ctx connector init my-source
+Created connectors/my-source.lua
+
+# Test it without modifying the database:
+$ ctx connector test connectors/my-source.lua
+
+# Test with config from ctx.toml:
+$ ctx connector test connectors/jira.lua --source jira
+
+# Sync it:
+$ ctx sync script:my-source
 ```
-
-### Test a Connector
-
-```bash
-$ ctx connector test connectors/my-connector.lua
-```
-
-### Sync a Connector
-
-```bash
-$ ctx sync script:my-connector --config ./config/ctx.toml
-```
-
-## Example: GitHub Issues
-
-See [`examples/connectors/github-issues.lua`](https://github.com/parallax-labs/context-harness/blob/main/examples/connectors/github-issues.lua) for a complete example that fetches GitHub issues using the REST API.
-

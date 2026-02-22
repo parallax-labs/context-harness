@@ -1,6 +1,6 @@
 +++
 title = "Quick Start"
-description = "Get Context Harness running in 60 seconds."
+description = "Go from zero to searchable knowledge base in 60 seconds."
 weight = 2
 
 [extra]
@@ -9,76 +9,87 @@ sidebar_group = "Getting Started"
 sidebar_order = 2
 +++
 
-## 1. Create a Config File
-
-```bash
-$ cp config/ctx.example.toml config/ctx.toml
-```
-
-Edit `config/ctx.toml` to point at your documentation:
+### 1. Create a config file
 
 ```toml
+# config/ctx.toml
 [db]
 path = "./data/ctx.sqlite"
 
 [chunking]
-max_tokens = 700
+max_tokens = 700          # ~2800 chars per chunk
+overlap_tokens = 80       # overlap between chunks for context
 
 [retrieval]
-final_limit = 12
+final_limit = 12          # max results per query
+hybrid_alpha = 0.6        # blend: 0 = keyword only, 1 = semantic only
 
 [server]
 bind = "127.0.0.1:7331"
 
 [connectors.filesystem]
 root = "./docs"
-include_globs = ["**/*.md", "**/*.rs"]
+include_globs = ["**/*.md", "**/*.rs", "**/*.txt"]
+exclude_globs = ["**/target/**", "**/node_modules/**"]
 ```
 
-## 2. Initialize and Sync
+### 2. Initialize and sync
 
 ```bash
-$ ctx init --config ./config/ctx.toml
-# Database initialized successfully.
+$ ctx init
+Database initialized successfully.
 
-$ ctx sync filesystem --config ./config/ctx.toml
-# sync filesystem
-#   fetched: 47 items
-#   upserted documents: 47
-#   chunks written: 203
-# ok
+$ ctx sync filesystem
+sync filesystem
+  fetched: 47 items
+  upserted documents: 47
+  chunks written: 203
+ok
 ```
 
-## 3. Search
+Every file matching your globs is now chunked and indexed in SQLite with FTS5 full-text search.
+
+### 3. Search
 
 ```bash
-$ ctx search "authentication" --config ./config/ctx.toml
-# 1. [0.94] filesystem / auth-module.rs
-#    JWT signing key loaded from AWS Secrets Manager...
-# 2. [0.81] filesystem / deployment-runbook.md
-#    Key rotation procedure for production services...
+$ ctx search "authentication flow"
+1. [0.94] filesystem / src/auth.rs
+   "JWT signing key loaded from AWS Secrets Manager on startup..."
+2. [0.81] filesystem / docs/deployment.md
+   "Key rotation procedure for production auth services..."
+3. [0.72] filesystem / docs/architecture.md
+   "Authentication middleware intercepts requests before routing..."
 ```
 
-## 4. Start the MCP Server
+### 4. Start the MCP server
 
 ```bash
-$ ctx serve mcp --config ./config/ctx.toml
-# Listening on 127.0.0.1:7331
+$ ctx serve mcp
+Listening on 127.0.0.1:7331
+
+# In another terminal:
+$ curl -s localhost:7331/tools/search -d '{"query":"auth"}' | jq .results[0]
+{
+  "id": "a1b2c3d4-...",
+  "source": "filesystem",
+  "title": "src/auth.rs",
+  "score": 0.94,
+  "snippet": "JWT signing key loaded from..."
+}
 ```
 
 Your knowledge base is now queryable by Cursor, Claude, or any HTTP client.
 
-## 5. Enable Embeddings (Optional)
+### 5. Enable semantic search (optional)
 
-For semantic and hybrid search, configure an embedding provider:
+For hybrid search that understands meaning (not just keywords), add an embedding provider:
 
 ```bash
 $ export OPENAI_API_KEY="sk-..."
 ```
 
-Update your config:
-
 ```toml
+# Add to config/ctx.toml:
 [embedding]
 provider = "openai"
 model = "text-embedding-3-small"
@@ -86,10 +97,10 @@ dims = 1536
 batch_size = 64
 ```
 
-Then generate embeddings:
-
 ```bash
-$ ctx embed pending --config ./config/ctx.toml
-$ ctx search "deployment" --mode hybrid --config ./config/ctx.toml
-```
+$ ctx embed pending
+Embedding 203 chunks... done (4.2s)
 
+$ ctx search "how does the system handle failures" --mode hybrid
+# Now finds conceptually related docs, not just keyword matches
+```

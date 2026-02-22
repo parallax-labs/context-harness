@@ -1,6 +1,6 @@
 +++
 title = "Built-in Connectors"
-description = "Filesystem, Git, and S3 connectors for ingesting data from external sources."
+description = "Filesystem, Git, and S3 connectors for ingesting data from any source."
 weight = 4
 
 [extra]
@@ -9,77 +9,106 @@ sidebar_group = "Configuration"
 sidebar_order = 4
 +++
 
-Connectors fetch data from external sources and normalize it into a consistent `Document` model. All connectors support incremental sync via checkpoints — only changed content is re-processed on subsequent runs.
+Connectors fetch data from external sources and normalize it into a consistent Document model. All connectors support incremental sync — only changed content is re-processed on subsequent runs.
 
-## Filesystem Connector
+### Filesystem Connector
 
-Scan a local directory tree for files matching glob patterns.
+Scans a local directory tree. Each file becomes a Document with its content as the body.
 
 ```toml
 [connectors.filesystem]
-root = "./docs"                      # Directory to scan
-include_globs = ["**/*.md", "**/*.rs"]  # Files to include
-exclude_globs = ["**/target/**"]       # Files to exclude
-follow_symlinks = false               # Follow symbolic links
+root = "./docs"                        # Directory to scan
+include_globs = ["**/*.md", "**/*.rs"] # Glob patterns to include
+exclude_globs = ["**/target/**"]       # Glob patterns to exclude
+follow_symlinks = false                # Follow symbolic links
 ```
 
-Each file becomes a `Document` with its content as the body, filesystem path as the source ID, and file modification time as the timestamp.
+```bash
+$ ctx sync filesystem
+sync filesystem
+  fetched: 127 items
+  upserted documents: 127
+  chunks written: 584
+ok
+```
 
-## Git Connector
+### Git Connector
 
-Clone and index any Git repository — local or remote. Extracts per-file commit metadata (author, timestamp, SHA) and auto-generates web URLs for GitHub/GitLab repos.
+Clones and indexes any Git repository. Extracts per-file commit metadata (author, timestamp, SHA) and auto-generates web URLs for GitHub/GitLab repos.
 
 ```toml
 [connectors.git]
-url = "https://github.com/acme/platform.git"   # Repo URL or local path
-branch = "main"                               # Branch to track
-root = "docs/"                                 # Subdirectory to scope
-include_globs = ["**/*.md", "**/*.rst"]       # File patterns
-shallow = true                                  # --depth 1 clone
-# cache_dir = "./data/.git-cache/platform"     # Optional clone cache
+url = "https://github.com/acme/platform.git"
+branch = "main"
+root = "docs/"                          # Subdirectory scope
+include_globs = ["**/*.md", "**/*.rst"]
+exclude_globs = []
+shallow = true                           # --depth 1 clone (saves disk)
+cache_dir = "./data/.git-cache/platform" # Reuse between syncs
 ```
 
-**Features:**
-- Clones on first sync, pulls on subsequent syncs
+```bash
+$ ctx sync git
+sync git
+  cloning https://github.com/acme/platform.git (shallow)...
+  fetched: 89 items
+  upserted documents: 89
+  chunks written: 412
+ok
+
+# Subsequent syncs pull incrementally:
+$ ctx sync git
+sync git
+  pulling latest...
+  fetched: 3 items (changed)
+  upserted documents: 3
+ok
+```
+
+**What it gives you:**
 - Per-file last commit timestamp and author from `git log`
-- GitHub/GitLab web URLs auto-generated for each file
-- Shallow clone support to minimize disk usage
-- Incremental sync via checkpoint timestamps
+- GitHub/GitLab web URLs auto-generated for each file (clickable in search results)
+- Shallow clone support to minimize disk and CI time
+- Checkpoint-based incremental sync
 
-## S3 Connector
+### S3 Connector
 
-Index documents from Amazon S3 buckets (or S3-compatible services like MinIO and LocalStack).
+Indexes documents from Amazon S3 or S3-compatible services (MinIO, LocalStack).
 
 ```toml
 [connectors.s3]
-bucket = "acme-docs"                          # Bucket name
-prefix = "engineering/runbooks/"                # Key prefix filter
-region = "us-east-1"                           # AWS region
-include_globs = ["**/*.md", "**/*.json"]       # Key patterns
-# endpoint_url = "http://localhost:9000"       # For MinIO/LocalStack
+bucket = "acme-docs"
+prefix = "engineering/runbooks/"
+region = "us-east-1"
+include_globs = ["**/*.md", "**/*.json"]
+# endpoint_url = "http://localhost:9000"  # For MinIO/LocalStack
 ```
 
 Requires `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` environment variables.
 
-**Features:**
-- Pagination for large buckets (1000+ objects)
-- `LastModified` and `ETag` tracking for incremental sync
-- Custom endpoint URL for S3-compatible services
-- Glob-based include/exclude filtering on object keys
-
-## Embedding Configuration
-
-Embeddings enable semantic and hybrid search. Without embeddings, only keyword search (FTS5/BM25) is available.
-
-```toml
-[embedding]
-provider = "openai"                  # "disabled" or "openai"
-model = "text-embedding-3-small"      # OpenAI model name
-dims = 1536                           # Vector dimensions
-batch_size = 64                       # Texts per API call
-max_retries = 5                       # Retry on failure
-timeout_secs = 30                     # Per-request timeout
+```bash
+$ ctx sync s3
+sync s3
+  listing s3://acme-docs/engineering/runbooks/...
+  fetched: 34 items
+  upserted documents: 34
+  chunks written: 156
+ok
 ```
 
-Set the `OPENAI_API_KEY` environment variable before using embedding commands. Embedding is non-fatal during sync — documents are always ingested even if embedding fails.
+**Features:** pagination for large buckets, `LastModified`/`ETag` tracking, custom endpoints for S3-compatible services.
 
+### Syncing multiple sources
+
+You can configure all connectors in one config and sync them independently:
+
+```bash
+$ ctx sync filesystem    # Local docs
+$ ctx sync git           # Remote repo
+$ ctx sync s3            # S3 bucket
+
+# Or sync a Lua scripted connector:
+$ ctx sync script:jira
+```
+
+All documents land in the same SQLite database and are searchable together. The `source` field tracks where each document came from.
