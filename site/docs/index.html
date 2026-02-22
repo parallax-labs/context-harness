@@ -578,7 +578,7 @@ header {
                   <div class="settings-radio-dot"></div>
                   <div class="settings-radio-info">
                     <div class="settings-radio-name">🖥 WebLLM (Offline)</div>
-                    <div class="settings-radio-desc">Runs Phi-3.5-mini in your browser via WebGPU. ~1.4GB download, cached for future visits. No API key needed.</div>
+                    <div class="settings-radio-desc">Runs Qwen3-4B in your browser via WebGPU. ~2.5GB download, cached for future visits. No API key needed.</div>
                   </div>
                 </label>
                 <label class="settings-radio" id="radioOpenai" onclick="selectBackend('openai')">
@@ -1242,9 +1242,9 @@ async function ensureWebLLM() {
     try {
       const webllm = await import('https://esm.run/@mlc-ai/web-llm');
 
-      const modelId = 'Phi-3.5-mini-instruct-q4f16_1-MLC';
+      const modelId = 'Qwen3-4B-q4f16_1-MLC';
 
-      document.getElementById('chatProgDetail').textContent = 'Loading Phi-3.5-mini…';
+      document.getElementById('chatProgDetail').textContent = 'Loading Qwen3-4B…';
       document.getElementById('chatProgFill').style.width = '5%';
       document.getElementById('chatProgPct').textContent = '5%';
 
