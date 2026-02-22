@@ -96,10 +96,21 @@ pub fn chunk_text(document_id: &str, text: &str, max_tokens: usize) -> Vec<Chunk
                 chunk_index += 1;
                 current_buf.clear();
             }
-            // Hard split at max_chars boundaries
+            // Hard split at max_chars boundaries (UTF-8 safe)
             let mut remaining = trimmed;
             while !remaining.is_empty() {
-                let split_at = remaining.len().min(max_chars);
+                let split_at = snap_to_char_boundary(remaining, remaining.len().min(max_chars));
+                // Ensure we make progress even with only multi-byte chars
+                let split_at = if split_at == 0 && !remaining.is_empty() {
+                    // Advance past at least one full character
+                    remaining
+                        .char_indices()
+                        .nth(1)
+                        .map(|(i, _)| i)
+                        .unwrap_or(remaining.len())
+                } else {
+                    split_at
+                };
                 // Try to split at a newline or space boundary
                 let actual_split = if split_at < remaining.len() {
                     remaining[..split_at]
@@ -110,9 +121,22 @@ pub fn chunk_text(document_id: &str, text: &str, max_tokens: usize) -> Vec<Chunk
                 } else {
                     split_at
                 };
+                // Final safety: ensure actual_split is on a char boundary
+                let actual_split = snap_to_char_boundary(remaining, actual_split);
+                let actual_split = if actual_split == 0 && !remaining.is_empty() {
+                    remaining
+                        .char_indices()
+                        .nth(1)
+                        .map(|(i, _)| i)
+                        .unwrap_or(remaining.len())
+                } else {
+                    actual_split
+                };
                 let piece = &remaining[..actual_split];
-                chunks.push(make_chunk(document_id, chunk_index, piece.trim()));
-                chunk_index += 1;
+                if !piece.trim().is_empty() {
+                    chunks.push(make_chunk(document_id, chunk_index, piece.trim()));
+                    chunk_index += 1;
+                }
                 remaining = &remaining[actual_split..];
             }
         } else {
@@ -134,6 +158,21 @@ pub fn chunk_text(document_id: &str, text: &str, max_tokens: usize) -> Vec<Chunk
     }
 
     chunks
+}
+
+/// Snap a byte index back to the nearest valid UTF-8 char boundary.
+///
+/// If `index` falls in the middle of a multi-byte character, this walks
+/// backwards until it finds the start of that character.
+fn snap_to_char_boundary(s: &str, index: usize) -> usize {
+    if index >= s.len() {
+        return s.len();
+    }
+    let mut i = index;
+    while i > 0 && !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    i
 }
 
 /// Create a single [`Chunk`] with a UUID and SHA-256 content hash.
@@ -200,6 +239,20 @@ mod tests {
         let chunks = chunk_text("doc1", &text, 10);
         for (i, c) in chunks.iter().enumerate() {
             assert_eq!(c.chunk_index, i as i64, "Index mismatch at position {}", i);
+        }
+    }
+
+    #[test]
+    fn test_multibyte_utf8_chars() {
+        // Box-drawing characters are 3 bytes each (─ = E2 94 80)
+        let text = "┌──────────────────┐\n│ Hello world      │\n└──────────────────┘";
+        // Small token limit to force a hard split through the box-drawing chars
+        let chunks = chunk_text("doc1", text, 3); // 12 chars max
+        assert!(!chunks.is_empty());
+        for c in &chunks {
+            // Every chunk must be valid UTF-8 (Rust guarantees this, but
+            // the indexing must not panic)
+            assert!(!c.text.is_empty() || c.chunk_index == 0);
         }
     }
 
