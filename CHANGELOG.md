@@ -30,6 +30,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Rust extension traits** — define custom connectors and tools in compiled Rust via `Connector` and `Tool` traits. Register with `ConnectorRegistry` and `ToolRegistry`, then use `run_server_with_extensions()` and `run_sync_with_extensions()` to integrate them alongside built-in and Lua extensions. Custom connectors sync via `ctx sync custom:<name>`. Custom tools appear in `GET /tools/list` and execute via `POST /tools/{name}`. Includes `ToolContext` bridge for search/get/sources access during tool execution.
 - **`async-trait`** dependency — used for `dyn Trait` async method dispatch in `Connector` and `Tool` traits.
 
+- **MCP agents** — named personas that combine a system prompt, scoped tools, and optional dynamic context injection. Define agents inline in TOML (`[agents.inline.<name>]`) with a static system prompt, via Lua scripts (`[agents.script.<name>]`) with dynamic context injection using the `context.search()`/`context.get()` bridge, or as compiled Rust `Agent` trait implementations in custom binaries. Agents are discoverable via `GET /agents/list` and resolvable via `POST /agents/{name}/prompt`. Enables "assume a role" workflows in Cursor, Claude Desktop, and other MCP clients without needing a chat completion endpoint.
+- **`ctx agent list`** — list all configured agents (TOML, Lua, and custom Rust).
+- **`ctx agent test <name>`** — resolve an agent's prompt with `--arg key=value` pairs and print the result.
+- **`ctx agent init <name>`** — scaffold a new Lua agent script from a template.
+- **`GET /agents/list`** endpoint — returns all registered agents with metadata, tools, and argument schemas.
+- **`POST /agents/{name}/prompt`** endpoint — resolves an agent's system prompt with provided arguments.
+- **`Agent` trait** — Rust trait for custom agent implementations with `name()`, `description()`, `tools()`, `arguments()`, and `resolve(args, ctx)` methods.
+- **`AgentRegistry`** — unified registry for TOML, Lua, and custom Rust agents.
+- Example `RunbookAgent` in `examples/custom_harness.rs` demonstrating dynamic context injection via `ToolContext::search()`.
+
 - **Named multi-instance connectors** — all connector types (filesystem, git, s3) now use named instances (`[connectors.git.platform]`, `[connectors.filesystem.docs]`, etc.) matching the existing script connector pattern. Configure multiple of each type. Documents are tagged with `source = "type:name"` (e.g. `"git:platform"`).
 - **`ctx sync all`** — sync every configured connector in parallel via `tokio::task::JoinSet`.
 - **`ctx sync <type>`** — sync all instances of a type (e.g. `ctx sync git` syncs all git connectors).

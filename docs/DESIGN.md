@@ -100,13 +100,17 @@ Guarantees:
 ### extensions/ (src/)
 
 - `traits.rs` — `Connector` and `Tool` traits, `ToolContext`, `ConnectorRegistry`, `ToolRegistry`
+- `agents.rs` — `Agent` trait, `AgentPrompt`, `AgentRegistry`, `TomlAgent`
+- `agent_script.rs` — Lua scripted agents: `LuaAgentAdapter`, load/resolve/scaffold/test
 
 Guarantees:
 - `Connector` trait: `name()`, `description()`, `scan()` → `Vec<SourceItem>`
 - `Tool` trait: `name()`, `description()`, `parameters_schema()`, `execute(params, ctx)`
+- `Agent` trait: `name()`, `description()`, `tools()`, `arguments()`, `resolve(args, ctx)`
 - `ToolContext`: `search()`, `get()`, `sources()` bridging to core functions
 - `ConnectorRegistry`: registered connectors available via `ctx sync custom:<name>`
 - `ToolRegistry`: registered tools available via `POST /tools/{name}`
+- `AgentRegistry`: registered agents available via `GET /agents/list` and `POST /agents/{name}/prompt`
 
 ---
 
@@ -114,14 +118,16 @@ Guarantees:
 
 - `server.rs` — Axum HTTP server (MCP-compatible)
 - `tool_script.rs` — Lua tool loading, validation, execution (see `LUA_TOOLS.md`)
-- `lua_runtime.rs` — Shared Lua VM setup + host APIs (used by connectors + tools)
+- `lua_runtime.rs` — Shared Lua VM setup + host APIs (used by connectors + tools + agents)
 
 Guarantees:
 - `POST /tools/search` → context.search (SCHEMAS.md)
 - `POST /tools/get` → context.get (SCHEMAS.md)
 - `GET /tools/sources` → context.sources (SCHEMAS.md)
 - `GET /tools/list` → tool discovery with OpenAI JSON schemas (LUA_TOOLS.md)
-- `POST /tools/{name}` → dynamic Lua tool execution (LUA_TOOLS.md)
+- `POST /tools/{name}` → dynamic tool execution (LUA_TOOLS.md / RUST_TRAITS.md)
+- `GET /agents/list` → agent discovery (AGENTS.md)
+- `POST /agents/{name}/prompt` → agent prompt resolution (AGENTS.md)
 - `GET /health` → health check
 - Error responses follow error schema (code + message)
 - CORS enabled
@@ -170,6 +176,9 @@ Checkpoint updated
 | tool init   | tool_script::scaffold_tool() |
 | tool test   | tool_script::test_tool() |
 | tool list   | tool_script::list_tools() |
+| agent list  | agent_script::list_agents() |
+| agent test  | agent_script::test_agent() |
+| agent init  | agent_script::scaffold_agent() |
 
 ## HTTP-to-Module Mapping
 
@@ -180,6 +189,8 @@ Checkpoint updated
 | GET /tools/sources | handle_sources | sources::get_sources() |
 | GET /tools/list | handle_list_tools | tool_script::get_tool_definitions() |
 | POST /tools/{name} | handle_tool_call | tool_script::execute_tool() |
+| GET /agents/list | handle_list_agents | agents::AgentRegistry::list() |
+| POST /agents/{name}/prompt | handle_resolve_agent | agents::Agent::resolve() |
 | GET /health | handle_health | — |
 
 ---
@@ -195,3 +206,4 @@ The public contract is defined by:
 - LUA_CONNECTORS.md
 - LUA_TOOLS.md
 - RUST_TRAITS.md
+- AGENTS.md

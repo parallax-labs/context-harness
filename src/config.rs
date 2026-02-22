@@ -81,6 +81,9 @@ pub struct Config {
     /// Tool script configurations (all optional).
     #[serde(default)]
     pub tools: ToolsConfig,
+    /// Agent configurations (all optional).
+    #[serde(default)]
+    pub agents: AgentsConfig,
 }
 
 impl Config {
@@ -110,6 +113,7 @@ impl Config {
             },
             connectors: ConnectorsConfig::default(),
             tools: ToolsConfig::default(),
+            agents: AgentsConfig::default(),
         }
     }
 }
@@ -394,6 +398,96 @@ pub struct ScriptToolConfig {
 }
 
 fn default_tool_timeout() -> u64 {
+    30
+}
+
+/// Container for all agent configurations.
+///
+/// Agents are named personas that combine a system prompt, scoped tools,
+/// and optional dynamic context injection. They can be defined inline
+/// in TOML or via Lua scripts.
+///
+/// # Example
+///
+/// ```toml
+/// [agents.inline.code-reviewer]
+/// description = "Reviews code against project conventions"
+/// tools = ["search", "get"]
+/// system_prompt = "You are a senior code reviewer..."
+///
+/// [agents.script.incident-responder]
+/// path = "agents/incident-responder.lua"
+/// timeout = 30
+/// ```
+#[derive(Debug, Deserialize, Clone, Default)]
+pub struct AgentsConfig {
+    /// Inline TOML agents with static system prompts.
+    /// Each key is the agent name, each value contains the prompt and tool list.
+    #[serde(default)]
+    pub inline: HashMap<String, InlineAgentConfig>,
+    /// Lua script agents with dynamic prompt resolution.
+    /// Each key is the agent name, each value contains the script path
+    /// and arbitrary config keys passed to `agent.resolve()`.
+    #[serde(default)]
+    pub script: HashMap<String, ScriptAgentConfig>,
+}
+
+/// Inline (TOML) agent configuration.
+///
+/// Defines an agent with a static system prompt and fixed tool list.
+/// The simplest way to create an agent — no Lua or Rust code needed.
+///
+/// # Example
+///
+/// ```toml
+/// [agents.inline.architect]
+/// description = "Answers architecture questions"
+/// tools = ["search", "get", "sources"]
+/// system_prompt = """
+/// You are a software architect. Search for ADRs and design
+/// docs to ground your recommendations.
+/// """
+/// ```
+#[derive(Debug, Deserialize, Clone)]
+pub struct InlineAgentConfig {
+    /// One-line description for agent discovery.
+    pub description: String,
+    /// List of tool names this agent should expose.
+    pub tools: Vec<String>,
+    /// The system prompt text.
+    pub system_prompt: String,
+}
+
+/// Lua script agent configuration.
+///
+/// Points to a `.lua` file implementing the agent interface. All fields
+/// except `path` and `timeout` are passed as config to the script's
+/// `agent.resolve(args, config, context)` function.
+///
+/// Values containing `${VAR_NAME}` are expanded from the process environment.
+///
+/// # Example
+///
+/// ```toml
+/// [agents.script.incident-responder]
+/// path = "agents/incident-responder.lua"
+/// timeout = 30
+/// search_limit = 5
+/// priority_sources = ["runbooks"]
+/// ```
+#[derive(Debug, Deserialize, Clone)]
+pub struct ScriptAgentConfig {
+    /// Path to the `.lua` agent script.
+    pub path: PathBuf,
+    /// Maximum execution time in seconds. Default: `30`.
+    #[serde(default = "default_agent_timeout")]
+    pub timeout: u64,
+    /// All other config keys — passed to the Lua `agent.resolve()` function.
+    #[serde(flatten)]
+    pub extra: toml::Table,
+}
+
+fn default_agent_timeout() -> u64 {
     30
 }
 

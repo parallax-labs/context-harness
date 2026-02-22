@@ -45,6 +45,8 @@
 //! ctx serve mcp --config ./config/ctx.toml
 //! ```
 
+mod agent_script;
+mod agents;
 mod chunk;
 mod config;
 mod connector_fs;
@@ -215,6 +217,15 @@ enum Commands {
         #[command(subcommand)]
         action: ToolAction,
     },
+
+    /// Manage agents (personas with system prompts and tool scoping).
+    ///
+    /// Create, test, and list agents that provide "assume a role" workflows
+    /// for Cursor, Claude, and other MCP clients.
+    Agent {
+        #[command(subcommand)]
+        action: AgentAction,
+    },
 }
 
 /// Embedding management subcommands.
@@ -300,6 +311,32 @@ enum ToolAction {
     List,
 }
 
+/// Agent management subcommands.
+#[derive(Subcommand)]
+enum AgentAction {
+    /// List all configured agents (TOML and Lua).
+    List,
+    /// Test an agent by resolving its prompt.
+    ///
+    /// Loads the agent, calls its `resolve()` function with the provided
+    /// arguments, and prints the resulting system prompt and messages.
+    Test {
+        /// Agent name (as defined in `[agents.inline.<name>]` or `[agents.script.<name>]`).
+        name: String,
+        /// Agent arguments as `key=value` pairs.
+        #[arg(long = "arg", value_parser = parse_key_val)]
+        args: Vec<(String, String)>,
+    },
+    /// Scaffold a new Lua agent script from a template.
+    ///
+    /// Creates `agents/<name>.lua` with a commented template showing
+    /// the agent interface.
+    Init {
+        /// Name for the new agent (e.g., `code-reviewer`).
+        name: String,
+    },
+}
+
 /// Parse a `key=value` pair for `--param` arguments.
 fn parse_key_val(s: &str) -> Result<(String, String), String> {
     let pos = s
@@ -343,6 +380,12 @@ async fn main() -> anyhow::Result<()> {
             action: ToolAction::Init { name },
         } => {
             tool_script::scaffold_tool(name)?;
+            return Ok(());
+        }
+        Commands::Agent {
+            action: AgentAction::Init { name },
+        } => {
+            agent_script::scaffold_agent(name)?;
             return Ok(());
         }
         Commands::Tool {
@@ -437,6 +480,18 @@ async fn main() -> anyhow::Result<()> {
                 tool_script::list_tools(&cfg)?;
             }
             ToolAction::Init { .. } => {
+                // Handled above (before config loading)
+                unreachable!()
+            }
+        },
+        Commands::Agent { action } => match action {
+            AgentAction::List => {
+                agent_script::list_agents(&cfg)?;
+            }
+            AgentAction::Test { name, args } => {
+                agent_script::test_agent(&name, args, &cfg).await?;
+            }
+            AgentAction::Init { .. } => {
                 // Handled above (before config loading)
                 unreachable!()
             }

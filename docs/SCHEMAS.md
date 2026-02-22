@@ -191,6 +191,81 @@ The `result` value is tool-specific — it is whatever the Lua
 
 ---
 
+## Agents: agents.list
+
+### Endpoint
+
+`GET /agents/list`
+
+### Response Schema
+
+```json
+{
+  "agents": [
+    {
+      "name": "string",
+      "description": "string",
+      "tools": ["string"],
+      "source": "toml | lua | rust",
+      "arguments": [
+        {
+          "name": "string",
+          "description": "string",
+          "required": false
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+## Agents: agents.{name}.prompt
+
+### Endpoint
+
+`POST /agents/{name}/prompt`
+
+### Request Schema
+
+Agent arguments as a flat JSON object:
+
+```json
+{
+  "service": "payments-api",
+  "severity": "P1"
+}
+```
+
+### Response Schema (Success)
+
+```json
+{
+  "system": "string",
+  "tools": ["string"],
+  "messages": [
+    {
+      "role": "user | assistant | system",
+      "content": "string"
+    }
+  ]
+}
+```
+
+### Response Schema (Error)
+
+```json
+{
+  "error": {
+    "code": "not_found | tool_error",
+    "message": "string"
+  }
+}
+```
+
+---
+
 ## Error Schema (All Endpoints)
 
 ```json

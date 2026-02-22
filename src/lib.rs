@@ -77,6 +77,8 @@
 //! | [`lua_runtime`] | Shared Lua 5.4 VM runtime: sandboxing, host APIs, value conversions |
 //! | [`tool_script`] | Lua MCP tool extensions: load, validate, execute Lua tool scripts |
 //! | [`traits`] | Extension traits: `Connector`, `Tool`, `ToolContext`, registries |
+//! | [`agents`] | Agent system: `Agent` trait, `AgentPrompt`, `AgentRegistry`, `TomlAgent` |
+//! | [`agent_script`] | Lua scripted agents: load, resolve, scaffold, test |
 //! | [`chunk`] | Paragraph-boundary text chunker |
 //! | [`embedding`] | Embedding provider trait, OpenAI implementation, vector utilities |
 //! | [`embed_cmd`] | Embedding CLI commands: `pending` and `rebuild` |
@@ -94,6 +96,8 @@
 //! See [`config`] for all available options and [`config::load_config`] for
 //! validation rules.
 
+pub mod agent_script;
+pub mod agents;
 pub mod chunk;
 pub mod config;
 pub mod connector_fs;
@@ -114,6 +118,7 @@ pub mod sources;
 pub mod tool_script;
 pub mod traits;
 
+pub use agents::{Agent, AgentPrompt, AgentRegistry, TomlAgent};
 pub use models::SourceItem;
 pub use traits::{
     Connector, ConnectorRegistry, GetTool, SearchTool, SourcesTool, Tool, ToolContext, ToolRegistry,

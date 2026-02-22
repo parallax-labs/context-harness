@@ -7,6 +7,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use chrono::Utc;
+use context_harness::agents::{Agent, AgentPrompt, AgentRegistry};
 use context_harness::config::Config;
 use context_harness::ingest::run_sync_with_extensions;
 use context_harness::migrate;
@@ -330,8 +331,9 @@ async fn test_custom_tool_via_http_server() {
     // Start server in background
     let cfg_clone = cfg.clone();
     let tools_clone = tools.clone();
+    let agents = Arc::new(AgentRegistry::new());
     let server_handle = tokio::spawn(async move {
-        run_server_with_extensions(&cfg_clone, tools_clone)
+        run_server_with_extensions(&cfg_clone, tools_clone, agents)
             .await
             .ok();
     });
@@ -409,8 +411,9 @@ async fn test_tool_list_includes_builtins_and_custom() {
 
     let cfg_clone = cfg.clone();
     let tools_clone = tools.clone();
+    let agents = Arc::new(AgentRegistry::new());
     let server_handle = tokio::spawn(async move {
-        run_server_with_extensions(&cfg_clone, tools_clone)
+        run_server_with_extensions(&cfg_clone, tools_clone, agents)
             .await
             .ok();
     });
@@ -440,6 +443,137 @@ async fn test_tool_list_includes_builtins_and_custom() {
         tool_names.contains(&"count_results"),
         "Missing custom: count_results"
     );
+
+    server_handle.abort();
+}
+
+// ─── Test Agent ─────────────────────────────────────────────────────
+
+/// A simple test agent that returns a static prompt.
+struct TestAgent;
+
+#[async_trait]
+impl Agent for TestAgent {
+    fn name(&self) -> &str {
+        "test-agent"
+    }
+
+    fn description(&self) -> &str {
+        "A test agent for integration tests"
+    }
+
+    fn tools(&self) -> Vec<String> {
+        vec!["search".into(), "get".into()]
+    }
+
+    fn source(&self) -> &str {
+        "rust"
+    }
+
+    async fn resolve(&self, args: Value, _ctx: &ToolContext) -> Result<AgentPrompt> {
+        let topic = args["topic"].as_str().unwrap_or("testing");
+        Ok(AgentPrompt {
+            system: format!("You are a test agent focused on {}.", topic),
+            tools: self.tools(),
+            messages: vec![],
+        })
+    }
+}
+
+/// Prove that custom agents appear in /agents/list and can be resolved.
+#[tokio::test]
+async fn test_custom_agent_list_and_resolve() {
+    let port = find_free_port();
+    let tmp = TempDir::new().unwrap();
+    let cfg = test_config_with_port(&tmp, port);
+    migrate::run_migrations(&cfg).await.unwrap();
+
+    let tools = Arc::new(ToolRegistry::new());
+    let mut agents = AgentRegistry::new();
+    agents.register(Box::new(TestAgent));
+    let agents = Arc::new(agents);
+
+    let cfg_clone = cfg.clone();
+    let tools_clone = tools.clone();
+    let agents_clone = agents.clone();
+    let server_handle = tokio::spawn(async move {
+        run_server_with_extensions(&cfg_clone, tools_clone, agents_clone)
+            .await
+            .ok();
+    });
+    wait_for_server(port).await;
+
+    let client = reqwest::Client::new();
+
+    // Verify agent appears in /agents/list
+    let list_url = format!("http://127.0.0.1:{}/agents/list", port);
+    let resp = client.get(&list_url).send().await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: Value = resp.json().await.unwrap();
+    let agent_names: Vec<&str> = body["agents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| a["name"].as_str().unwrap())
+        .collect();
+    assert!(
+        agent_names.contains(&"test-agent"),
+        "Custom agent should appear in /agents/list, got: {:?}",
+        agent_names
+    );
+
+    // Verify agent metadata
+    let agent_info = body["agents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["name"] == "test-agent")
+        .unwrap();
+    assert_eq!(agent_info["source"], "rust");
+    assert_eq!(
+        agent_info["description"],
+        "A test agent for integration tests"
+    );
+
+    // Resolve the agent's prompt
+    let resolve_url = format!("http://127.0.0.1:{}/agents/test-agent/prompt", port);
+    let resp = client
+        .post(&resolve_url)
+        .json(&json!({"topic": "deployment"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: Value = resp.json().await.unwrap();
+    assert!(
+        body["system"].as_str().unwrap().contains("deployment"),
+        "Agent should incorporate the topic argument into the system prompt"
+    );
+    assert_eq!(body["tools"][0], "search");
+    assert_eq!(body["tools"][1], "get");
+
+    // Resolve with no arguments (should use default)
+    let resp = client
+        .post(&resolve_url)
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: Value = resp.json().await.unwrap();
+    assert!(body["system"].as_str().unwrap().contains("testing"));
+
+    // Non-existent agent → 404
+    let resp = client
+        .post(format!(
+            "http://127.0.0.1:{}/agents/nonexistent/prompt",
+            port
+        ))
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 404);
 
     server_handle.abort();
 }

@@ -3,6 +3,7 @@
 //! Demonstrates building a custom binary that extends Context Harness with:
 //! - A **`JsonConnector`** that reads documents from a JSON file
 //! - A **`StatsTool`** that queries the knowledge base and returns statistics
+//! - A **`RunbookAgent`** that pre-searches for runbooks and injects them as context
 //!
 //! # Running
 //!
@@ -54,11 +55,17 @@
 //!   --config /tmp/custom-harness/config/ctx.toml \
 //!   serve
 //!
-//! # 5. In another terminal, query the stats tool
+//! # 5. In another terminal, query the stats tool and agents
 //! curl -s http://localhost:7480/tools/list | jq .
 //! curl -s -X POST http://localhost:7480/tools/kb_stats \
 //!   -H 'Content-Type: application/json' \
 //!   -d '{"query": "deployment"}' | jq .
+//!
+//! # 6. List agents and resolve the runbook-expert agent
+//! curl -s http://localhost:7480/agents/list | jq .
+//! curl -s -X POST http://localhost:7480/agents/runbook-expert/prompt \
+//!   -H 'Content-Type: application/json' \
+//!   -d '{"topic": "deployment"}' | jq .
 //! ```
 
 use anyhow::{bail, Context, Result};
@@ -70,6 +77,7 @@ use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use context_harness::agents::{Agent, AgentPrompt, AgentRegistry};
 use context_harness::config;
 use context_harness::ingest::run_sync_with_extensions;
 use context_harness::migrate;
@@ -241,6 +249,82 @@ impl Tool for StatsTool {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// Runbook Agent
+// ═══════════════════════════════════════════════════════════════════════
+
+/// A custom agent that pre-searches for runbooks and injects them into
+/// the system prompt. This demonstrates how to implement the [`Agent`]
+/// trait with dynamic context injection via [`ToolContext`].
+struct RunbookAgent;
+
+#[async_trait]
+impl Agent for RunbookAgent {
+    fn name(&self) -> &str {
+        "runbook-expert"
+    }
+
+    fn description(&self) -> &str {
+        "Helps follow operational runbooks and procedures"
+    }
+
+    fn tools(&self) -> Vec<String> {
+        vec!["search".into(), "get".into(), "kb_stats".into()]
+    }
+
+    fn source(&self) -> &str {
+        "rust"
+    }
+
+    async fn resolve(&self, args: Value, ctx: &ToolContext) -> Result<AgentPrompt> {
+        let topic = args["topic"].as_str().unwrap_or("operations");
+
+        // Pre-search for relevant runbooks to inject as context
+        let results = ctx
+            .search(
+                topic,
+                SearchOptions {
+                    mode: Some("keyword".to_string()),
+                    limit: Some(3),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap_or_default();
+
+        // Build context snippets from search results
+        let mut context_text = String::new();
+        for r in &results {
+            if let Some(ref title) = r.title {
+                context_text.push_str(&format!("\n## {}\n", title));
+            }
+            context_text.push_str(&r.snippet);
+            context_text.push('\n');
+        }
+
+        let system = format!(
+            r#"You are a runbook expert focused on {topic}.
+
+You have access to the knowledge base and should use the search and get tools
+to find relevant operational procedures.
+
+Here are some relevant documents I found for you:
+{context_text}
+
+When answering:
+1. Reference specific runbook steps
+2. Suggest related procedures the user should review
+3. Warn about common pitfalls"#,
+        );
+
+        Ok(AgentPrompt {
+            system,
+            tools: self.tools(),
+            messages: vec![],
+        })
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // CLI
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -309,8 +393,12 @@ async fn main() -> Result<()> {
             let mut tools = ToolRegistry::new();
             tools.register(Box::new(StatsTool));
 
-            println!("Starting server with custom StatsTool...");
-            run_server_with_extensions(&cfg, Arc::new(tools)).await?;
+            // Register our custom agent
+            let mut agents = AgentRegistry::new();
+            agents.register(Box::new(RunbookAgent));
+
+            println!("Starting server with custom StatsTool + RunbookAgent...");
+            run_server_with_extensions(&cfg, Arc::new(tools), Arc::new(agents)).await?;
         }
     }
 
