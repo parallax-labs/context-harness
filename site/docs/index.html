@@ -81,6 +81,17 @@
             display: none; background: none; border: none; color: var(--text);
             font-size: 22px; cursor: pointer; padding: 4px;
         }
+        .header-search {
+            display: flex; align-items: center; gap: 6px;
+            padding: 6px 12px; border-radius: 8px; cursor: pointer;
+            background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
+            color: var(--text-muted); font-size: 13px; transition: all 0.15s;
+        }
+        .header-search:hover { border-color: rgba(255,255,255,0.2); color: var(--text-dim); }
+        .header-search kbd {
+            padding: 1px 5px; border-radius: 3px; font-size: 11px;
+            background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+        }
 
         /* ===== Layout ===== */
         .layout {
@@ -240,6 +251,11 @@
             <span class="header-title">Documentation</span>
         </div>
         <div class="header-links">
+            <button class="header-search" id="search-trigger">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/></svg>
+                Search
+                <kbd>⌘K</kbd>
+            </button>
             <a href="../">Home</a>
             <a href="../api/context_harness/">API Reference</a>
             <a href="https://github.com/parallax-labs/context-harness" class="gh-link" target="_blank" rel="noopener">
@@ -1040,6 +1056,8 @@ WantedBy=multi-user.target</code></pre>
 
 </main>
 </div>
+
+<script src="../ctx-search.js" data-json="data.json" data-trigger="#search-trigger" data-placeholder="Search docs, source code, guides…"></script>
 
 <script>
 // Sidebar active link tracking

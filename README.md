@@ -247,10 +247,21 @@ See [`config/ctx.example.toml`](config/ctx.example.toml) for a complete example.
 
 ## Documentation
 
-Documentation is live at **[parallax-labs.github.io/context-harness/docs/](https://parallax-labs.github.io/context-harness/docs/)**.
+Documentation is live at **[parallax-labs.github.io/context-harness](https://parallax-labs.github.io/context-harness/)**.
 
 - **[Docs](https://parallax-labs.github.io/context-harness/docs/)** — getting started, configuration, CLI reference, HTTP API, deployment
-- **[Rustdoc API Reference](https://parallax-labs.github.io/context-harness/api/context_harness/)** — full API docs generated from source
+- **[API Reference](https://parallax-labs.github.io/context-harness/api/context_harness/)** — Rustdoc API docs generated from source
+- **[Live Demo](https://parallax-labs.github.io/context-harness/demo/)** — search a pre-built knowledge base in your browser
+
+### Search Widget
+
+Context Harness ships a drop-in search widget (`ctx-search.js`) for adding ⌘K search to any static site:
+
+```html
+<script src="ctx-search.js" data-json="data.json"></script>
+```
+
+Build the search index in CI, deploy `data.json` as a static asset, and get instant client-side search — no server, no API keys. See the [docs page](https://parallax-labs.github.io/context-harness/docs/) for a live example.
 
 ## License
 
