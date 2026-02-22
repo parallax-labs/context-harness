@@ -1,6 +1,6 @@
 +++
 title = "Quick Start"
-description = "Go from zero to searchable knowledge base in 60 seconds."
+description = "Go from zero to searchable knowledge base in 5 minutes."
 weight = 2
 
 [extra]
@@ -9,10 +9,13 @@ sidebar_group = "Getting Started"
 sidebar_order = 2
 +++
 
+This guide takes you from installation to having an AI agent searching your codebase in 5 minutes.
+
 ### 1. Create a config file
 
-```toml
-# config/ctx.toml
+```bash
+$ mkdir -p config
+$ cat > config/ctx.toml << 'EOF'
 [db]
 path = "./data/ctx.sqlite"
 
@@ -31,6 +34,7 @@ bind = "127.0.0.1:7331"
 root = "./docs"
 include_globs = ["**/*.md", "**/*.rs", "**/*.txt"]
 exclude_globs = ["**/target/**", "**/node_modules/**"]
+EOF
 ```
 
 ### 2. Initialize and sync
@@ -47,9 +51,9 @@ sync filesystem
 ok
 ```
 
-Every file matching your globs is now chunked and indexed in SQLite with FTS5 full-text search.
+Every matching file is now chunked and indexed in SQLite with FTS5 full-text search.
 
-### 3. Search
+### 3. Search from the CLI
 
 ```bash
 $ ctx search "authentication flow"
@@ -66,9 +70,17 @@ $ ctx search "authentication flow"
 ```bash
 $ ctx serve mcp
 Listening on 127.0.0.1:7331
+```
 
-# In another terminal:
-$ curl -s localhost:7331/tools/search -d '{"query":"auth"}' | jq .results[0]
+In another terminal, verify it works:
+
+```bash
+$ curl -s localhost:7331/health
+{"status":"ok"}
+
+$ curl -s localhost:7331/tools/search \
+    -H "Content-Type: application/json" \
+    -d '{"query": "auth"}' | jq '.results[0]'
 {
   "id": "a1b2c3d4-...",
   "source": "filesystem",
@@ -78,24 +90,41 @@ $ curl -s localhost:7331/tools/search -d '{"query":"auth"}' | jq .results[0]
 }
 ```
 
-Your knowledge base is now queryable by Cursor, Claude, or any HTTP client.
+### 5. Connect to Cursor
 
-### 5. Enable semantic search (optional)
+Create `.cursor/mcp.json` in your project root:
 
-For hybrid search that understands meaning (not just keywords), add an embedding provider:
+```json
+{
+  "mcpServers": {
+    "context-harness": {
+      "url": "http://localhost:7331"
+    }
+  }
+}
+```
+
+Now ask Cursor's agent: *"Search our docs for the deployment procedure"* — it will call Context Harness automatically.
+
+### 6. Enable semantic search (optional)
+
+Keyword search works great out of the box. For hybrid search that understands *meaning*, add embeddings:
 
 ```bash
 $ export OPENAI_API_KEY="sk-..."
 ```
 
+Add to `config/ctx.toml`:
+
 ```toml
-# Add to config/ctx.toml:
 [embedding]
 provider = "openai"
 model = "text-embedding-3-small"
 dims = 1536
 batch_size = 64
 ```
+
+Generate embeddings:
 
 ```bash
 $ ctx embed pending
@@ -104,3 +133,39 @@ Embedding 203 chunks... done (4.2s)
 $ ctx search "how does the system handle failures" --mode hybrid
 # Now finds conceptually related docs, not just keyword matches
 ```
+
+### 7. Add a remote repo (optional)
+
+Index a GitHub repo alongside your local files:
+
+```toml
+# Add to config/ctx.toml:
+[connectors.git]
+url = "https://github.com/acme/platform.git"
+branch = "main"
+include_globs = ["docs/**/*.md", "src/**/*.rs"]
+shallow = true
+```
+
+```bash
+$ ctx sync git
+sync git
+  cloning https://github.com/acme/platform.git...
+  fetched: 89 items
+  upserted documents: 89
+  chunks written: 412
+ok
+
+# Search now returns results from both filesystem and git
+$ ctx search "deploy" --mode hybrid
+```
+
+### What's next?
+
+- [Configuration](/docs/configuration/) — full reference for `ctx.toml`
+- [Connectors](/docs/connectors/) — filesystem, Git, and S3 setup
+- [Lua Connectors](/docs/lua-connectors/) — index Jira, Slack, Notion, anything
+- [Lua Tools](/docs/lua-tools/) — give AI agents custom actions (create tickets, post to Slack)
+- [Agent Integration](/docs/agent-integration/) — connect to Claude Desktop, Continue.dev, etc.
+- [Multi-Repo Context](/docs/multi-repo/) — unified search across multiple repos
+- [Deployment](/docs/deployment/) — Docker, systemd, CI/CD
