@@ -31,12 +31,14 @@ Guarantees:
 - `connector_fs.rs` — Filesystem connector
 - `connector_git.rs` — Git repository connector
 - `connector_s3.rs` — Amazon S3 connector
+- `connector_script.rs` — Lua scripted connectors (see `LUA_CONNECTORS.md`)
 
 Guarantees:
 - All connectors produce Vec<SourceItem>
 - Supports incremental sync via checkpoints
 - Git: clone/pull, subdirectory scoping, per-file git metadata, web URL generation
 - S3: ListObjectsV2 with pagination, SigV4 signed requests, custom endpoint support
+- Script: Lua 5.4 VM via `mlua`, sandboxed host APIs (http, json, fs, env, log)
 
 ---
 
@@ -146,6 +148,8 @@ Checkpoint updated
 | embed pending | embed_cmd::run_embed_pending() |
 | embed rebuild | embed_cmd::run_embed_rebuild() |
 | serve mcp   | server::run_server() |
+| connector test | connector_script::test_script() |
+| connector init | connector_script::scaffold_connector() |
 
 ## HTTP-to-Module Mapping
 
@@ -166,3 +170,4 @@ The public contract is defined by:
 - USAGE.md
 - SCHEMAS.md
 - HYBRID_SCORING.md
+- LUA_CONNECTORS.md
