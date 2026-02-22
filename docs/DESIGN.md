@@ -29,10 +29,14 @@ Guarantees:
 ### connectors/ (src/)
 
 - `connector_fs.rs` — Filesystem connector
+- `connector_git.rs` — Git repository connector
+- `connector_s3.rs` — Amazon S3 connector
 
 Guarantees:
-- Connector produces SourceItems
+- All connectors produce Vec<SourceItem>
 - Supports incremental sync via checkpoints
+- Git: clone/pull, subdirectory scoping, per-file git metadata, web URL generation
+- S3: ListObjectsV2 with pagination, SigV4 signed requests, custom endpoint support
 
 ---
 

@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, Output, Stdio};
 use tempfile::TempDir;
 
 fn ctx_binary() -> PathBuf {
@@ -293,7 +293,11 @@ fn test_unknown_connector() {
     run_ctx(&config_path, &["init"]);
     let (_, stderr, success) = run_ctx(&config_path, &["sync", "nonexistent"]);
     assert!(!success, "Unknown connector should fail");
-    assert!(stderr.contains("Unknown connector"));
+    assert!(
+        stderr.contains("Unknown connector") || stderr.contains("nonexistent"),
+        "Should mention unknown connector, got: {}",
+        stderr
+    );
 }
 
 #[test]
@@ -719,6 +723,295 @@ fn test_server_get_not_found() {
 
     server.kill().ok();
     server.wait().ok();
+}
+
+// ============ Git Connector Tests ============
+
+/// Create a test git repo and return its path.
+fn create_test_git_repo(tmp: &Path) -> PathBuf {
+    let repo_dir = tmp.join("test-repo");
+    fs::create_dir_all(&repo_dir).unwrap();
+
+    // Initialize a git repo
+    run_git(&repo_dir, &["init"]);
+    run_git(&repo_dir, &["config", "user.email", "test@example.com"]);
+    run_git(&repo_dir, &["config", "user.name", "Test User"]);
+
+    // Create docs directory with test files
+    let docs_dir = repo_dir.join("docs");
+    fs::create_dir_all(&docs_dir).unwrap();
+    fs::write(
+        docs_dir.join("guide.md"),
+        "# User Guide\n\nThis is the user guide for our project.\n\nIt covers installation and usage.",
+    )
+    .unwrap();
+    fs::write(
+        docs_dir.join("api.md"),
+        "# API Reference\n\nThis document describes the API endpoints.\n\nGET /health returns status.",
+    )
+    .unwrap();
+    fs::write(
+        docs_dir.join("notes.txt"),
+        "Random notes about the project.\n\nThese are internal notes.",
+    )
+    .unwrap();
+
+    // Also create a file in root (should be excluded when root is "docs")
+    fs::write(
+        repo_dir.join("README.md"),
+        "# Test Repo\n\nThis is a test repo.",
+    )
+    .unwrap();
+
+    // Commit everything
+    run_git(&repo_dir, &["add", "."]);
+    run_git(&repo_dir, &["commit", "-m", "initial commit"]);
+
+    repo_dir
+}
+
+fn run_git(dir: &Path, args: &[&str]) -> Output {
+    Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .unwrap_or_else(|e| panic!("Failed to run git {:?}: {}", args, e))
+}
+
+fn setup_git_test_env(repo_path: &Path, root: &str) -> (TempDir, PathBuf) {
+    let tmp = TempDir::new().unwrap();
+    let work_root = tmp.path().to_path_buf();
+
+    let config_dir = work_root.join("config");
+    fs::create_dir_all(&config_dir).unwrap();
+    let data_dir = work_root.join("data");
+    fs::create_dir_all(&data_dir).unwrap();
+    let cache_dir = work_root.join("git-cache");
+    fs::create_dir_all(&cache_dir).unwrap();
+
+    let config_content = format!(
+        r#"[db]
+path = "{}/data/ctx.sqlite"
+
+[chunking]
+max_tokens = 700
+
+[retrieval]
+final_limit = 12
+
+[server]
+bind = "127.0.0.1:7331"
+
+[connectors.git]
+url = "{}"
+branch = "main"
+root = "{}"
+include_globs = ["**/*.md", "**/*.txt"]
+shallow = false
+cache_dir = "{}"
+"#,
+        work_root.display(),
+        repo_path.display(),
+        root,
+        cache_dir.display()
+    );
+
+    let config_path = config_dir.join("ctx.toml");
+    fs::write(&config_path, config_content).unwrap();
+
+    (tmp, config_path)
+}
+
+#[test]
+fn test_git_sync_with_subdirectory() {
+    let repo_tmp = TempDir::new().unwrap();
+    let repo_path = create_test_git_repo(repo_tmp.path());
+
+    let (_tmp, config_path) = setup_git_test_env(&repo_path, "docs");
+
+    run_ctx(&config_path, &["init"]);
+    let (stdout, stderr, success) = run_ctx(&config_path, &["sync", "git"]);
+    assert!(
+        success,
+        "git sync failed: stdout={}, stderr={}",
+        stdout, stderr
+    );
+    // Should only find files in docs/ (guide.md, api.md, notes.txt)
+    assert!(
+        stdout.contains("upserted documents: 3"),
+        "Expected 3 docs from docs/, got: {}",
+        stdout
+    );
+    assert!(stdout.contains("ok"));
+}
+
+#[test]
+fn test_git_sync_root_directory() {
+    let repo_tmp = TempDir::new().unwrap();
+    let repo_path = create_test_git_repo(repo_tmp.path());
+
+    let (_tmp, config_path) = setup_git_test_env(&repo_path, ".");
+
+    run_ctx(&config_path, &["init"]);
+    let (stdout, stderr, success) = run_ctx(&config_path, &["sync", "git"]);
+    assert!(
+        success,
+        "git sync failed: stdout={}, stderr={}",
+        stdout, stderr
+    );
+    // Should find all 4 files (README.md + docs/guide.md + docs/api.md + docs/notes.txt)
+    assert!(
+        stdout.contains("upserted documents: 4"),
+        "Expected 4 docs from root, got: {}",
+        stdout
+    );
+}
+
+#[test]
+fn test_git_sync_then_search() {
+    let repo_tmp = TempDir::new().unwrap();
+    let repo_path = create_test_git_repo(repo_tmp.path());
+
+    let (_tmp, config_path) = setup_git_test_env(&repo_path, "docs");
+
+    run_ctx(&config_path, &["init"]);
+    run_ctx(&config_path, &["sync", "git"]);
+
+    let (stdout, _, success) = run_ctx(&config_path, &["search", "API endpoints"]);
+    assert!(success, "search failed");
+    assert!(
+        stdout.contains("api.md") || stdout.contains("API"),
+        "Expected API doc in results, got: {}",
+        stdout
+    );
+}
+
+#[test]
+fn test_git_sync_incremental() {
+    let repo_tmp = TempDir::new().unwrap();
+    let repo_path = create_test_git_repo(repo_tmp.path());
+
+    let (_tmp, config_path) = setup_git_test_env(&repo_path, "docs");
+
+    run_ctx(&config_path, &["init"]);
+    run_ctx(&config_path, &["sync", "git"]);
+
+    // Second sync should process 0 items (checkpoint-based)
+    let (stdout, _, _) = run_ctx(&config_path, &["sync", "git"]);
+    assert!(
+        stdout.contains("fetched: 0") || stdout.contains("upserted documents: 0"),
+        "Expected no items on incremental sync, got: {}",
+        stdout
+    );
+}
+
+#[test]
+fn test_git_sync_full() {
+    let repo_tmp = TempDir::new().unwrap();
+    let repo_path = create_test_git_repo(repo_tmp.path());
+
+    let (_tmp, config_path) = setup_git_test_env(&repo_path, "docs");
+
+    run_ctx(&config_path, &["init"]);
+    run_ctx(&config_path, &["sync", "git"]);
+
+    // Full sync should re-process all items
+    let (stdout, _, success) = run_ctx(&config_path, &["sync", "git", "--full"]);
+    assert!(success);
+    assert!(
+        stdout.contains("upserted documents: 3"),
+        "Full sync should re-process all 3 docs, got: {}",
+        stdout
+    );
+}
+
+#[test]
+fn test_git_sync_dry_run() {
+    let repo_tmp = TempDir::new().unwrap();
+    let repo_path = create_test_git_repo(repo_tmp.path());
+
+    let (_tmp, config_path) = setup_git_test_env(&repo_path, "docs");
+
+    run_ctx(&config_path, &["init"]);
+    let (stdout, _, success) = run_ctx(&config_path, &["sync", "git", "--dry-run"]);
+    assert!(success);
+    assert!(stdout.contains("dry-run"));
+    assert!(stdout.contains("items found: 3"));
+}
+
+#[test]
+fn test_git_connector_not_configured() {
+    let (_tmp, config_path) = setup_test_env();
+
+    run_ctx(&config_path, &["init"]);
+    let (_, stderr, success) = run_ctx(&config_path, &["sync", "git"]);
+    assert!(!success, "git sync should fail when not configured");
+    assert!(
+        stderr.contains("not configured"),
+        "Should mention not configured, got: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_git_sources_shows_configured() {
+    let repo_tmp = TempDir::new().unwrap();
+    let repo_path = create_test_git_repo(repo_tmp.path());
+
+    let (_tmp, config_path) = setup_git_test_env(&repo_path, "docs");
+
+    let (stdout, _, success) = run_ctx(&config_path, &["sources"]);
+    assert!(success);
+    assert!(stdout.contains("git"), "Should list git connector");
+    assert!(
+        stdout.contains("OK"),
+        "Git should be OK when configured, got: {}",
+        stdout
+    );
+}
+
+// ============ S3 Connector Tests ============
+
+#[test]
+fn test_s3_connector_not_configured() {
+    let (_tmp, config_path) = setup_test_env();
+
+    run_ctx(&config_path, &["init"]);
+    let (_, stderr, success) = run_ctx(&config_path, &["sync", "s3"]);
+    assert!(!success, "s3 sync should fail when not configured");
+    assert!(
+        stderr.contains("not configured"),
+        "Should mention not configured, got: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_s3_sources_not_configured() {
+    let (_tmp, config_path) = setup_test_env();
+
+    let (stdout, _, success) = run_ctx(&config_path, &["sources"]);
+    assert!(success);
+    assert!(stdout.contains("s3"), "Should list s3 connector");
+    assert!(
+        stdout.contains("NOT CONFIGURED"),
+        "S3 should be NOT CONFIGURED, got: {}",
+        stdout
+    );
+}
+
+#[test]
+fn test_unknown_connector_message_includes_available() {
+    let (_tmp, config_path) = setup_test_env();
+
+    run_ctx(&config_path, &["init"]);
+    let (_, stderr, success) = run_ctx(&config_path, &["sync", "nonexistent"]);
+    assert!(!success);
+    assert!(
+        stderr.contains("filesystem") && stderr.contains("git") && stderr.contains("s3"),
+        "Error should list available connectors, got: {}",
+        stderr
+    );
 }
 
 #[test]

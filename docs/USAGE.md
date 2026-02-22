@@ -59,6 +59,35 @@ bind = "127.0.0.1:7331"
 All fields above MUST exist in config schema.
 When `embedding.provider != "disabled"`, `model` and `dims` are required.
 
+### Connector Config
+
+```toml
+# Filesystem — scan local directory
+[connectors.filesystem]
+root = "./docs"
+include_globs = ["**/*.md", "**/*.txt"]
+exclude_globs = []
+follow_symlinks = false
+
+# Git — clone and scan a Git repository
+[connectors.git]
+url = "https://github.com/acme/platform.git"
+branch = "main"
+root = "docs/"
+include_globs = ["**/*.md"]
+shallow = true
+# cache_dir = "./data/.git-cache/platform"  # optional
+
+# S3 — scan an Amazon S3 bucket
+# Requires: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+[connectors.s3]
+bucket = "acme-docs"
+prefix = "engineering/runbooks/"
+region = "us-east-1"
+include_globs = ["**/*.md"]
+# endpoint_url = "http://localhost:9000"     # for MinIO
+```
+
 ---
 
 ## CLI Commands
@@ -103,7 +132,7 @@ github      NOT CONFIGURED
 Ingest from connector.
 
 ```bash
-ctx sync <connector>
+ctx sync <connector>  # connector: filesystem, git, s3
 ```
 
 Required flags:

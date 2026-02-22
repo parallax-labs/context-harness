@@ -44,8 +44,59 @@ pub fn get_sources(config: &Config) -> Vec<SourceStatus> {
     };
     sources.push(fs_status);
 
-    // Placeholder connectors
-    for name in &["github", "slack", "jira"] {
+    // Git connector
+    let git_status = match &config.connectors.git {
+        Some(git_config) => {
+            // Check if git is available
+            let git_available = std::process::Command::new("git")
+                .arg("--version")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+            if git_available {
+                SourceStatus {
+                    name: "git".to_string(),
+                    configured: true,
+                    healthy: true,
+                    notes: Some(format!("repo: {}", git_config.url)),
+                }
+            } else {
+                SourceStatus {
+                    name: "git".to_string(),
+                    configured: true,
+                    healthy: false,
+                    notes: Some("git binary not found".to_string()),
+                }
+            }
+        }
+        None => SourceStatus {
+            name: "git".to_string(),
+            configured: false,
+            healthy: false,
+            notes: None,
+        },
+    };
+    sources.push(git_status);
+
+    // S3 connector
+    let s3_status = match &config.connectors.s3 {
+        Some(s3_config) => SourceStatus {
+            name: "s3".to_string(),
+            configured: true,
+            healthy: true,
+            notes: Some(format!("bucket: {}", s3_config.bucket)),
+        },
+        None => SourceStatus {
+            name: "s3".to_string(),
+            configured: false,
+            healthy: false,
+            notes: None,
+        },
+    };
+    sources.push(s3_status);
+
+    // Placeholder connectors (future)
+    for name in &["slack", "jira"] {
         sources.push(SourceStatus {
             name: name.to_string(),
             configured: false,

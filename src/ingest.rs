@@ -7,6 +7,8 @@ use uuid::Uuid;
 use crate::chunk::chunk_text;
 use crate::config::Config;
 use crate::connector_fs;
+use crate::connector_git;
+use crate::connector_s3;
 use crate::db;
 use crate::embed_cmd;
 use crate::models::SourceItem;
@@ -20,11 +22,6 @@ pub async fn run_sync(
     until: Option<String>,
     limit: Option<usize>,
 ) -> Result<()> {
-    match connector {
-        "filesystem" => {}
-        _ => bail!("Unknown connector: {}", connector),
-    }
-
     let pool = db::connect(config).await?;
 
     // Load checkpoint
@@ -34,8 +31,13 @@ pub async fn run_sync(
         get_checkpoint(&pool, connector).await?
     };
 
-    // Scan filesystem
-    let mut items = connector_fs::scan_filesystem(config)?;
+    // Scan the appropriate connector
+    let mut items = match connector {
+        "filesystem" => connector_fs::scan_filesystem(config)?,
+        "git" => connector_git::scan_git(config)?,
+        "s3" => connector_s3::scan_s3(config).await?,
+        _ => bail!("Unknown connector: '{}'. Available: filesystem, git, s3", connector),
+    };
 
     // Filter by checkpoint (skip files not modified since checkpoint)
     if let Some(cp) = checkpoint {

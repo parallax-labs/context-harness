@@ -313,6 +313,8 @@ dependencies = [
  "chrono",
  "clap",
  "globset",
+ "hex",
+ "hmac",
  "reqwest",
  "serde",
  "serde_json",

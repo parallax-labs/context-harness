@@ -10,7 +10,7 @@ Context Harness is a generalized framework for ingesting external knowledge sour
 
 ## Features
 
-- **Connector-driven ingestion** — plug in any source (filesystem, GitHub, Jira, Slack)
+- **Connector-driven ingestion** — plug in any source (filesystem, Git repos, S3 buckets, and more coming)
 - **Local-first storage** — SQLite with FTS5 for keyword search
 - **Embedding pipeline** — OpenAI embeddings with automatic batching, retry, and staleness detection
 - **Hybrid retrieval** — keyword + semantic + weighted merge (configurable alpha)
@@ -42,7 +42,14 @@ ctx init --config ./config/ctx.toml
 ### 4. Sync
 
 ```bash
+# Sync from local filesystem
 ctx sync filesystem --config ./config/ctx.toml
+
+# Sync from a Git repository (docs directory)
+ctx sync git --config ./config/ctx.toml
+
+# Sync from an S3 bucket
+ctx sync s3 --config ./config/ctx.toml
 ```
 
 ### 5. Search
@@ -103,7 +110,7 @@ Connectors → Normalization → Chunking → Embedding → SQLite Store → Que
 
 ### Data Flow
 
-1. **Connector** pulls items from a source
+1. **Connector** pulls items from a source (filesystem, Git, S3)
 2. Items are normalized into a standard `Document`
 3. Documents are chunked and stored in SQLite
 4. FTS5 index enables keyword search over chunks
@@ -145,6 +152,60 @@ Errors follow a consistent format:
   }
 }
 ```
+
+## Connector Configuration
+
+### Filesystem Connector
+
+```toml
+[connectors.filesystem]
+root = "./docs"
+include_globs = ["**/*.md", "**/*.txt"]
+exclude_globs = ["**/drafts/**"]
+follow_symlinks = false
+```
+
+### Git Connector
+
+Ingest documentation from any Git repository — point it at a repo URL and subdirectory:
+
+```toml
+[connectors.git]
+url = "https://github.com/acme/platform.git"   # or git@... or local path
+branch = "main"
+root = "docs/"                                  # scan this subdirectory
+include_globs = ["**/*.md", "**/*.rst"]
+shallow = true                                  # --depth 1 clone
+```
+
+Features:
+- Clones on first sync, pulls on subsequent syncs
+- Per-file last commit timestamp and author from `git log`
+- GitHub/GitLab web URLs auto-generated for each file
+- Shallow clone support to minimize disk usage
+- Incremental sync via checkpoint timestamps
+
+### S3 Connector
+
+Ingest documentation from Amazon S3 buckets:
+
+```toml
+[connectors.s3]
+bucket = "acme-docs"
+prefix = "engineering/runbooks/"
+region = "us-east-1"
+include_globs = ["**/*.md", "**/*.json"]
+# endpoint_url = "http://localhost:9000"   # for MinIO / LocalStack
+```
+
+Set `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` environment variables.
+
+Features:
+- Pagination for large buckets (1000+ objects)
+- `LastModified` timestamps for incremental sync
+- ETag tracking in metadata
+- Custom endpoint URL for S3-compatible services (MinIO, LocalStack)
+- Glob-based include/exclude filtering on object keys
 
 ## Embedding Configuration
 

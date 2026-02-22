@@ -122,6 +122,8 @@ pub struct ServerConfig {
 #[derive(Debug, Deserialize, Clone, Default)]
 pub struct ConnectorsConfig {
     pub filesystem: Option<FilesystemConnectorConfig>,
+    pub git: Option<GitConnectorConfig>,
+    pub s3: Option<S3ConnectorConfig>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -133,6 +135,67 @@ pub struct FilesystemConnectorConfig {
     pub exclude_globs: Vec<String>,
     #[serde(default)]
     pub follow_symlinks: bool,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct GitConnectorConfig {
+    /// Git repository URL (https:// or git@) or local path.
+    pub url: String,
+    /// Branch to clone/pull. Defaults to "main".
+    #[serde(default = "default_git_branch")]
+    pub branch: String,
+    /// Subdirectory within the repo to scan. Defaults to root (".").
+    #[serde(default = "default_git_root")]
+    pub root: String,
+    /// Glob patterns for files to include.
+    #[serde(default = "default_include_globs")]
+    pub include_globs: Vec<String>,
+    /// Glob patterns for files to exclude.
+    #[serde(default)]
+    pub exclude_globs: Vec<String>,
+    /// Use shallow clone (--depth 1) to save space.
+    #[serde(default = "default_true")]
+    pub shallow: bool,
+    /// Directory to cache cloned repos. Defaults to <db-dir>/.git-cache/.
+    #[serde(default)]
+    pub cache_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct S3ConnectorConfig {
+    /// S3 bucket name.
+    pub bucket: String,
+    /// Key prefix to filter objects. Defaults to "" (entire bucket).
+    #[serde(default)]
+    pub prefix: String,
+    /// AWS region. Defaults to "us-east-1".
+    #[serde(default = "default_s3_region")]
+    pub region: String,
+    /// Glob patterns for object keys to include.
+    #[serde(default = "default_include_globs")]
+    pub include_globs: Vec<String>,
+    /// Glob patterns for object keys to exclude.
+    #[serde(default)]
+    pub exclude_globs: Vec<String>,
+    /// Optional custom endpoint URL (for S3-compatible services like MinIO).
+    #[serde(default)]
+    pub endpoint_url: Option<String>,
+}
+
+fn default_git_branch() -> String {
+    "main".to_string()
+}
+
+fn default_git_root() -> String {
+    ".".to_string()
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_s3_region() -> String {
+    "us-east-1".to_string()
 }
 
 fn default_include_globs() -> Vec<String> {

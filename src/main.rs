@@ -1,6 +1,8 @@
 mod chunk;
 mod config;
 mod connector_fs;
+mod connector_git;
+mod connector_s3;
 mod db;
 mod embed_cmd;
 mod embedding;

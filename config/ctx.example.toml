@@ -33,3 +33,23 @@ root = "./"
 include_globs = ["**/*.md", "**/*.txt", "**/*.rs"]
 exclude_globs = ["**/target/**", "**/.git/**"]
 follow_symlinks = false
+
+# Git connector — ingest docs from a Git repository
+# [connectors.git]
+# url = "https://github.com/acme/platform.git"   # or local path
+# branch = "main"
+# root = "docs/"                                  # subdirectory within the repo
+# include_globs = ["**/*.md", "**/*.rst"]
+# exclude_globs = []
+# shallow = true                                  # --depth 1 to save space
+# cache_dir = "./data/.git-cache/platform"        # optional, defaults to data/.git-cache/<hash>
+
+# S3 connector — ingest docs from an Amazon S3 bucket
+# Requires: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY env vars
+# [connectors.s3]
+# bucket = "acme-docs"
+# prefix = "engineering/runbooks/"
+# region = "us-east-1"
+# include_globs = ["**/*.md", "**/*.json"]
+# exclude_globs = []
+# endpoint_url = "http://localhost:9000"           # optional, for MinIO/LocalStack
