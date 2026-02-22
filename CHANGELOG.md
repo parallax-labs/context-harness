@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Lua MCP tool extensions** — define custom MCP tools in Lua that AI agents can discover via `GET /tools/list` and call via `POST /tools/{name}`. Tool scripts define a `tool` table with `name`, `description`, `parameters`, and an `execute(params, context)` function. The `context` bridge provides `search()`, `get()`, `sources()`, and `config` for RAG-powered tools. Parameter schemas are converted to OpenAI function-calling JSON Schema format.
+- **`GET /tools/list`** endpoint — returns all registered tools (built-in + Lua) with their parameter schemas.
+- **`POST /tools/{name}`** endpoint — calls a registered Lua tool with validated parameters. Returns `400` for validation errors, `404` for unknown tools, `408` for timeouts, `500` for script errors.
+- **`ctx tool init <name>`** — scaffold a new tool script from a template.
+- **`ctx tool test <path>`** — test a tool script with `--param key=value` pairs.
+- **`ctx tool list`** — list all configured tools (built-in and Lua) with descriptions.
+- **`[tools.script.<name>]`** config section — TOML config with `path`, `timeout`, and arbitrary keys accessible as `context.config` in the script. Values support `${VAR_NAME}` environment variable expansion.
+- **`lua_runtime.rs`** — extracted shared Lua VM setup, sandboxing, and host APIs into a reusable module used by both connectors and tools.
+- Example echo tool (`examples/tools/echo.lua`) — minimal test tool demonstrating parameter handling and context bridge.
+- Example Jira tool (`examples/tools/create-jira-ticket.lua`) — full example with RAG enrichment and HTTP API calls.
+- Test fixture tool (`tests/fixtures/test_tool.lua`).
 - **Lua scripted connectors** — extend Context Harness with custom data sources by writing Lua scripts instead of compiling Rust. Scripts implement `connector.scan(config) → items[]` and have access to sandboxed host APIs: `http` (GET/POST/PUT), `json` (parse/encode), `env` (read env vars), `log` (info/warn/error/debug), `fs` (sandboxed read/list), `base64` (encode/decode), `crypto` (sha256/hmac_sha256), and `sleep`. Scripts run in a sandboxed Lua 5.4 VM with timeout protection.
 - **`ctx connector init <name>`** — scaffold a new connector from a template.
 - **`ctx connector test <path>`** — test a connector script without writing to the database.

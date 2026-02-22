@@ -1,0 +1,25 @@
+# Context Harness Documentation Site — Zola Configuration
+# https://www.getzola.org/documentation/getting-started/configuration/
+
+base_url = "https://parallax-labs.github.io/context-harness"
+title = "Context Harness"
+description = "A local-first context engine for AI tools — ingest, index, and retrieve context from any source."
+compile_sass = true
+minify_html = false
+build_search_index = false          # We use ctx-search.js instead
+
+[markdown]
+highlight_code = true
+highlight_theme = "base16-ocean-dark"
+smart_punctuation = true
+
+[extra]
+github_url = "https://github.com/parallax-labs/context-harness"
+tagline = "Local-First Context Engine for AI Tools"
+
+[slugify]
+paths = "safe"
+
+[link_checker]
+skip_prefixes = ["http://localhost"]
+

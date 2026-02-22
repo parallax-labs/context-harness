@@ -45,7 +45,12 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-pages-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build docs (Git connector + rustdoc + export)
+      - name: Install Zola
+        uses: taiki-e/install-action@v2
+        with:
+          tool: zola@0.19.2
+
+      - name: Build docs (Git connector + rustdoc + Zola)
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
@@ -60,7 +65,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: 'site'
+          path: 'site/public'
 
       - name: Deploy to GitHub Pages
         id: deployment

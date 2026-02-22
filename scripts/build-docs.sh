@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# build-docs.sh — Build documentation assets for the Context Harness site.
+# build-docs.sh — Build the Context Harness documentation site with Zola.
 #
 # 1. Builds the ctx binary
-# 2. Generates rustdoc API reference → site/api/
+# 2. Generates rustdoc API reference → site/static/api/
 # 3. Indexes the repo's docs + source via the Git connector
-# 4. Exports the index as data.json → site/docs/data.json
+# 4. Exports the search index as data.json → site/static/docs/data.json
+# 5. Builds the Zola site → site/public/
 #
-# The docs page uses ctx-search.js to load data.json and provide ⌘K search.
+# The docs pages use ctx-search.js to provide ⌘K search over the exported index.
 #
 # Usage:
 #   ./scripts/build-docs.sh
@@ -14,6 +15,8 @@
 # Environment:
 #   OPENAI_API_KEY  — (optional) enables embedding generation
 #   CTX_BINARY      — (optional) path to ctx binary (default: ./target/release/ctx)
+#   SKIP_CARGO      — (optional) set to "1" to skip cargo build steps
+#   SKIP_ZOLA       — (optional) set to "1" to skip zola build step
 
 set -euo pipefail
 
@@ -22,19 +25,26 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT_DIR"
 
 CTX="${CTX_BINARY:-./target/release/ctx}"
-DOCS_DB="./site/docs/ctx-docs.sqlite"
-DOCS_DATA="./site/docs/data.json"
-API_DIR="./site/api"
+SITE_DIR="./site"
+STATIC_DIR="$SITE_DIR/static"
+DOCS_DB="$SITE_DIR/docs/ctx-docs.sqlite"
+DOCS_DATA="$STATIC_DIR/docs/data.json"
+API_DIR="$STATIC_DIR/api"
 
-echo "==> Building ctx binary..."
-cargo build --release 2>&1
+# ── Step 1: Build ctx binary ──
+if [ "${SKIP_CARGO:-}" != "1" ]; then
+    echo "==> Building ctx binary..."
+    cargo build --release 2>&1
 
-echo "==> Generating rustdoc..."
-cargo doc --no-deps --document-private-items 2>&1
-mkdir -p "$API_DIR"
-cp -r target/doc/* "$API_DIR/"
+    echo "==> Generating rustdoc..."
+    cargo doc --no-deps --document-private-items 2>&1
+    mkdir -p "$API_DIR"
+    cp -r target/doc/* "$API_DIR/"
+else
+    echo "==> Skipping cargo build (SKIP_CARGO=1)"
+fi
 
-# Determine the repo URL
+# ── Step 2: Determine repo URL ──
 if [ -n "${REPO_URL:-}" ]; then
     GIT_URL="$REPO_URL"
 elif git remote get-url origin &>/dev/null; then
@@ -46,7 +56,7 @@ GIT_BRANCH="${GITHUB_REF_NAME:-main}"
 
 echo "==> Indexing docs (repo: $GIT_URL, branch: $GIT_BRANCH)..."
 
-# Create temporary config
+# ── Step 3: Create temporary config & index docs ──
 DOCS_CONFIG="$(mktemp /tmp/ctx-docs-XXXXXX.toml)"
 CACHE_DIR="$(mktemp -d /tmp/ctx-docs-cache-XXXXXX)"
 
@@ -98,7 +108,9 @@ if [ -n "${OPENAI_API_KEY:-}" ]; then
     "$CTX" --config "$DOCS_CONFIG" embed pending || echo "    Warning: embedding failed (non-fatal)"
 fi
 
+# ── Step 4: Export data.json ──
 echo "==> Exporting data.json..."
+mkdir -p "$(dirname "$DOCS_DATA")"
 
 python3 -c "
 import sqlite3, json, sys
@@ -113,12 +125,30 @@ DOC_COUNT=$(python3 -c "import json; d=json.load(open('$DOCS_DATA')); print(len(
 CHUNK_COUNT=$(python3 -c "import json; d=json.load(open('$DOCS_DATA')); print(len(d['chunks']))")
 echo "    $DOC_COUNT documents, $CHUNK_COUNT chunks"
 
-# Cleanup
+# Cleanup temp files
 rm -f "$DOCS_CONFIG" "$DOCS_DB" "${DOCS_DB}-wal" "${DOCS_DB}-shm"
 rm -rf "$CACHE_DIR"
 
+# ── Step 5: Copy static assets that may not be tracked ──
+# Ensure ctx-search.js is in static/
+if [ -f "$SITE_DIR/ctx-search.js" ]; then
+    cp "$SITE_DIR/ctx-search.js" "$STATIC_DIR/ctx-search.js"
+fi
+
+# ── Step 6: Build Zola site ──
+if [ "${SKIP_ZOLA:-}" != "1" ]; then
+    echo "==> Building Zola site..."
+    cd "$SITE_DIR"
+    zola build
+    cd "$ROOT_DIR"
+    echo "    Output: $SITE_DIR/public/"
+else
+    echo "==> Skipping Zola build (SKIP_ZOLA=1)"
+fi
+
 echo "==> Done!"
-echo "    site/docs/index.html   — documentation"
-echo "    site/docs/data.json    — search index ($DOC_COUNT docs)"
-echo "    site/api/              — rustdoc API reference"
-echo "    site/ctx-search.js     — search widget"
+echo "    site/public/         — complete built site"
+echo "    site/public/docs/    — documentation pages"
+echo "    site/public/api/     — rustdoc API reference"
+echo "    site/public/demo/    — interactive demo"
+echo "    site/static/docs/data.json — search index ($DOC_COUNT docs)"

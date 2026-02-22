@@ -1,0 +1,357 @@
+{% extends "base.html" %}
+
+{% block title %}Context Harness — Local-First Context Engine for AI Tools{% endblock %}
+{% block description %}A structured memory layer between your systems and your AI tools. Ingest, index, and retrieve context from any source.{% endblock %}
+{% block body_class %}landing{% endblock %}
+
+{% block body %}
+<nav class="nav">
+    <div class="nav-inner">
+        <a href="{{ get_url(path='/') }}" class="nav-brand">
+            <span class="nav-logo">⚡</span>
+            <span class="nav-name">Context Harness</span>
+        </a>
+        <div class="nav-links">
+            <a href="#features">Features</a>
+            <a href="#architecture">Architecture</a>
+            <a href="{{ get_url(path='docs/_index.md') }}">Docs</a>
+            <a href="{{ get_url(path='demo/') }}">Demo</a>
+            <a href="#quickstart">Get Started</a>
+            <a href="{{ config.extra.github_url }}" class="nav-github" target="_blank" rel="noopener">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+            </a>
+        </div>
+    </div>
+</nav>
+
+<section class="hero">
+    <div class="hero-glow"></div>
+    <div class="container">
+        <div class="hero-badge">Open Source · Local-First · Rust</div>
+        <h1 class="hero-title">
+            A structured memory layer<br>
+            <span class="hero-accent">between your systems and your AI tools</span>
+        </h1>
+        <p class="hero-sub">
+            Ingest context from any source. Index it locally. Retrieve it instantly.
+            Give your AI agents the memory they deserve.
+        </p>
+        <div class="hero-actions">
+            <a href="#quickstart" class="btn btn-primary">Get Started</a>
+            <a href="{{ config.extra.github_url }}" class="btn btn-secondary" target="_blank" rel="noopener">View on GitHub</a>
+        </div>
+
+        <div class="terminal">
+            <div class="terminal-bar">
+                <span class="terminal-dot red"></span>
+                <span class="terminal-dot yellow"></span>
+                <span class="terminal-dot green"></span>
+                <span class="terminal-title">ctx — context harness</span>
+            </div>
+            <div class="terminal-body">
+                <div class="terminal-line" style="--delay: 0"><span class="prompt">$</span> <span class="cmd">ctx init</span></div>
+                <div class="terminal-line" style="--delay: 1"><span class="output">Database initialized successfully.</span></div>
+                <div class="terminal-line" style="--delay: 2"><span class="prompt">$</span> <span class="cmd">ctx sync filesystem</span></div>
+                <div class="terminal-line" style="--delay: 3"><span class="output">sync filesystem</span></div>
+                <div class="terminal-line" style="--delay: 3.2"><span class="output dim">  fetched: 2,847 items</span></div>
+                <div class="terminal-line" style="--delay: 3.4"><span class="output dim">  upserted documents: 2,847</span></div>
+                <div class="terminal-line" style="--delay: 3.6"><span class="output dim">  chunks written: 12,403</span></div>
+                <div class="terminal-line" style="--delay: 3.8"><span class="output success">ok</span></div>
+                <div class="terminal-line" style="--delay: 5"><span class="prompt">$</span> <span class="cmd">ctx search "JWT signing key rotation"</span></div>
+                <div class="terminal-line" style="--delay: 6"><span class="output">1. <span class="score">[0.94]</span> filesystem / auth-module.rs</span></div>
+                <div class="terminal-line" style="--delay: 6.3"><span class="output dim">    excerpt: "JWT signing key loaded from AWS Secrets Manager..."</span></div>
+                <div class="terminal-line" style="--delay: 6.6"><span class="output">2. <span class="score">[0.81]</span> filesystem / deployment-runbook.md</span></div>
+                <div class="terminal-line" style="--delay: 6.9"><span class="output dim">    excerpt: "Key rotation procedure for production services..."</span></div>
+                <div class="terminal-line blink" style="--delay: 7.5"><span class="prompt">$</span> <span class="cursor-blink">_</span></div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="features" class="features">
+    <div class="container">
+        <h2 class="section-title">Everything you need to give AI tools memory</h2>
+        <p class="section-sub">One binary. Zero cloud dependencies. Works with everything.</p>
+
+        <div class="feature-grid">
+            <div class="feature-card">
+                <div class="feature-icon">🔌</div>
+                <h3>Connector-Driven</h3>
+                <p>Plug in any source — filesystem, Git, S3, or write your own in Lua. Each connector normalizes data into a consistent Document model.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">💾</div>
+                <h3>Local-First Storage</h3>
+                <p>SQLite with WAL mode. No cloud dependencies. Your data stays on your machine. Back up with a single file copy.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🔍</div>
+                <h3>Hybrid Search</h3>
+                <p>FTS5 keyword search, vector semantic search, and configurable hybrid merge with BM25 + cosine scoring. Deterministic results.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🤖</div>
+                <h3>MCP Server</h3>
+                <p>Expose context to Cursor, Claude, and any MCP-compatible AI tool. Extend with custom Lua tools that agents can discover and call.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">⚡</div>
+                <h3>CLI-First</h3>
+                <p>Everything through the <code>ctx</code> command. Init, sync, search, get — composable Unix-style tooling. No GUI required.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🧩</div>
+                <h3>Lua Extensibility</h3>
+                <p>Write custom connectors and tools in Lua. Sandboxed VM with HTTP, JSON, crypto APIs. AI agents can scaffold scripts on-the-fly.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="architecture" class="architecture">
+    <div class="container">
+        <h2 class="section-title">How it works</h2>
+        <p class="section-sub">A clean pipeline from raw sources to AI-ready context</p>
+
+        <div class="arch-flow">
+            <div class="arch-step">
+                <div class="arch-node">
+                    <div class="arch-label">Sources</div>
+                    <div class="arch-detail">Filesystem, Git, S3, Lua Scripts</div>
+                </div>
+                <div class="arch-arrow">&rarr;</div>
+            </div>
+            <div class="arch-step">
+                <div class="arch-node">
+                    <div class="arch-label">Connectors</div>
+                    <div class="arch-detail">Fetch &amp; normalize into Documents</div>
+                </div>
+                <div class="arch-arrow">&rarr;</div>
+            </div>
+            <div class="arch-step">
+                <div class="arch-node">
+                    <div class="arch-label">Chunking</div>
+                    <div class="arch-detail">Paragraph-aware splitting</div>
+                </div>
+                <div class="arch-arrow">&rarr;</div>
+            </div>
+            <div class="arch-step">
+                <div class="arch-node active">
+                    <div class="arch-label">SQLite Store</div>
+                    <div class="arch-detail">Documents + Chunks + FTS5 + Embeddings</div>
+                </div>
+                <div class="arch-arrow">&rarr;</div>
+            </div>
+            <div class="arch-step">
+                <div class="arch-node">
+                    <div class="arch-label">Query Engine</div>
+                    <div class="arch-detail">Keyword · Semantic · Hybrid</div>
+                </div>
+                <div class="arch-arrow">&rarr;</div>
+            </div>
+            <div class="arch-step">
+                <div class="arch-node">
+                    <div class="arch-label">Interfaces</div>
+                    <div class="arch-detail">CLI · MCP Server · Lua Tools</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="arch-details">
+            <div class="arch-detail-card">
+                <h4>Document Model</h4>
+                <pre><code>{
+  "id": "uuid",
+  "source": "filesystem",
+  "source_id": "docs/auth.md",
+  "title": "Auth Module",
+  "body": "...",
+  "chunks": [
+    { "index": 0, "text": "..." }
+  ]
+}</code></pre>
+            </div>
+            <div class="arch-detail-card">
+                <h4>Configuration</h4>
+                <pre><code>[db]
+path = "./data/ctx.sqlite"
+
+[chunking]
+max_tokens = 700
+
+[retrieval]
+hybrid_alpha = 0.6
+final_limit = 12
+
+[connectors.filesystem]
+root = "./my-project"
+include_globs = ["**/*.md"]</code></pre>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="use-cases" class="use-cases">
+    <div class="container">
+        <h2 class="section-title">Built for real workflows</h2>
+        <p class="section-sub">From offline-first web apps to AI-powered development</p>
+
+        <div class="use-case-grid">
+            <div class="use-case-card featured">
+                <div class="use-case-badge">Primary Use Case</div>
+                <div class="use-case-icon">🧩</div>
+                <h3>Offline-First RAG for Web Apps</h3>
+                <p>Pre-build your knowledge base at build time. Ship the SQLite database as a static asset. Your web app gets retrieval-augmented generation <strong>without a backend</strong>.</p>
+                <div class="use-case-tags">
+                    <span class="tag">Static Hosting</span>
+                    <span class="tag">No API Keys</span>
+                    <span class="tag">Works Offline</span>
+                </div>
+            </div>
+            <div class="use-case-card featured">
+                <div class="use-case-badge">Primary Use Case</div>
+                <div class="use-case-icon">🤖</div>
+                <h3>AI Agent Context via MCP</h3>
+                <p>Point Context Harness at your docs and runbooks. Start the MCP server. Now <strong>Cursor, Claude, and any MCP-compatible agent</strong> can search your project knowledge.</p>
+                <div class="use-case-tags">
+                    <span class="tag">Cursor</span>
+                    <span class="tag">Claude</span>
+                    <span class="tag">MCP Protocol</span>
+                </div>
+            </div>
+            <div class="use-case-card featured">
+                <div class="use-case-badge">Primary Use Case</div>
+                <div class="use-case-icon">🔌</div>
+                <h3>Lua-Extensible Agent Tools</h3>
+                <p>Write custom MCP tools in Lua. Agents discover and call them dynamically. RAG-enriched Jira tickets, Slack posts, deploy triggers — <strong>without recompiling Rust</strong>.</p>
+                <div class="use-case-tags">
+                    <span class="tag">Lua Scripts</span>
+                    <span class="tag">Custom Tools</span>
+                    <span class="tag">RAG-Powered</span>
+                </div>
+            </div>
+            <div class="use-case-card">
+                <div class="use-case-icon">📚</div>
+                <h3>Documentation Site Search</h3>
+                <p>Replace Algolia or DocSearch with self-hosted semantic search. Build the index at deploy time, serve from a CDN. <strong>No third-party dependencies.</strong></p>
+                <div class="use-case-tags">
+                    <span class="tag">Self-Hosted</span>
+                    <span class="tag">CDN-Ready</span>
+                </div>
+            </div>
+            <div class="use-case-card">
+                <div class="use-case-icon">🏗️</div>
+                <h3>Engineering Onboarding</h3>
+                <p>Index incident reports, ADRs, and runbooks. New engineers query naturally instead of searching Confluence for 45 minutes.</p>
+                <div class="use-case-tags">
+                    <span class="tag">Knowledge Base</span>
+                    <span class="tag">Natural Language</span>
+                </div>
+            </div>
+            <div class="use-case-card">
+                <div class="use-case-icon">📝</div>
+                <h3>Personal Knowledge Agent</h3>
+                <p>Index your Obsidian vault, meeting notes, or research docs. Connect it to your AI tools and ask questions across your entire body of knowledge.</p>
+                <div class="use-case-tags">
+                    <span class="tag">Obsidian</span>
+                    <span class="tag">Personal AI</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="use-case-cta">
+            <a href="{{ get_url(path='docs/_index.md') }}" class="btn btn-primary">Read the Documentation →</a>
+            <span class="use-case-cta-note">Everything you need to set up Context Harness for your project</span>
+        </div>
+    </div>
+</section>
+
+<section id="quickstart" class="quickstart">
+    <div class="container">
+        <h2 class="section-title">Get started in 60 seconds</h2>
+        <div class="steps">
+            <div class="step">
+                <div class="step-num">1</div>
+                <div class="step-content">
+                    <h3>Install</h3>
+                    <pre><code><span class="prompt">$</span> cargo install --git https://github.com/parallax-labs/context-harness</code></pre>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-num">2</div>
+                <div class="step-content">
+                    <h3>Configure</h3>
+                    <pre><code><span class="prompt">$</span> mkdir -p config
+<span class="prompt">$</span> cat > config/ctx.toml << 'EOF'
+[db]
+path = "./data/ctx.sqlite"
+
+[chunking]
+max_tokens = 700
+
+[connectors.filesystem]
+root = "./my-project"
+include_globs = ["**/*.md", "**/*.rs"]
+EOF</code></pre>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-num">3</div>
+                <div class="step-content">
+                    <h3>Initialize &amp; Sync</h3>
+                    <pre><code><span class="prompt">$</span> ctx init --config ./config/ctx.toml
+<span class="prompt">$</span> ctx sync filesystem --config ./config/ctx.toml</code></pre>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-num">4</div>
+                <div class="step-content">
+                    <h3>Search</h3>
+                    <pre><code><span class="prompt">$</span> ctx search "authentication flow" --config ./config/ctx.toml</code></pre>
+                </div>
+            </div>
+        </div>
+        <div class="cta-block">
+            <p>Ready to give your AI tools real memory?</p>
+            <a href="{{ config.extra.github_url }}" class="btn btn-primary" target="_blank" rel="noopener">Star on GitHub</a>
+        </div>
+    </div>
+</section>
+
+<footer class="footer">
+    <div class="container">
+        <div class="footer-inner">
+            <div class="footer-brand">
+                <span class="nav-logo">⚡</span>
+                <span>Context Harness</span>
+                <span class="footer-by">by Parallax Labs</span>
+            </div>
+            <div class="footer-links">
+                <a href="{{ config.extra.github_url }}" target="_blank" rel="noopener">GitHub</a>
+                <a href="{{ get_url(path='docs/_index.md') }}">Docs</a>
+                <a href="{{ config.extra.github_url }}/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+            </div>
+        </div>
+        <div class="footer-copy">&copy; 2026 Parallax Labs. All rights reserved.</div>
+    </div>
+</footer>
+
+<script>
+document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+    anchor.addEventListener('click', function (e) {
+        e.preventDefault();
+        const target = document.querySelector(this.getAttribute('href'));
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+});
+const obs = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+document.querySelectorAll('.feature-card, .arch-step, .step, .arch-detail-card, .use-case-card').forEach(el => obs.observe(el));
+const terminalLines = document.querySelectorAll('.terminal-line');
+terminalLines.forEach(line => { line.style.animationDelay = `${parseFloat(line.style.getPropertyValue('--delay')) || 0}s`; });
+const nav = document.querySelector('.nav');
+window.addEventListener('scroll', () => { nav.classList.toggle('scrolled', window.scrollY > 50); });
+</script>
+{% endblock %}
+

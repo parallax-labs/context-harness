@@ -56,11 +56,13 @@ mod embed_cmd;
 mod embedding;
 mod get;
 mod ingest;
+mod lua_runtime;
 mod migrate;
 mod models;
 mod search;
 mod server;
 mod sources;
+mod tool_script;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -198,6 +200,15 @@ enum Commands {
         #[command(subcommand)]
         action: ConnectorAction,
     },
+
+    /// Manage Lua tool scripts.
+    ///
+    /// Create, test, and list Lua tool scripts that expose custom MCP tools
+    /// for AI agents to discover and call.
+    Tool {
+        #[command(subcommand)]
+        action: ToolAction,
+    },
 }
 
 /// Embedding management subcommands.
@@ -255,6 +266,42 @@ enum ConnectorAction {
     },
 }
 
+/// Tool management subcommands.
+#[derive(Subcommand)]
+enum ToolAction {
+    /// Test a Lua tool script with sample parameters.
+    ///
+    /// Loads the script, executes `tool.execute()` with the given parameters,
+    /// and prints the result. Useful for development and debugging.
+    Test {
+        /// Path to the `.lua` tool script.
+        path: PathBuf,
+        /// Tool parameters as `key=value` pairs.
+        #[arg(long = "param", value_parser = parse_key_val)]
+        params: Vec<(String, String)>,
+        /// Use config from a named tool entry in ctx.toml.
+        #[arg(long)]
+        source: Option<String>,
+    },
+    /// Scaffold a new tool from a template.
+    ///
+    /// Creates `tools/<name>.lua` with a commented template.
+    Init {
+        /// Name for the new tool (e.g., `create_jira_ticket`).
+        name: String,
+    },
+    /// List all configured tools (built-in and Lua).
+    List,
+}
+
+/// Parse a `key=value` pair for `--param` arguments.
+fn parse_key_val(s: &str) -> Result<(String, String), String> {
+    let pos = s
+        .find('=')
+        .ok_or_else(|| format!("invalid KEY=VALUE: no '=' found in '{}'", s))?;
+    Ok((s[..pos].to_string(), s[pos + 1..].to_string()))
+}
+
 /// Server subcommands.
 #[derive(Subcommand)]
 enum ServeService {
@@ -284,6 +331,31 @@ async fn main() -> anyhow::Result<()> {
             let cfg =
                 config::load_config(&cli.config).unwrap_or_else(|_| config::Config::minimal());
             connector_script::test_script(path, &cfg, source.as_deref()).await?;
+            return Ok(());
+        }
+        Commands::Tool {
+            action: ToolAction::Init { name },
+        } => {
+            tool_script::scaffold_tool(name)?;
+            return Ok(());
+        }
+        Commands::Tool {
+            action: ToolAction::Test { path, source, .. },
+        } if source.is_none() => {
+            // Without --source, use minimal config
+            let cfg =
+                config::load_config(&cli.config).unwrap_or_else(|_| config::Config::minimal());
+            if let Commands::Tool {
+                action:
+                    ToolAction::Test {
+                        path,
+                        params,
+                        source,
+                    },
+            } = cli.command
+            {
+                tool_script::test_tool(&path, params, &cfg, source.as_deref()).await?;
+            }
             return Ok(());
         }
         _ => {}
@@ -367,6 +439,22 @@ async fn main() -> anyhow::Result<()> {
                 connector_script::test_script(&path, &cfg, source.as_deref()).await?;
             }
             ConnectorAction::Init { .. } => {
+                // Handled above (before config loading)
+                unreachable!()
+            }
+        },
+        Commands::Tool { action } => match action {
+            ToolAction::Test {
+                path,
+                params,
+                source,
+            } => {
+                tool_script::test_tool(&path, params, &cfg, source.as_deref()).await?;
+            }
+            ToolAction::List => {
+                tool_script::list_tools(&cfg)?;
+            }
+            ToolAction::Init { .. } => {
                 // Handled above (before config loading)
                 unreachable!()
             }

@@ -73,6 +73,9 @@ pub struct Config {
     /// Connector configurations (all optional).
     #[serde(default)]
     pub connectors: ConnectorsConfig,
+    /// Tool script configurations (all optional).
+    #[serde(default)]
+    pub tools: ToolsConfig,
 }
 
 impl Config {
@@ -101,6 +104,7 @@ impl Config {
                 bind: "127.0.0.1:7331".to_string(),
             },
             connectors: ConnectorsConfig::default(),
+            tools: ToolsConfig::default(),
         }
     }
 }
@@ -325,6 +329,53 @@ pub struct ScriptConnectorConfig {
 
 fn default_script_timeout() -> u64 {
     300
+}
+
+/// Container for all tool script configurations.
+///
+/// Tool scripts are Lua files that define MCP tools agents can discover
+/// and call via the HTTP server. See `docs/LUA_TOOLS.md` for the full
+/// specification.
+#[derive(Debug, Deserialize, Clone, Default)]
+pub struct ToolsConfig {
+    /// Named Lua tool scripts.
+    /// Each key is the tool name, each value contains the script path
+    /// and arbitrary config keys accessible via `context.config` in the script.
+    #[serde(default)]
+    pub script: HashMap<String, ScriptToolConfig>,
+}
+
+/// Lua tool script configuration.
+///
+/// Points to a `.lua` file implementing the tool interface. All fields
+/// except `path` and `timeout` are passed as `context.config` to the
+/// script's `tool.execute(params, context)` function.
+///
+/// Values containing `${VAR_NAME}` are expanded from the process environment.
+///
+/// # Example
+///
+/// ```toml
+/// [tools.script.create_jira_ticket]
+/// path = "tools/create-jira-ticket.lua"
+/// timeout = 30
+/// url = "https://mycompany.atlassian.net"
+/// api_token = "${JIRA_API_TOKEN}"
+/// ```
+#[derive(Debug, Deserialize, Clone)]
+pub struct ScriptToolConfig {
+    /// Path to the `.lua` tool script.
+    pub path: PathBuf,
+    /// Maximum execution time in seconds. Default: `30`.
+    #[serde(default = "default_tool_timeout")]
+    pub timeout: u64,
+    /// All other config keys — accessible via `context.config` in the script.
+    #[serde(flatten)]
+    pub extra: toml::Table,
+}
+
+fn default_tool_timeout() -> u64 {
+    30
 }
 
 /// Filesystem connector configuration.

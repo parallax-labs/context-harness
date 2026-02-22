@@ -74,6 +74,8 @@
 //! | [`connector_git`] | Git connector: clone/pull repos with per-file metadata |
 //! | [`connector_s3`] | S3 connector: list and download objects with SigV4 signing |
 //! | [`connector_script`] | Lua scripted connectors: custom data sources via Lua 5.4 scripts |
+//! | [`lua_runtime`] | Shared Lua 5.4 VM runtime: sandboxing, host APIs, value conversions |
+//! | [`tool_script`] | Lua MCP tool extensions: load, validate, execute Lua tool scripts |
 //! | [`chunk`] | Paragraph-boundary text chunker |
 //! | [`embedding`] | Embedding provider trait, OpenAI implementation, vector utilities |
 //! | [`embed_cmd`] | Embedding CLI commands: `pending` and `rebuild` |
@@ -102,8 +104,10 @@ pub mod embed_cmd;
 pub mod embedding;
 pub mod get;
 pub mod ingest;
+pub mod lua_runtime;
 pub mod migrate;
 pub mod models;
 pub mod search;
 pub mod server;
 pub mod sources;
+pub mod tool_script;

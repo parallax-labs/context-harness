@@ -10,7 +10,11 @@
 *.swo
 *~
 
+# Zola build output
+/site/public/
+
 # Generated in CI — do not commit
-/site/docs/data.json
-/site/api/
+/site/static/docs/data.json
+/site/static/api/
+/site/docs/ctx-docs.sqlite
 

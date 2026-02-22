@@ -100,15 +100,19 @@ Guarantees:
 ### server/ (src/)
 
 - `server.rs` — Axum HTTP server (MCP-compatible)
+- `tool_script.rs` — Lua tool loading, validation, execution (see `LUA_TOOLS.md`)
+- `lua_runtime.rs` — Shared Lua VM setup + host APIs (used by connectors + tools)
 
 Guarantees:
 - `POST /tools/search` → context.search (SCHEMAS.md)
 - `POST /tools/get` → context.get (SCHEMAS.md)
 - `GET /tools/sources` → context.sources (SCHEMAS.md)
+- `GET /tools/list` → tool discovery with OpenAI JSON schemas (LUA_TOOLS.md)
+- `POST /tools/{name}` → dynamic Lua tool execution (LUA_TOOLS.md)
 - `GET /health` → health check
 - Error responses follow error schema (code + message)
 - CORS enabled
-- Structured error codes: bad_request, not_found, embeddings_disabled, internal
+- Structured error codes: bad_request, not_found, embeddings_disabled, tool_error, timeout, internal
 
 ---
 
@@ -150,6 +154,9 @@ Checkpoint updated
 | serve mcp   | server::run_server() |
 | connector test | connector_script::test_script() |
 | connector init | connector_script::scaffold_connector() |
+| tool init   | tool_script::scaffold_tool() |
+| tool test   | tool_script::test_tool() |
+| tool list   | tool_script::list_tools() |
 
 ## HTTP-to-Module Mapping
 
@@ -158,6 +165,8 @@ Checkpoint updated
 | POST /tools/search | handle_search | search::search_documents() |
 | POST /tools/get | handle_get | get::get_document() |
 | GET /tools/sources | handle_sources | sources::get_sources() |
+| GET /tools/list | handle_list_tools | tool_script::get_tool_definitions() |
+| POST /tools/{name} | handle_tool_call | tool_script::execute_tool() |
 | GET /health | handle_health | — |
 
 ---
@@ -171,3 +180,4 @@ The public contract is defined by:
 - SCHEMAS.md
 - HYBRID_SCORING.md
 - LUA_CONNECTORS.md
+- LUA_TOOLS.md

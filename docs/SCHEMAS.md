@@ -116,6 +116,81 @@ Unless otherwise specified:
 
 ---
 
+---
+
+## Tool: tools.list
+
+### Endpoint
+
+`GET /tools/list`
+
+### Response Schema
+
+```json
+{
+  "tools": [
+    {
+      "name": "string",
+      "description": "string",
+      "builtin": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "string"
+          }
+        },
+        "required": ["query"]
+      }
+    }
+  ]
+}
+```
+
+---
+
+## Tool: tools.{name} (Dynamic Lua Tools)
+
+### Endpoint
+
+`POST /tools/{name}`
+
+### Request Schema
+
+Tool-specific parameters as a flat JSON object:
+
+```json
+{
+  "param1": "value1",
+  "param2": 42
+}
+```
+
+### Response Schema (Success)
+
+```json
+{
+  "result": { ... }
+}
+```
+
+The `result` value is tool-specific — it is whatever the Lua
+`tool.execute()` function returns.
+
+### Response Schema (Script Error)
+
+```json
+{
+  "error": {
+    "code": "tool_error",
+    "message": "string"
+  }
+}
+```
+
+---
+
 ## Error Schema (All Endpoints)
 
 ```json
@@ -130,15 +205,18 @@ Unless otherwise specified:
 ### Error Codes
 
 - `bad_request` — malformed JSON, missing required fields
-- `not_found` — document id not present
+- `not_found` — document id not present, or unknown tool name
 - `not_configured` — connector missing config
 - `embeddings_disabled` — semantic/hybrid requires embeddings
+- `tool_error` — Lua tool script raised an error
+- `timeout` — tool execution exceeded configured timeout
 - `internal` — unexpected error
 
 ### HTTP Status Codes
 
 - 200 for success
-- 400 for bad_request
+- 400 for bad_request, embeddings_disabled
 - 404 for not_found
-- 500 for internal
+- 408 for timeout
+- 500 for internal, tool_error
 
