@@ -3,7 +3,7 @@
 //! **A local-first context ingestion and retrieval framework for AI tools.**
 //!
 //! Context Harness provides a connector-driven pipeline for ingesting documents
-//! from multiple sources (filesystem, Git repositories, S3 buckets), chunking
+//! from multiple sources (filesystem, Git repositories, S3 buckets, Lua scripts), chunking
 //! and embedding them, and exposing hybrid search (keyword + semantic) via a
 //! CLI and MCP-compatible HTTP server.
 //!
@@ -54,6 +54,7 @@
 //! | Filesystem | Local directories | [`connector_fs`] |
 //! | Git | Any Git repository (local or remote) | [`connector_git`] |
 //! | S3 | Amazon S3 / S3-compatible buckets | [`connector_s3`] |
+//! | Lua Script | Any source via custom Lua scripts | [`connector_script`] |
 //!
 //! ## Search Modes
 //!
@@ -72,6 +73,7 @@
 //! | [`connector_fs`] | Filesystem connector: walk local directories |
 //! | [`connector_git`] | Git connector: clone/pull repos with per-file metadata |
 //! | [`connector_s3`] | S3 connector: list and download objects with SigV4 signing |
+//! | [`connector_script`] | Lua scripted connectors: custom data sources via Lua 5.4 scripts |
 //! | [`chunk`] | Paragraph-boundary text chunker |
 //! | [`embedding`] | Embedding provider trait, OpenAI implementation, vector utilities |
 //! | [`embed_cmd`] | Embedding CLI commands: `pending` and `rebuild` |
@@ -94,6 +96,7 @@ pub mod config;
 pub mod connector_fs;
 pub mod connector_git;
 pub mod connector_s3;
+pub mod connector_script;
 pub mod db;
 pub mod embed_cmd;
 pub mod embedding;

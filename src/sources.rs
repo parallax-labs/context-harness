@@ -122,6 +122,24 @@ pub fn get_sources(config: &Config) -> Vec<SourceStatus> {
     };
     sources.push(s3_status);
 
+    // Script connectors
+    for (name, script_config) in &config.connectors.script {
+        let path_exists = script_config.path.exists();
+        sources.push(SourceStatus {
+            name: format!("script:{}", name),
+            configured: true,
+            healthy: path_exists,
+            notes: if path_exists {
+                Some(format!("path: {}", script_config.path.display()))
+            } else {
+                Some(format!(
+                    "script not found: {}",
+                    script_config.path.display()
+                ))
+            },
+        });
+    }
+
     // Placeholder connectors (future)
     for name in &["slack", "jira"] {
         sources.push(SourceStatus {

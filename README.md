@@ -10,7 +10,7 @@ Context Harness is a generalized framework for ingesting external knowledge sour
 
 ## Features
 
-- **Connector-driven ingestion** — plug in any source (filesystem, Git repos, S3 buckets, and more coming)
+- **Connector-driven ingestion** — plug in any source (filesystem, Git repos, S3 buckets, Lua scripts)
 - **Local-first storage** — SQLite with FTS5 for keyword search
 - **Embedding pipeline** — OpenAI embeddings with automatic batching, retry, and staleness detection
 - **Hybrid retrieval** — keyword + semantic + weighted merge (configurable alpha)
@@ -50,6 +50,9 @@ ctx sync git --config ./config/ctx.toml
 
 # Sync from an S3 bucket
 ctx sync s3 --config ./config/ctx.toml
+
+# Sync a Lua script connector
+ctx sync script:jira --config ./config/ctx.toml
 ```
 
 ### 5. Search
@@ -110,7 +113,7 @@ Connectors → Normalization → Chunking → Embedding → SQLite Store → Que
 
 ### Data Flow
 
-1. **Connector** pulls items from a source (filesystem, Git, S3)
+1. **Connector** pulls items from a source (filesystem, Git, S3, Lua scripts)
 2. Items are normalized into a standard `Document`
 3. Documents are chunked and stored in SQLite
 4. FTS5 index enables keyword search over chunks
@@ -130,6 +133,8 @@ Connectors → Normalization → Chunking → Embedding → SQLite Store → Que
 | `ctx embed pending` | Backfill missing embeddings |
 | `ctx embed rebuild` | Delete and regenerate all embeddings |
 | `ctx serve mcp` | Start MCP-compatible HTTP server |
+| `ctx connector init <name>` | Scaffold a new Lua connector |
+| `ctx connector test <path>` | Test a connector without writing to DB |
 
 ## HTTP API
 
@@ -206,6 +211,32 @@ Features:
 - ETag tracking in metadata
 - Custom endpoint URL for S3-compatible services (MinIO, LocalStack)
 - Glob-based include/exclude filtering on object keys
+
+### Lua Script Connectors
+
+Write custom connectors in Lua — no recompilation needed. Scripts have access to HTTP, JSON, environment variables, filesystem, base64, crypto, and logging APIs:
+
+```toml
+[connectors.script.jira]
+path = "connectors/jira.lua"
+timeout = 600
+url = "https://mycompany.atlassian.net"
+api_token = "${JIRA_API_TOKEN}"
+project_key = "ENG"
+```
+
+```bash
+# Scaffold a new connector
+ctx connector init jira
+
+# Test it
+ctx connector test connectors/jira.lua
+
+# Sync it
+ctx sync script:jira
+```
+
+See `examples/connectors/github-issues.lua` for a complete example.
 
 ## Embedding Configuration
 

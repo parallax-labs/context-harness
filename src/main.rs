@@ -50,6 +50,7 @@ mod config;
 mod connector_fs;
 mod connector_git;
 mod connector_s3;
+mod connector_script;
 mod db;
 mod embed_cmd;
 mod embedding;
@@ -188,6 +189,15 @@ enum Commands {
         #[command(subcommand)]
         service: ServeService,
     },
+
+    /// Manage Lua connector scripts.
+    ///
+    /// Create, test, and debug Lua connector scripts that extend
+    /// Context Harness with custom data sources.
+    Connector {
+        #[command(subcommand)]
+        action: ConnectorAction,
+    },
 }
 
 /// Embedding management subcommands.
@@ -222,6 +232,29 @@ enum EmbedAction {
     },
 }
 
+/// Connector management subcommands.
+#[derive(Subcommand)]
+enum ConnectorAction {
+    /// Test a Lua connector script without writing to the database.
+    ///
+    /// Loads the script, executes `connector.scan()`, and prints the
+    /// returned items. Useful for development and debugging.
+    Test {
+        /// Path to the `.lua` connector script.
+        path: PathBuf,
+        /// Use config from a named script connector entry.
+        #[arg(long)]
+        source: Option<String>,
+    },
+    /// Scaffold a new connector from a template.
+    ///
+    /// Creates `connectors/<name>.lua` with a commented template.
+    Init {
+        /// Name for the new connector (e.g., `jira`, `confluence`).
+        name: String,
+    },
+}
+
 /// Server subcommands.
 #[derive(Subcommand)]
 enum ServeService {
@@ -235,6 +268,27 @@ enum ServeService {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+
+    // Commands that don't require config
+    match &cli.command {
+        Commands::Connector {
+            action: ConnectorAction::Init { name },
+        } => {
+            connector_script::scaffold_connector(name)?;
+            return Ok(());
+        }
+        Commands::Connector {
+            action: ConnectorAction::Test { path, source },
+        } => {
+            // Use config if available, otherwise a minimal default
+            let cfg =
+                config::load_config(&cli.config).unwrap_or_else(|_| config::Config::minimal());
+            connector_script::test_script(path, &cfg, source.as_deref()).await?;
+            return Ok(());
+        }
+        _ => {}
+    }
+
     let cfg = config::load_config(&cli.config)?;
 
     match cli.command {
@@ -253,7 +307,31 @@ async fn main() -> anyhow::Result<()> {
             until,
             limit,
         } => {
-            ingest::run_sync(&cfg, &connector, full, dry_run, since, until, limit).await?;
+            if connector == "script" {
+                // Sync all script connectors
+                if cfg.connectors.script.is_empty() {
+                    eprintln!("No script connectors configured.");
+                    eprintln!("Add [connectors.script.<name>] entries to your config,");
+                    eprintln!("or use 'ctx sync script:<name>' for a specific connector.");
+                } else {
+                    let names: Vec<String> = cfg.connectors.script.keys().cloned().collect();
+                    for name in &names {
+                        let source = format!("script:{}", name);
+                        ingest::run_sync(
+                            &cfg,
+                            &source,
+                            full,
+                            dry_run,
+                            since.clone(),
+                            until.clone(),
+                            limit,
+                        )
+                        .await?;
+                    }
+                }
+            } else {
+                ingest::run_sync(&cfg, &connector, full, dry_run, since, until, limit).await?;
+            }
         }
         Commands::Search {
             query,
@@ -282,6 +360,15 @@ async fn main() -> anyhow::Result<()> {
         Commands::Serve { service } => match service {
             ServeService::Mcp => {
                 server::run_server(&cfg).await?;
+            }
+        },
+        Commands::Connector { action } => match action {
+            ConnectorAction::Test { path, source } => {
+                connector_script::test_script(&path, &cfg, source.as_deref()).await?;
+            }
+            ConnectorAction::Init { .. } => {
+                // Handled above (before config loading)
+                unreachable!()
             }
         },
     }

@@ -47,6 +47,7 @@ use crate::config::Config;
 use crate::connector_fs;
 use crate::connector_git;
 use crate::connector_s3;
+use crate::connector_script;
 use crate::db;
 use crate::embed_cmd;
 use crate::models::SourceItem;
@@ -100,8 +101,17 @@ pub async fn run_sync(
         "filesystem" => connector_fs::scan_filesystem(config)?,
         "git" => connector_git::scan_git(config)?,
         "s3" => connector_s3::scan_s3(config).await?,
+        c if c.starts_with("script:") => {
+            let name = &c[7..];
+            let script_cfg = config
+                .connectors
+                .script
+                .get(name)
+                .ok_or_else(|| anyhow::anyhow!("No script connector configured: '{}'", name))?;
+            connector_script::scan_script(name, script_cfg).await?
+        }
         _ => bail!(
-            "Unknown connector: '{}'. Available: filesystem, git, s3",
+            "Unknown connector: '{}'. Available: filesystem, git, s3, script:<name>",
             connector
         ),
     };

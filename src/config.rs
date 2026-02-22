@@ -49,6 +49,7 @@
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 /// Top-level configuration structure.
@@ -72,6 +73,36 @@ pub struct Config {
     /// Connector configurations (all optional).
     #[serde(default)]
     pub connectors: ConnectorsConfig,
+}
+
+impl Config {
+    /// Create a minimal config suitable for commands that don't need
+    /// database or connector settings (e.g., `ctx connector test`).
+    pub fn minimal() -> Self {
+        Self {
+            db: DbConfig {
+                path: PathBuf::from("./data/ctx.sqlite"),
+            },
+            chunking: ChunkingConfig {
+                max_tokens: 700,
+                overlap_tokens: 0,
+            },
+            retrieval: RetrievalConfig {
+                hybrid_alpha: default_hybrid_alpha(),
+                candidate_k_keyword: default_candidate_k(),
+                candidate_k_vector: default_candidate_k(),
+                final_limit: default_final_limit(),
+                group_by: default_group_by(),
+                doc_agg: default_doc_agg(),
+                max_chunks_per_doc: default_max_chunks_per_doc(),
+            },
+            embedding: EmbeddingConfig::default(),
+            server: ServerConfig {
+                bind: "127.0.0.1:7331".to_string(),
+            },
+            connectors: ConnectorsConfig::default(),
+        }
+    }
 }
 
 /// Database configuration.
@@ -254,6 +285,46 @@ pub struct ConnectorsConfig {
     pub git: Option<GitConnectorConfig>,
     /// S3 connector: list and download from an S3 bucket.
     pub s3: Option<S3ConnectorConfig>,
+    /// Named Lua script connectors.
+    /// Each key is a connector name, each value contains the script path
+    /// and arbitrary config keys passed to the Lua `connector.scan()` function.
+    /// See `docs/LUA_CONNECTORS.md` for the full specification.
+    #[serde(default)]
+    pub script: HashMap<String, ScriptConnectorConfig>,
+}
+
+/// Lua script connector configuration.
+///
+/// Points to a `.lua` file implementing the connector interface. All fields
+/// except `path` and `timeout` are passed as a config table to the script's
+/// `connector.scan(config)` function.
+///
+/// Values containing `${VAR_NAME}` are expanded from the process environment.
+///
+/// # Example
+///
+/// ```toml
+/// [connectors.script.jira]
+/// path = "connectors/jira.lua"
+/// timeout = 600
+/// url = "https://mycompany.atlassian.net"
+/// api_token = "${JIRA_API_TOKEN}"
+/// project_key = "ENG"
+/// ```
+#[derive(Debug, Deserialize, Clone)]
+pub struct ScriptConnectorConfig {
+    /// Path to the `.lua` connector script.
+    pub path: PathBuf,
+    /// Maximum execution time in seconds. Default: `300`.
+    #[serde(default = "default_script_timeout")]
+    pub timeout: u64,
+    /// All other config keys — passed to the Lua `connector.scan()` function.
+    #[serde(flatten)]
+    pub extra: toml::Table,
+}
+
+fn default_script_timeout() -> u64 {
+    300
 }
 
 /// Filesystem connector configuration.

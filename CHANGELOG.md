@@ -7,11 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Lua scripted connectors** — extend Context Harness with custom data sources by writing Lua scripts instead of compiling Rust. Scripts implement `connector.scan(config) → items[]` and have access to sandboxed host APIs: `http` (GET/POST/PUT), `json` (parse/encode), `env` (read env vars), `log` (info/warn/error/debug), `fs` (sandboxed read/list), `base64` (encode/decode), `crypto` (sha256/hmac_sha256), and `sleep`. Scripts run in a sandboxed Lua 5.4 VM with timeout protection.
+- **`ctx connector init <name>`** — scaffold a new connector from a template.
+- **`ctx connector test <path>`** — test a connector script without writing to the database.
+- **`ctx sync script:<name>`** — sync a specific Lua connector; `ctx sync script` syncs all.
+- **`[connectors.script.<name>]`** config section — TOML config with `path`, `timeout`, and arbitrary keys passed to the Lua script. Values support `${VAR_NAME}` environment variable expansion.
+- Example GitHub Issues connector (`examples/connectors/github-issues.lua`).
+- Test fixture connector (`tests/fixtures/test_connector.lua`).
+
 ### Changed
 - **Documentation site rebuilt** — replaced the browser-based search/chat demo with a clean, static documentation site covering getting started, configuration, CLI reference, HTTP API, search & retrieval, Cursor/MCP integration, CI/CD, and deployment. All content is committed as static HTML — no build step needed for docs.
 - **Simplified `build-docs.sh`** — now only generates rustdoc API reference. The docs page is static HTML.
 
-### Added
+### Dependencies
+- Added `mlua` (Lua 5.4 vendored + send) for scripted connector runtime.
+- Added `base64` for base64 encoding/decoding in Lua host API.
+- Added `blocking` feature to `reqwest` for synchronous HTTP in Lua scripts.
+
+### Previously Added
 - **Git connector** — ingest documents from any Git repository (local or remote), with support for branch selection, subdirectory scoping, shallow clones, and glob filtering. Use `ctx sync git`.
 - **S3 connector** — ingest documents from Amazon S3 buckets with prefix filtering, glob matching, and AWS credential resolution. Use `ctx sync s3`.
 - **Rustdoc API reference** — full API documentation generated from source and deployed to `site/api/`.
