@@ -732,8 +732,8 @@ fn create_test_git_repo(tmp: &Path) -> PathBuf {
     let repo_dir = tmp.join("test-repo");
     fs::create_dir_all(&repo_dir).unwrap();
 
-    // Initialize a git repo
-    run_git(&repo_dir, &["init"]);
+    // Initialize a git repo with explicit 'main' branch
+    run_git(&repo_dir, &["init", "-b", "main"]);
     run_git(&repo_dir, &["config", "user.email", "test@example.com"]);
     run_git(&repo_dir, &["config", "user.name", "Test User"]);
 
