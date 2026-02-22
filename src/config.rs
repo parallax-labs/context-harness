@@ -1,3 +1,16 @@
+//! Configuration parsing and validation.
+//!
+//! Context Harness is configured via a TOML file (default: `config/ctx.toml`).
+//! The config defines database paths, chunking parameters, embedding provider
+//! settings, retrieval tuning, server bind address, and connector configurations.
+//!
+//! # Connectors
+//!
+//! Three connector types are supported:
+//! - **Filesystem** (`[connectors.filesystem]`) — scan a local directory
+//! - **Git** (`[connectors.git]`) — clone/pull a Git repository
+//! - **S3** (`[connectors.s3]`) — list and download from an S3 bucket
+
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -156,7 +169,7 @@ pub struct GitConnectorConfig {
     /// Use shallow clone (--depth 1) to save space.
     #[serde(default = "default_true")]
     pub shallow: bool,
-    /// Directory to cache cloned repos. Defaults to <db-dir>/.git-cache/.
+    /// Directory to cache cloned repos. Defaults to `{db-dir}/.git-cache/`.
     #[serde(default)]
     pub cache_dir: Option<PathBuf>,
 }

@@ -1,3 +1,18 @@
+//! Filesystem connector.
+//!
+//! Walks a local directory, applies glob include/exclude patterns, and produces
+//! [`SourceItem`]s with filesystem metadata (modification time, file path).
+//!
+//! # Configuration
+//!
+//! ```toml
+//! [connectors.filesystem]
+//! root = "./docs"
+//! include_globs = ["**/*.md", "**/*.txt"]
+//! exclude_globs = ["**/drafts/**"]
+//! follow_symlinks = false
+//! ```
+
 use anyhow::{bail, Result};
 use chrono::{TimeZone, Utc};
 use globset::{Glob, GlobSet, GlobSetBuilder};

@@ -1,3 +1,27 @@
+//! Amazon S3 connector.
+//!
+//! Lists and downloads objects from an S3 bucket using the S3 REST API with
+//! AWS Signature V4 authentication. Implements pagination for large buckets,
+//! glob-based filtering on object keys, and supports custom endpoints for
+//! S3-compatible services (MinIO, LocalStack).
+//!
+//! Uses only pure-Rust dependencies (hmac, sha2) for AWS signing — no
+//! C library dependencies like aws-lc-sys.
+//!
+//! # Configuration
+//!
+//! ```toml
+//! [connectors.s3]
+//! bucket = "acme-docs"
+//! prefix = "engineering/runbooks/"
+//! region = "us-east-1"
+//! include_globs = ["**/*.md"]
+//! # endpoint_url = "http://localhost:9000"   # MinIO
+//! ```
+//!
+//! Credentials are read from environment variables:
+//! `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optionally `AWS_SESSION_TOKEN`.
+
 use anyhow::{bail, Context, Result};
 use chrono::{TimeZone, Utc};
 use globset::{Glob, GlobSet, GlobSetBuilder};

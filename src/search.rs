@@ -1,3 +1,13 @@
+//! Search engine with keyword, semantic, and hybrid retrieval modes.
+//!
+//! - **Keyword** — FTS5 full-text search using BM25 scoring.
+//! - **Semantic** — Cosine similarity over stored embedding vectors (sqlite-vec).
+//! - **Hybrid** — Weighted merge of keyword and semantic results using min-max
+//!   normalization and configurable `hybrid_alpha` (see `docs/HYBRID_SCORING.md`).
+//!
+//! Results are returned as [`SearchResultItem`] values suitable for both CLI and
+//! HTTP server consumption.
+
 use anyhow::{bail, Result};
 use chrono::NaiveDate;
 use serde::Serialize;

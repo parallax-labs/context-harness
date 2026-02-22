@@ -9,6 +9,10 @@ readme = "README.md"
 keywords = ["ai", "context", "search", "mcp", "embeddings"]
 categories = ["command-line-utilities", "database"]
 
+[lib]
+name = "context_harness"
+path = "src/lib.rs"
+
 [[bin]]
 name = "ctx"
 path = "src/main.rs"

@@ -1,3 +1,8 @@
+//! Connector health and status listing.
+//!
+//! Reports which connectors are configured and healthy. Used by both the
+//! `ctx sources` CLI command and `GET /tools/sources` HTTP endpoint.
+
 use anyhow::Result;
 use serde::Serialize;
 

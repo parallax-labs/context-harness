@@ -1,3 +1,36 @@
+//! # Context Harness
+//!
+//! A local-first context ingestion and retrieval framework for AI tools.
+//!
+//! Context Harness provides a connector-driven pipeline for ingesting documents
+//! from multiple sources (filesystem, Git repositories, S3 buckets), chunking
+//! and embedding them, and exposing hybrid search (keyword + semantic) via a
+//! CLI and MCP-compatible HTTP server.
+//!
+//! ## Architecture
+//!
+//! ```text
+//! Connectors → Normalization → Chunking → Embedding → SQLite → Query Engine → CLI / MCP Server
+//! ```
+//!
+//! ## Modules
+//!
+//! - [`config`] — TOML configuration parsing and validation
+//! - [`models`] — Core data types: `SourceItem`, `Document`, `Chunk`, `SearchResult`
+//! - [`connector_fs`] — Filesystem connector: walk local directories
+//! - [`connector_git`] — Git connector: clone/pull repos, walk files with git metadata
+//! - [`connector_s3`] — S3 connector: list and download objects from S3 buckets
+//! - [`chunk`] — Paragraph-boundary text chunker
+//! - [`embedding`] — Embedding provider trait, OpenAI implementation, vector utilities
+//! - [`embed_cmd`] — Embedding CLI commands (pending, rebuild)
+//! - [`ingest`] — Ingestion pipeline orchestration
+//! - [`search`] — Keyword, semantic, and hybrid search
+//! - [`get`] — Document retrieval by ID
+//! - [`sources`] — Connector health/status listing
+//! - [`server`] — MCP-compatible HTTP server (Axum)
+//! - [`db`] — SQLite connection management
+//! - [`migrate`] — Database schema migrations
+
 mod chunk;
 mod config;
 mod connector_fs;

@@ -1,3 +1,14 @@
+//! MCP-compatible HTTP server.
+//!
+//! Exposes Context Harness functionality via a JSON HTTP API:
+//! - `POST /tools/search` — search indexed documents
+//! - `POST /tools/get` — retrieve a document by ID
+//! - `GET /tools/sources` — list connector status
+//! - `GET /health` — health check
+//!
+//! Designed for integration with Cursor, Claude, and other MCP-compatible
+//! AI tools. CORS is enabled for cross-origin browser requests.
+
 use axum::{
     extract::State,
     http::StatusCode,

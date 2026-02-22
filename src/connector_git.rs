@@ -1,3 +1,26 @@
+//! Git repository connector.
+//!
+//! Clones or updates a Git repository and walks files within a configurable
+//! subdirectory. Extracts rich metadata from `git log`: per-file commit
+//! timestamps, authors, and the HEAD commit SHA. Automatically generates
+//! web-browsable URLs for GitHub and GitLab repositories.
+//!
+//! # Configuration
+//!
+//! ```toml
+//! [connectors.git]
+//! url = "https://github.com/acme/platform.git"
+//! branch = "main"
+//! root = "docs/"
+//! include_globs = ["**/*.md"]
+//! shallow = true
+//! ```
+//!
+//! # Cache Directory
+//!
+//! Cloned repos are cached locally (default: alongside the SQLite DB in
+//! `data/.git-cache/<url-hash>/`). Subsequent syncs do `git fetch && reset`.
+
 use anyhow::{bail, Context, Result};
 use chrono::{TimeZone, Utc};
 use globset::{Glob, GlobSet, GlobSetBuilder};

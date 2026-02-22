@@ -1,3 +1,8 @@
+//! Embedding CLI commands: `ctx embed pending` and `ctx embed rebuild`.
+//!
+//! Manages the embedding lifecycle: backfilling missing/stale embeddings
+//! and full rebuilds. Also provides inline embedding during sync.
+
 use anyhow::{bail, Result};
 use sha2::{Digest, Sha256};
 use sqlx::{Row, SqlitePool};

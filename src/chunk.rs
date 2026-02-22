@@ -1,3 +1,12 @@
+//! Paragraph-boundary text chunker.
+//!
+//! Splits document body text into [`Chunk`]s that respect a configurable
+//! `max_tokens` limit. Splitting occurs on paragraph boundaries (`\n\n`)
+//! to preserve semantic coherence within each chunk.
+//!
+//! Each chunk receives a deterministic UUID derived from its document ID
+//! and index, plus a SHA-256 hash of its text for staleness detection.
+
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 

@@ -1,3 +1,8 @@
+//! SQLite database connection management.
+//!
+//! Provides a connection pool to the SQLite database with WAL mode
+//! enabled for concurrent read/write performance.
+
 use anyhow::Result;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use std::str::FromStr;

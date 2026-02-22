@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Git connector** — ingest documents from any Git repository (local or remote), with support for branch selection, subdirectory scoping, shallow clones, and glob filtering. Use `ctx sync git`.
 - **S3 connector** — ingest documents from Amazon S3 buckets with prefix filtering, glob matching, and AWS credential resolution. Use `ctx sync s3`.
+- **Documentation site** — searchable docs at `site/docs/`, dogfooding the Git connector to index the repo's own guides and source code. Built automatically in CI.
+- **Rustdoc API reference** — full API documentation generated from source and deployed to `site/api/`.
+- **Library target** (`src/lib.rs`) — re-exports all modules as public for rustdoc generation and potential reuse as a library.
+- **`scripts/build-docs.sh`** — build script that uses the Git connector to ingest documentation, generate rustdoc, export search data, and prepare the site for deployment.
+- Comprehensive rustdoc module-level comments across all source modules.
 - This CHANGELOG file.
 
 ## [0.1.0] — 2026-02-21

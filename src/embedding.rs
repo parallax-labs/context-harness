@@ -1,3 +1,12 @@
+//! Embedding provider abstraction and implementations.
+//!
+//! Defines the [`EmbeddingProvider`] trait and concrete implementations:
+//! - **Disabled** — returns errors; used when embeddings are not configured.
+//! - **OpenAI** — calls the OpenAI embeddings API with batching, retry, and backoff.
+//!
+//! Also provides vector utilities: [`cosine_similarity`], [`vec_to_blob`], [`blob_to_vec`]
+//! for working with sqlite-vec.
+
 use anyhow::{bail, Result};
 use std::time::Duration;
 

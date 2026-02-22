@@ -1,3 +1,8 @@
+//! Document retrieval by ID.
+//!
+//! Fetches a full document and its associated chunks from the database.
+//! Used by both the `ctx get` CLI command and `POST /tools/get` HTTP endpoint.
+
 use anyhow::{bail, Result};
 use serde::Serialize;
 use sqlx::Row;

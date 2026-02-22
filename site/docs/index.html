@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Context Harness — Documentation</title>
+<meta name="description" content="Search Context Harness documentation — guides, API reference, and architecture. Dogfooded with the Git connector and indexed by Context Harness itself.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+<style>
+:root {
+  --bg: #0a0e17;
+  --surface: #111827;
+  --surface-2: #1a2332;
+  --surface-3: #0f1a2a;
+  --border: #1e2d3d;
+  --text: #e2e8f0;
+  --text-dim: #8892a4;
+  --text-muted: #5a6478;
+  --accent: #3b82f6;
+  --accent-glow: rgba(59, 130, 246, 0.12);
+  --green: #22c55e;
+  --yellow: #eab308;
+  --orange: #f97316;
+  --purple: #a855f7;
+  --teal: #14b8a6;
+  --red: #ef4444;
+  --radius: 12px;
+  --mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.6;
+}
+
+/* ── Header ── */
+header {
+  border-bottom: 1px solid var(--border);
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.logo { display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 18px; text-decoration: none; color: var(--text); }
+.logo-icon { width: 32px; height: 32px; background: linear-gradient(135deg, var(--accent), var(--purple)); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+
+.header-right { display: flex; align-items: center; gap: 16px; }
+.header-link { color: var(--text-dim); text-decoration: none; font-size: 14px; }
+.header-link:hover { color: var(--accent); }
+
+/* ── Layout ── */
+.layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  min-height: calc(100vh - 53px);
+}
+
+/* ── Sidebar ── */
+.sidebar {
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  padding: 20px 0;
+  overflow-y: auto;
+  position: sticky;
+  top: 53px;
+  height: calc(100vh - 53px);
+}
+
+.sidebar-section { padding: 0 16px; margin-bottom: 20px; }
+.sidebar-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 8px; padding: 0 8px; }
+.sidebar-link {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 12px; border-radius: 6px;
+  color: var(--text-dim); font-size: 13px; text-decoration: none;
+  cursor: pointer; transition: all 0.15s;
+}
+.sidebar-link:hover { background: var(--surface-2); color: var(--text); }
+.sidebar-link.active { background: var(--accent-glow); color: var(--accent); font-weight: 600; }
+
+.sidebar-badge {
+  margin-left: auto; font-size: 11px; padding: 1px 6px;
+  border-radius: 10px; background: var(--surface-2); color: var(--text-muted);
+  font-family: var(--mono);
+}
+
+.sidebar-divider { height: 1px; background: var(--border); margin: 12px 16px; }
+
+/* ── Main ── */
+.main { padding: 32px 40px; max-width: 900px; }
+
+/* ── Search ── */
+.search-container {
+  position: relative; margin-bottom: 24px;
+}
+.search-input {
+  width: 100%; padding: 14px 16px 14px 44px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text);
+  font-size: 15px; font-family: inherit; outline: none;
+  transition: border 0.2s, box-shadow 0.2s;
+}
+.search-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+.search-input::placeholder { color: var(--text-muted); }
+.search-icon {
+  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+  color: var(--text-muted); font-size: 18px; pointer-events: none;
+}
+
+.search-meta {
+  display: flex; align-items: center; gap: 16px; margin-bottom: 16px;
+  font-size: 13px; color: var(--text-dim);
+}
+
+.mode-pills { display: flex; gap: 4px; background: var(--surface); border-radius: 8px; padding: 3px; border: 1px solid var(--border); }
+.mode-pill {
+  padding: 5px 14px; border-radius: 6px; border: none;
+  background: transparent; color: var(--text-dim);
+  font-size: 12px; cursor: pointer; font-family: inherit; font-weight: 500;
+  transition: all 0.2s;
+}
+.mode-pill:hover { color: var(--text); }
+.mode-pill.active { background: var(--accent); color: white; }
+
+.filter-pills { display: flex; gap: 4px; margin-left: auto; }
+.filter-pill {
+  padding: 4px 12px; border-radius: 14px; border: 1px solid var(--border);
+  background: transparent; color: var(--text-dim);
+  font-size: 12px; cursor: pointer; font-family: inherit;
+  transition: all 0.2s;
+}
+.filter-pill:hover { border-color: var(--accent); color: var(--text); }
+.filter-pill.active { border-color: var(--accent); background: var(--accent-glow); color: var(--accent); }
+
+/* ── Results ── */
+.result-count { font-size: 13px; color: var(--text-dim); margin-bottom: 16px; }
+
+.result-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  transition: border-color 0.2s, transform 0.15s;
+}
+.result-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+
+.result-header {
+  display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 8px;
+}
+.result-title { font-weight: 600; font-size: 15px; color: var(--text); }
+.result-score {
+  font-size: 12px; font-family: var(--mono); padding: 2px 8px;
+  border-radius: 6px; font-weight: 600;
+}
+.score-high { background: rgba(34,197,94,0.15); color: var(--green); }
+.score-mid  { background: rgba(234,179,8,0.15); color: var(--yellow); }
+.score-low  { background: rgba(248,113,22,0.15); color: var(--orange); }
+
+.result-meta {
+  display: flex; gap: 12px; align-items: center; margin-bottom: 10px;
+  font-size: 12px; color: var(--text-muted);
+}
+.result-tag {
+  padding: 2px 8px; border-radius: 4px; font-size: 11px;
+  font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+}
+.tag-guide { background: rgba(59,130,246,0.15); color: var(--accent); }
+.tag-api { background: rgba(168,85,247,0.15); color: var(--purple); }
+.tag-meta { background: rgba(20,184,166,0.15); color: var(--teal); }
+
+.result-snippet {
+  font-size: 13px; line-height: 1.7; color: var(--text-dim);
+  white-space: pre-wrap; font-family: var(--mono);
+  max-height: 120px; overflow: hidden;
+}
+.result-snippet mark { background: var(--accent-glow); color: var(--accent); border-radius: 2px; padding: 0 2px; }
+
+.result-source { font-size: 12px; color: var(--text-muted); margin-top: 8px; }
+.result-source a { color: var(--accent); }
+
+/* ── Document View ── */
+.doc-view { display: none; }
+.doc-view.active { display: block; }
+.doc-back { color: var(--accent); font-size: 13px; text-decoration: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; margin-bottom: 16px; }
+.doc-back:hover { text-decoration: underline; }
+.doc-title { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+.doc-meta-bar { display: flex; gap: 12px; margin-bottom: 20px; font-size: 13px; color: var(--text-dim); }
+.doc-body {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 24px;
+  white-space: pre-wrap; font-family: var(--mono); font-size: 13px;
+  line-height: 1.8; max-height: 70vh; overflow-y: auto;
+}
+
+/* ── Welcome ── */
+.welcome { text-align: center; padding: 80px 24px; }
+.welcome-title { font-size: 28px; font-weight: 700; margin-bottom: 12px; }
+.welcome-sub { font-size: 15px; color: var(--text-dim); max-width: 500px; margin: 0 auto 24px; }
+.welcome-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 16px; border-radius: 20px;
+  background: var(--surface); border: 1px solid var(--border);
+  font-size: 12px; color: var(--text-dim); font-family: var(--mono);
+}
+.welcome-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+
+/* ── Loading ── */
+.loading-spinner {
+  width: 32px; height: 32px; border: 3px solid var(--border);
+  border-top-color: var(--accent); border-radius: 50%;
+  animation: spin 0.8s linear infinite; margin: 40px auto;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Model Progress ── */
+.model-progress {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px; margin-bottom: 16px;
+  display: none;
+}
+.model-progress.visible { display: block; }
+.prog-bar { height: 4px; background: var(--surface-2); border-radius: 4px; overflow: hidden; margin-top: 8px; }
+.prog-fill { height: 100%; background: var(--accent); transition: width 0.3s; width: 0; }
+.prog-text { font-size: 12px; color: var(--text-dim); display: flex; justify-content: space-between; margin-top: 6px; }
+
+/* ── Empty ── */
+.empty-state { text-align: center; padding: 60px 24px; color: var(--text-dim); font-size: 14px; }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .layout { grid-template-columns: 1fr; }
+  .sidebar { display: none; }
+  .main { padding: 20px 16px; }
+  .search-meta { flex-wrap: wrap; }
+  .filter-pills { margin-left: 0; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <a href="../" class="logo">
+    <div class="logo-icon">⚡</div>
+    <span>Context Harness <span style="font-weight:400;color:var(--text-dim)">Docs</span></span>
+  </a>
+  <div class="header-right">
+    <a href="../demo/" class="header-link">Live Demo</a>
+    <a href="../api/context_harness/" class="header-link">API Reference</a>
+    <a href="https://github.com/parallax-labs/context-harness" class="header-link" target="_blank" rel="noopener">GitHub</a>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-title">Guides</div>
+      <div id="sidebarGuides"></div>
+    </div>
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-section">
+      <div class="sidebar-title">Reference</div>
+      <div id="sidebarRef"></div>
+    </div>
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-section">
+      <div class="sidebar-title">Source Modules</div>
+      <div id="sidebarModules"></div>
+    </div>
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-section">
+      <a href="../api/context_harness/" class="sidebar-link" target="_blank" rel="noopener">
+        📖 Full Rustdoc API
+      </a>
+    </div>
+  </aside>
+
+  <div class="main">
+    <!-- Search page -->
+    <div id="searchPage">
+      <div class="search-container">
+        <span class="search-icon">🔍</span>
+        <input type="text" class="search-input" id="searchInput" placeholder="Search documentation…" autofocus>
+      </div>
+
+      <div class="search-meta">
+        <div class="mode-pills">
+          <button class="mode-pill active" data-mode="keyword">Keyword</button>
+          <button class="mode-pill" data-mode="semantic">Semantic</button>
+          <button class="mode-pill" data-mode="hybrid">Hybrid</button>
+        </div>
+        <div class="filter-pills">
+          <button class="filter-pill active" data-filter="all">All</button>
+          <button class="filter-pill" data-filter="guide">Guides</button>
+          <button class="filter-pill" data-filter="api">API</button>
+          <button class="filter-pill" data-filter="meta">Meta</button>
+        </div>
+      </div>
+
+      <div id="modelProgress" class="model-progress">
+        <span id="progDetail" style="font-size:13px;">Loading model…</span>
+        <div class="prog-bar"><div class="prog-fill" id="progFill"></div></div>
+        <div class="prog-text"><span id="progPct">0%</span></div>
+      </div>
+
+      <div id="resultCount" class="result-count"></div>
+      <div id="searchResults"></div>
+
+      <div id="welcomeState" class="welcome">
+        <div class="welcome-title">Documentation Search</div>
+        <div class="welcome-sub">
+          Search across guides, API reference, and source code.
+          This page is indexed by Context Harness itself — dogfooding the Git connector.
+        </div>
+        <div class="welcome-badge">
+          <span class="dot"></span>
+          <span id="docStats">Loading…</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Document view -->
+    <div id="docView" class="doc-view">
+      <a class="doc-back" onclick="showSearch()">← Back to results</a>
+      <h1 class="doc-title" id="docTitle"></h1>
+      <div class="doc-meta-bar" id="docMeta"></div>
+      <pre class="doc-body" id="docBody"></pre>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ====================================================================
+   Context Harness Documentation — Client-Side Search
+   Uses BM25 for keyword search and Transformers.js for semantic search.
+   Data is pre-indexed in CI via the Git connector.
+   ==================================================================== */
+
+let DATA = { documents: [], chunks: [] };
+let currentMode = 'keyword';
+let currentFilter = 'all';
+
+// Semantic search state
+let pipeline = null;
+let modelReady = false;
+let modelLoading = false;
+let chunkEmbeddings = [];
+let _modelPromise = null;
+
+// ── Data Loading ── */
+async function init() {
+  try {
+    const resp = await fetch('data.json');
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    DATA = await resp.json();
+  } catch (e) {
+    document.getElementById('docStats').textContent = 'data.json not found — run scripts/build-docs.sh first';
+    return;
+  }
+
+  document.getElementById('docStats').textContent =
+    `${DATA.documents.length} documents · ${DATA.chunks.length} chunks · indexed via Git connector`;
+
+  buildSidebar();
+  buildIndex();
+
+  // Try to load cached embeddings
+  if (loadCachedEmbeddings()) {
+    modelReady = true;
+    _modelPromise = loadModel().catch(e => console.warn('Background model load:', e));
+  }
+}
+
+// ── Sidebar ── */
+function classifyDoc(sourceId) {
+  if (sourceId.startsWith('docs/')) return 'guide';
+  if (sourceId.startsWith('src/')) return 'api';
+  return 'meta';
+}
+
+function buildSidebar() {
+  const guides = [], refs = [], modules = [];
+
+  DATA.documents.forEach(d => {
+    const kind = classifyDoc(d.source_id);
+    const title = d.title || d.source_id;
+    const entry = { id: d.id, title, sourceId: d.source_id };
+    if (kind === 'guide') guides.push(entry);
+    else if (kind === 'api') modules.push(entry);
+    else refs.push(entry);
+  });
+
+  const renderList = (items, container) => {
+    container.innerHTML = items.map(item =>
+      `<a class="sidebar-link" onclick="viewDocument('${item.id}')" title="${item.sourceId}">${item.title}</a>`
+    ).join('');
+  };
+
+  renderList(guides, document.getElementById('sidebarGuides'));
+  renderList(refs, document.getElementById('sidebarRef'));
+  renderList(modules, document.getElementById('sidebarModules'));
+}
+
+// ── BM25 Index ── */
+let bm25Index = {};
+let avgDl = 0;
+const BM25_K1 = 1.2, BM25_B = 0.75;
+
+function tokenize(text) {
+  return text.toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/).filter(t => t.length > 1);
+}
+
+function buildIndex() {
+  const N = DATA.chunks.length;
+  const dl = [];
+  const tf = [];
+  const df = {};
+
+  DATA.chunks.forEach((chunk, i) => {
+    const tokens = tokenize(chunk.text);
+    dl.push(tokens.length);
+    const freq = {};
+    tokens.forEach(t => { freq[t] = (freq[t] || 0) + 1; });
+    tf.push(freq);
+    const seen = new Set(tokens);
+    seen.forEach(t => { df[t] = (df[t] || 0) + 1; });
+  });
+
+  avgDl = dl.reduce((a, b) => a + b, 0) / (N || 1);
+  bm25Index = { N, dl, tf, df };
+}
+
+function bm25Search(query) {
+  const qTokens = tokenize(query);
+  if (qTokens.length === 0) return [];
+
+  const { N, dl, tf, df } = bm25Index;
+  const scores = [];
+
+  for (let i = 0; i < N; i++) {
+    let score = 0;
+    for (const qt of qTokens) {
+      const tfi = tf[i][qt] || 0;
+      if (tfi === 0) continue;
+      const dfi = df[qt] || 0;
+      const idf = Math.log((N - dfi + 0.5) / (dfi + 0.5) + 1);
+      const num = tfi * (BM25_K1 + 1);
+      const denom = tfi + BM25_K1 * (1 - BM25_B + BM25_B * dl[i] / avgDl);
+      score += idf * num / denom;
+    }
+    if (score > 0) scores.push({ idx: i, score });
+  }
+
+  scores.sort((a, b) => b.score - a.score);
+  return scores.slice(0, 20).map(s => chunkToResult(s.idx, s.score));
+}
+
+function chunkToResult(chunkIdx, rawScore) {
+  const chunk = DATA.chunks[chunkIdx];
+  const doc = DATA.documents.find(d => d.id === chunk.document_id);
+  const maxScore = Math.max(...DATA.chunks.map((_, i) => {
+    // Approximate max — just use the raw score
+    return rawScore;
+  }));
+
+  return {
+    id: doc?.id || '',
+    title: doc?.title || '',
+    source: doc?.source || 'git',
+    source_id: doc?.source_id || '',
+    source_url: doc?.source_url || '',
+    updated_at: doc?.updated_at || 0,
+    score: Math.min(rawScore / (rawScore + 2), 1), // sigmoid-ish normalization
+    snippet: chunk.text.substring(0, 300),
+    chunk_index: chunk.chunk_index,
+  };
+}
+
+// ── Semantic Search ── */
+function loadCachedEmbeddings() {
+  try {
+    const hash = DATA.chunks.map(c => c.id).join(',');
+    if (localStorage.getItem('ctx_docs_hash') === hash) {
+      const cached = JSON.parse(localStorage.getItem('ctx_docs_embeddings'));
+      if (cached && cached.length === DATA.chunks.length) {
+        chunkEmbeddings = cached;
+        return true;
+      }
+    }
+  } catch (e) { /* ignore */ }
+  return false;
+}
+
+async function loadModel() {
+  if (_modelPromise) return _modelPromise;
+
+  _modelPromise = (async () => {
+    modelLoading = true;
+    const prog = document.getElementById('modelProgress');
+    prog.classList.add('visible');
+
+    try {
+      const { pipeline: createPipeline, env } = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1');
+      env.allowLocalModels = false;
+
+      document.getElementById('progDetail').textContent = 'Initializing model…';
+      document.getElementById('progFill').style.width = '20%';
+      document.getElementById('progPct').textContent = '20%';
+
+      pipeline = await createPipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', {
+        progress_callback: (p) => {
+          if (p.status === 'progress' && p.progress) {
+            const pct = Math.round(20 + p.progress * 0.4);
+            document.getElementById('progFill').style.width = pct + '%';
+            document.getElementById('progPct').textContent = pct + '%';
+            document.getElementById('progDetail').textContent = `Downloading model: ${p.file || ''}`;
+          }
+        }
+      });
+
+      document.getElementById('progDetail').textContent = `Embedding ${DATA.chunks.length} chunks…`;
+      document.getElementById('progFill').style.width = '60%';
+      document.getElementById('progPct').textContent = '60%';
+
+      chunkEmbeddings = [];
+      for (let i = 0; i < DATA.chunks.length; i++) {
+        const result = await pipeline(DATA.chunks[i].text, { pooling: 'mean', normalize: true });
+        chunkEmbeddings.push(Array.from(result.data));
+        const pct = Math.round(60 + (i / DATA.chunks.length) * 40);
+        document.getElementById('progFill').style.width = pct + '%';
+        document.getElementById('progPct').textContent = pct + '%';
+        document.getElementById('progDetail').textContent = `Embedding chunk ${i + 1}/${DATA.chunks.length}…`;
+      }
+
+      try {
+        localStorage.setItem('ctx_docs_embeddings', JSON.stringify(chunkEmbeddings));
+        localStorage.setItem('ctx_docs_hash', DATA.chunks.map(c => c.id).join(','));
+      } catch (e) { /* storage full */ }
+
+      modelReady = true;
+      document.getElementById('progFill').style.width = '100%';
+      document.getElementById('progPct').textContent = '100%';
+      document.getElementById('progDetail').textContent = 'Ready!';
+      setTimeout(() => prog.classList.remove('visible'), 2000);
+      return true;
+    } catch (e) {
+      document.getElementById('progDetail').textContent = `Error: ${e.message}`;
+      document.getElementById('progFill').style.background = 'var(--red)';
+      modelLoading = false;
+      _modelPromise = null;
+      throw e;
+    }
+  })();
+
+  return _modelPromise;
+}
+
+function cosineSim(a, b) {
+  let dot = 0, na = 0, nb = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    na += a[i] * a[i];
+    nb += b[i] * b[i];
+  }
+  return dot / (Math.sqrt(na) * Math.sqrt(nb) + 1e-8);
+}
+
+async function semanticSearch(query) {
+  const result = await pipeline(query, { pooling: 'mean', normalize: true });
+  const qVec = Array.from(result.data);
+
+  const scores = [];
+  for (let i = 0; i < DATA.chunks.length; i++) {
+    const sim = cosineSim(qVec, chunkEmbeddings[i]);
+    if (sim > 0.1) scores.push({ idx: i, score: sim });
+  }
+  scores.sort((a, b) => b.score - a.score);
+  return scores.slice(0, 20).map(s => chunkToResult(s.idx, s.score));
+}
+
+async function hybridSearch(query) {
+  const kw = bm25Search(query);
+  const sem = await semanticSearch(query);
+
+  const normalize = (arr) => {
+    if (arr.length === 0) return [];
+    const scores = arr.map(r => r.score);
+    const min = Math.min(...scores), max = Math.max(...scores);
+    const range = max - min || 1;
+    return arr.map(r => ({ ...r, score: (r.score - min) / range }));
+  };
+
+  const alpha = 0.6;
+  const kwNorm = normalize(kw);
+  const semNorm = normalize(sem);
+  const merged = {};
+
+  kwNorm.forEach(r => {
+    const key = r.id + ':' + r.chunk_index;
+    merged[key] = { ...r, score: (1 - alpha) * r.score };
+  });
+  semNorm.forEach(r => {
+    const key = r.id + ':' + r.chunk_index;
+    if (merged[key]) merged[key].score += alpha * r.score;
+    else merged[key] = { ...r, score: alpha * r.score };
+  });
+
+  return Object.values(merged).sort((a, b) => b.score - a.score).slice(0, 20);
+}
+
+// ── Search Execution ── */
+let debounceTimer;
+const searchInput = document.getElementById('searchInput');
+
+searchInput.addEventListener('input', () => {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(doSearch, 200);
+});
+
+searchInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { clearTimeout(debounceTimer); doSearch(); }
+});
+
+async function doSearch() {
+  const query = searchInput.value.trim();
+  if (!query) {
+    document.getElementById('searchResults').innerHTML = '';
+    document.getElementById('resultCount').textContent = '';
+    document.getElementById('welcomeState').style.display = 'block';
+    return;
+  }
+
+  document.getElementById('welcomeState').style.display = 'none';
+  const area = document.getElementById('searchResults');
+  area.innerHTML = '<div class="loading-spinner"></div>';
+  document.getElementById('resultCount').textContent = 'Searching…';
+
+  const start = performance.now();
+
+  try {
+    let results = [];
+    if (currentMode === 'keyword') {
+      results = bm25Search(query);
+    } else if (currentMode === 'semantic') {
+      if (!modelReady) await loadModel();
+      results = await semanticSearch(query);
+    } else if (currentMode === 'hybrid') {
+      if (!modelReady) await loadModel();
+      results = await hybridSearch(query);
+    }
+
+    // Apply filter
+    if (currentFilter !== 'all') {
+      results = results.filter(r => classifyDoc(r.source_id) === currentFilter);
+    }
+
+    const elapsed = (performance.now() - start).toFixed(0);
+    document.getElementById('resultCount').textContent =
+      `${results.length} result${results.length !== 1 ? 's' : ''} in ${elapsed}ms`;
+
+    if (results.length === 0) {
+      area.innerHTML = '<div class="empty-state">No results found. Try different terms or search mode.</div>';
+      return;
+    }
+
+    area.innerHTML = results.map((r, i) => renderResult(r, query)).join('');
+  } catch (e) {
+    area.innerHTML = `<div class="empty-state" style="color:var(--red)">Search error: ${e.message}</div>`;
+    document.getElementById('resultCount').textContent = 'Error';
+    console.error('Search failed:', e);
+  }
+}
+
+function renderResult(r, query) {
+  const score = r.score.toFixed(2);
+  const scoreClass = r.score >= 0.7 ? 'score-high' : r.score >= 0.4 ? 'score-mid' : 'score-low';
+  const kind = classifyDoc(r.source_id);
+  const tagClass = kind === 'guide' ? 'tag-guide' : kind === 'api' ? 'tag-api' : 'tag-meta';
+  const tagLabel = kind === 'guide' ? 'Guide' : kind === 'api' ? 'Source' : 'Meta';
+
+  let date = '';
+  if (r.updated_at) {
+    if (typeof r.updated_at === 'string') date = r.updated_at.split('T')[0];
+    else if (typeof r.updated_at === 'number') date = new Date(r.updated_at * 1000).toISOString().split('T')[0];
+  }
+
+  // Highlight query terms in snippet
+  let snippet = escapeHtml(r.snippet);
+  if (query) {
+    const terms = query.toLowerCase().split(/\s+/).filter(t => t.length > 1);
+    terms.forEach(term => {
+      const re = new RegExp(`(${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+      snippet = snippet.replace(re, '<mark>$1</mark>');
+    });
+  }
+
+  return `
+    <div class="result-card" onclick="viewDocument('${r.id}')">
+      <div class="result-header">
+        <span class="result-title">${escapeHtml(r.title)}</span>
+        <span class="result-score ${scoreClass}">${score}</span>
+      </div>
+      <div class="result-meta">
+        <span class="result-tag ${tagClass}">${tagLabel}</span>
+        <span>${r.source_id}</span>
+        ${date ? `<span>${date}</span>` : ''}
+      </div>
+      <div class="result-snippet">${snippet}</div>
+      ${r.source_url ? `<div class="result-source"><a href="${escapeHtml(r.source_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">View source →</a></div>` : ''}
+    </div>
+  `;
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ── Document View ── */
+function viewDocument(id) {
+  const doc = DATA.documents.find(d => d.id === id);
+  if (!doc) return;
+
+  document.getElementById('searchPage').style.display = 'none';
+  document.getElementById('docView').classList.add('active');
+
+  document.getElementById('docTitle').textContent = doc.title || doc.source_id;
+
+  const kind = classifyDoc(doc.source_id);
+  let date = '';
+  if (doc.updated_at) {
+    if (typeof doc.updated_at === 'number') date = new Date(doc.updated_at * 1000).toISOString().split('T')[0];
+    else date = String(doc.updated_at).split('T')[0];
+  }
+
+  document.getElementById('docMeta').innerHTML = `
+    <span class="result-tag ${kind === 'guide' ? 'tag-guide' : kind === 'api' ? 'tag-api' : 'tag-meta'}">${kind}</span>
+    <span>${doc.source_id}</span>
+    ${date ? `<span>${date}</span>` : ''}
+    ${doc.source_url ? `<a href="${escapeHtml(doc.source_url)}" target="_blank" rel="noopener" style="color:var(--accent)">View on GitHub →</a>` : ''}
+  `;
+
+  document.getElementById('docBody').textContent = doc.body;
+
+  // Highlight sidebar
+  document.querySelectorAll('.sidebar-link').forEach(el => el.classList.remove('active'));
+}
+
+function showSearch() {
+  document.getElementById('docView').classList.remove('active');
+  document.getElementById('searchPage').style.display = 'block';
+  searchInput.focus();
+}
+
+// ── Mode & Filter Pills ── */
+document.querySelectorAll('.mode-pill').forEach(pill => {
+  pill.addEventListener('click', () => {
+    document.querySelectorAll('.mode-pill').forEach(p => p.classList.remove('active'));
+    pill.classList.add('active');
+    currentMode = pill.dataset.mode;
+    doSearch();
+  });
+});
+
+document.querySelectorAll('.filter-pill').forEach(pill => {
+  pill.addEventListener('click', () => {
+    document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+    pill.classList.add('active');
+    currentFilter = pill.dataset.filter;
+    doSearch();
+  });
+});
+
+// ── Keyboard Shortcut ── */
+document.addEventListener('keydown', (e) => {
+  if (e.key === '/' && document.activeElement !== searchInput) {
+    e.preventDefault();
+    searchInput.focus();
+  }
+  if (e.key === 'Escape') {
+    if (document.getElementById('docView').classList.contains('active')) showSearch();
+  }
+});
+
+// ── Init ── */
+init();
+</script>
+</body>
+</html>
+

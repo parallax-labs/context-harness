@@ -10,3 +10,7 @@
 *.swo
 *~
 
+# Generated in CI — do not commit
+/site/docs/data.json
+/site/api/
+

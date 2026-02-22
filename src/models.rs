@@ -1,3 +1,8 @@
+//! Core data models used throughout Context Harness.
+//!
+//! These types represent the documents, chunks, and search results that flow
+//! through the ingestion and retrieval pipeline.
+
 use chrono::{DateTime, Utc};
 
 /// Raw item produced by a connector before normalization.

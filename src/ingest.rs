@@ -1,3 +1,9 @@
+//! Ingestion pipeline orchestration.
+//!
+//! Coordinates the full sync flow: connector → normalization → chunking →
+//! embedding → storage. Supports incremental sync via checkpoints and
+//! inline embedding (non-fatal on failure).
+
 use anyhow::{bail, Result};
 use chrono::NaiveDate;
 use sha2::{Digest, Sha256};

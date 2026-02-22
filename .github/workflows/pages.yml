@@ -1,10 +1,15 @@
-name: Deploy Marketing Site
+name: Deploy Site & Docs
 
 on:
   push:
     branches: [main]
     paths:
       - 'site/**'
+      - 'src/**'
+      - 'docs/**'
+      - 'scripts/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -18,13 +23,34 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  build-and-deploy:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-pages-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build docs (Git connector + rustdoc + export)
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          chmod +x scripts/build-docs.sh
+          ./scripts/build-docs.sh
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
@@ -39,4 +65,3 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
-

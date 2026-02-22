@@ -1,3 +1,9 @@
+//! Database schema migrations.
+//!
+//! Creates all required tables (documents, chunks, checkpoints, chunks_fts,
+//! embeddings, chunk_vectors) and ensures idempotent execution. Designed to be
+//! run via `ctx init`.
+
 use anyhow::Result;
 
 use crate::config::Config;
