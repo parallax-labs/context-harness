@@ -1,2120 +1,1071 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Context Harness — Documentation</title>
-<meta name="description" content="Search and chat with Context Harness documentation — guides, API reference, and architecture. Dogfooded with the Git connector and indexed by Context Harness itself.">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
-<style>
-:root {
-  --bg: #0a0e17;
-  --surface: #111827;
-  --surface-2: #1a2332;
-  --surface-3: #0f1a2a;
-  --border: #1e2d3d;
-  --text: #e2e8f0;
-  --text-dim: #8892a4;
-  --text-muted: #5a6478;
-  --accent: #3b82f6;
-  --accent-glow: rgba(59, 130, 246, 0.12);
-  --green: #22c55e;
-  --yellow: #eab308;
-  --orange: #f97316;
-  --purple: #a855f7;
-  --teal: #14b8a6;
-  --red: #ef4444;
-  --radius: 12px;
-  --mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
-}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation — Context Harness</title>
+    <meta name="description" content="Context Harness documentation — local-first context indexing and retrieval for AI tools.">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+    <style>
+        /* ===== Reset ===== */
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
-* { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #0a0a0f;
+            --bg-card: #12121a;
+            --bg-card-hover: #1a1a25;
+            --bg-sidebar: #0e0e16;
+            --text: #e4e4ec;
+            --text-dim: #8888a0;
+            --text-muted: #55556a;
+            --accent: #4f8fff;
+            --accent-bright: #6ba3ff;
+            --accent-glow: rgba(79, 143, 255, 0.12);
+            --green: #4ade80;
+            --yellow: #facc15;
+            --red: #f87171;
+            --orange: #fb923c;
+            --border: #1e1e2e;
+            --border-light: #2a2a3a;
+            --radius: 8px;
+            --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+            --sidebar-w: 260px;
+            --header-h: 56px;
+        }
 
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  background: var(--bg);
-  color: var(--text);
-  min-height: 100vh;
-  line-height: 1.6;
-}
+        html { scroll-behavior: smooth; scroll-padding-top: calc(var(--header-h) + 24px); }
 
-/* ── Header ── */
-header {
-  border-bottom: 1px solid var(--border);
-  padding: 14px 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: var(--surface);
-  position: sticky;
-  top: 0;
-  z-index: 100;
-}
+        body {
+            font-family: var(--font);
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+            -webkit-font-smoothing: antialiased;
+        }
 
-.logo { display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 18px; text-decoration: none; color: var(--text); }
-.logo-icon { width: 32px; height: 32px; background: linear-gradient(135deg, var(--accent), var(--purple)); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+        a { color: var(--accent); text-decoration: none; }
+        a:hover { color: var(--accent-bright); text-decoration: underline; }
 
-.header-right { display: flex; align-items: center; gap: 16px; }
-.header-link { color: var(--text-dim); text-decoration: none; font-size: 14px; }
-.header-link:hover { color: var(--accent); }
+        /* ===== Header ===== */
+        .header {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            height: var(--header-h);
+            background: rgba(10, 10, 15, 0.92);
+            backdrop-filter: blur(16px);
+            border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; padding: 0 24px;
+        }
+        .header-inner {
+            width: 100%; max-width: 1400px; margin: 0 auto;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .header-left { display: flex; align-items: center; gap: 16px; }
+        .header-brand {
+            display: flex; align-items: center; gap: 8px;
+            color: var(--text); font-weight: 700; font-size: 16px;
+        }
+        .header-brand:hover { text-decoration: none; color: var(--text); }
+        .header-sep { color: var(--text-muted); font-size: 18px; font-weight: 300; }
+        .header-title { color: var(--text-dim); font-size: 14px; font-weight: 500; }
+        .header-links { display: flex; align-items: center; gap: 20px; }
+        .header-links a {
+            color: var(--text-dim); font-size: 13px; font-weight: 500;
+        }
+        .header-links a:hover { color: var(--text); text-decoration: none; }
+        .header-links .gh-link {
+            display: flex; align-items: center; opacity: 0.7;
+        }
+        .header-links .gh-link:hover { opacity: 1; }
+        .menu-btn {
+            display: none; background: none; border: none; color: var(--text);
+            font-size: 22px; cursor: pointer; padding: 4px;
+        }
 
-/* ── Layout ── */
-.layout {
-  display: grid;
-  grid-template-columns: 260px 1fr;
-  min-height: calc(100vh - 53px);
-}
+        /* ===== Layout ===== */
+        .layout {
+            display: flex;
+            margin-top: var(--header-h);
+            min-height: calc(100vh - var(--header-h));
+        }
 
-/* ── Sidebar ── */
-.sidebar {
-  border-right: 1px solid var(--border);
-  background: var(--surface);
-  padding: 20px 0;
-  overflow-y: auto;
-  position: sticky;
-  top: 53px;
-  height: calc(100vh - 53px);
-}
+        /* ===== Sidebar ===== */
+        .sidebar {
+            position: fixed; top: var(--header-h); left: 0; bottom: 0;
+            width: var(--sidebar-w);
+            background: var(--bg-sidebar);
+            border-right: 1px solid var(--border);
+            overflow-y: auto; padding: 20px 0;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border-light) transparent;
+        }
+        .sidebar::-webkit-scrollbar { width: 4px; }
+        .sidebar::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 4px; }
 
-.sidebar-section { padding: 0 16px; margin-bottom: 20px; }
-.sidebar-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 8px; padding: 0 8px; }
-.sidebar-link {
-  display: flex; align-items: center; gap: 8px;
-  padding: 6px 12px; border-radius: 6px;
-  color: var(--text-dim); font-size: 13px; text-decoration: none;
-  cursor: pointer; transition: all 0.15s;
-}
-.sidebar-link:hover { background: var(--surface-2); color: var(--text); }
-.sidebar-link.active { background: var(--accent-glow); color: var(--accent); font-weight: 600; }
+        .nav-group { margin-bottom: 20px; }
+        .nav-group-title {
+            padding: 0 20px; margin-bottom: 6px;
+            font-size: 11px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 1.2px; color: var(--text-muted);
+        }
+        .nav-link {
+            display: block; padding: 5px 20px 5px 24px;
+            font-size: 13px; color: var(--text-dim);
+            border-left: 2px solid transparent;
+            transition: all 0.15s;
+        }
+        .nav-link:hover {
+            color: var(--text); background: rgba(255,255,255,0.02);
+            text-decoration: none;
+        }
+        .nav-link.active {
+            color: var(--accent); border-left-color: var(--accent);
+            background: var(--accent-glow);
+        }
 
-.sidebar-badge {
-  margin-left: auto; font-size: 11px; padding: 1px 6px;
-  border-radius: 10px; background: var(--surface-2); color: var(--text-muted);
-  font-family: var(--mono);
-}
+        /* ===== Content ===== */
+        .content {
+            flex: 1; margin-left: var(--sidebar-w);
+            padding: 40px 48px 80px;
+            max-width: 840px;
+        }
 
-.sidebar-divider { height: 1px; background: var(--border); margin: 12px 16px; }
+        .content h1 {
+            font-size: 32px; font-weight: 800; letter-spacing: -0.5px;
+            margin-bottom: 8px; line-height: 1.3;
+        }
+        .content h2 {
+            font-size: 22px; font-weight: 700; margin-top: 56px; margin-bottom: 16px;
+            padding-bottom: 8px; border-bottom: 1px solid var(--border);
+        }
+        .content h3 {
+            font-size: 17px; font-weight: 700; margin-top: 36px; margin-bottom: 12px;
+            color: var(--text);
+        }
+        .content h4 {
+            font-size: 14px; font-weight: 700; margin-top: 24px; margin-bottom: 8px;
+            color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .content p { margin-bottom: 16px; color: var(--text-dim); font-size: 15px; }
+        .content ul, .content ol {
+            margin-bottom: 16px; padding-left: 24px; color: var(--text-dim); font-size: 15px;
+        }
+        .content li { margin-bottom: 6px; }
+        .content strong { color: var(--text); font-weight: 600; }
+        .content em { color: var(--accent); font-style: normal; }
 
-/* ── Main ── */
-.main { padding: 32px 40px; max-width: 900px; }
+        .lead { font-size: 17px; color: var(--text-dim); margin-bottom: 32px; line-height: 1.8; }
 
-/* ── Search ── */
-.search-container {
-  position: relative; margin-bottom: 24px;
-}
-.search-input {
-  width: 100%; padding: 14px 16px 14px 44px;
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); color: var(--text);
-  font-size: 15px; font-family: inherit; outline: none;
-  transition: border 0.2s, box-shadow 0.2s;
-}
-.search-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
-.search-input::placeholder { color: var(--text-muted); }
-.search-icon {
-  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
-  color: var(--text-muted); font-size: 18px; pointer-events: none;
-}
+        /* ===== Code ===== */
+        code {
+            font-family: var(--font-mono); font-size: 0.88em;
+            background: var(--bg-card); padding: 2px 7px; border-radius: 4px;
+            color: var(--accent-bright);
+        }
+        pre {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 16px 20px;
+            overflow-x: auto; margin-bottom: 20px;
+            font-size: 13px; line-height: 1.75;
+        }
+        pre code {
+            background: none; padding: 0; color: var(--text-dim); font-size: 13px;
+        }
+        .prompt { color: var(--green); user-select: none; }
+        .comment { color: var(--text-muted); }
+        .key { color: var(--orange); }
+        .val { color: var(--green); }
+        .str { color: var(--green); }
 
-.search-meta {
-  display: flex; align-items: center; gap: 16px; margin-bottom: 16px;
-  font-size: 13px; color: var(--text-dim);
-}
+        /* ===== Tables ===== */
+        table {
+            width: 100%; border-collapse: collapse; margin-bottom: 20px;
+            font-size: 14px;
+        }
+        th {
+            text-align: left; padding: 10px 14px;
+            background: var(--bg-card); border: 1px solid var(--border);
+            font-weight: 600; color: var(--text); font-size: 13px;
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        td {
+            padding: 10px 14px; border: 1px solid var(--border);
+            color: var(--text-dim);
+        }
+        td code { font-size: 12px; }
 
-.mode-pills { display: flex; gap: 4px; background: var(--surface); border-radius: 8px; padding: 3px; border: 1px solid var(--border); }
-.mode-pill {
-  padding: 5px 14px; border-radius: 6px; border: none;
-  background: transparent; color: var(--text-dim);
-  font-size: 12px; cursor: pointer; font-family: inherit; font-weight: 500;
-  transition: all 0.2s;
-}
-.mode-pill:hover { color: var(--text); }
-.mode-pill.active { background: var(--accent); color: white; }
-.mode-pill[data-mode="chat"].active { background: var(--purple); }
+        /* ===== Callouts ===== */
+        .callout {
+            padding: 16px 20px; border-radius: var(--radius);
+            margin-bottom: 20px; font-size: 14px;
+            border-left: 3px solid;
+        }
+        .callout-info {
+            background: rgba(79, 143, 255, 0.06);
+            border-color: var(--accent);
+        }
+        .callout-info p { color: var(--text-dim); margin: 0; }
+        .callout-warn {
+            background: rgba(250, 204, 21, 0.06);
+            border-color: var(--yellow);
+        }
+        .callout-warn p { color: var(--text-dim); margin: 0; }
 
-.filter-pills { display: flex; gap: 4px; margin-left: auto; }
-.filter-pill {
-  padding: 4px 12px; border-radius: 14px; border: 1px solid var(--border);
-  background: transparent; color: var(--text-dim);
-  font-size: 12px; cursor: pointer; font-family: inherit;
-  transition: all 0.2s;
-}
-.filter-pill:hover { border-color: var(--accent); color: var(--text); }
-.filter-pill.active { border-color: var(--accent); background: var(--accent-glow); color: var(--accent); }
+        /* ===== Section anchor ===== */
+        .section { scroll-margin-top: calc(var(--header-h) + 24px); }
 
-/* ── Results ── */
-.result-count { font-size: 13px; color: var(--text-dim); margin-bottom: 16px; }
-
-.result-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 20px;
-  margin-bottom: 12px;
-  cursor: pointer;
-  transition: border-color 0.2s, transform 0.15s;
-}
-.result-card:hover { border-color: var(--accent); transform: translateY(-1px); }
-
-.result-header {
-  display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 8px;
-}
-.result-title { font-weight: 600; font-size: 15px; color: var(--text); }
-.result-score {
-  font-size: 12px; font-family: var(--mono); padding: 2px 8px;
-  border-radius: 6px; font-weight: 600;
-}
-.score-high { background: rgba(34,197,94,0.15); color: var(--green); }
-.score-mid  { background: rgba(234,179,8,0.15); color: var(--yellow); }
-.score-low  { background: rgba(248,113,22,0.15); color: var(--orange); }
-
-.result-meta {
-  display: flex; gap: 12px; align-items: center; margin-bottom: 10px;
-  font-size: 12px; color: var(--text-muted);
-}
-.result-tag {
-  padding: 2px 8px; border-radius: 4px; font-size: 11px;
-  font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
-}
-.tag-guide { background: rgba(59,130,246,0.15); color: var(--accent); }
-.tag-api { background: rgba(168,85,247,0.15); color: var(--purple); }
-.tag-meta { background: rgba(20,184,166,0.15); color: var(--teal); }
-
-.result-snippet {
-  font-size: 13px; line-height: 1.7; color: var(--text-dim);
-  white-space: pre-wrap; font-family: var(--mono);
-  max-height: 120px; overflow: hidden;
-}
-.result-snippet mark { background: var(--accent-glow); color: var(--accent); border-radius: 2px; padding: 0 2px; }
-
-.result-source { font-size: 12px; color: var(--text-muted); margin-top: 8px; }
-.result-source a { color: var(--accent); }
-
-/* ── Document View ── */
-.doc-view { display: none; }
-.doc-view.active { display: block; }
-.doc-back { color: var(--accent); font-size: 13px; text-decoration: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; margin-bottom: 16px; }
-.doc-back:hover { text-decoration: underline; }
-.doc-title { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
-.doc-meta-bar { display: flex; gap: 12px; margin-bottom: 20px; font-size: 13px; color: var(--text-dim); }
-.doc-body {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 24px;
-  white-space: pre-wrap; font-family: var(--mono); font-size: 13px;
-  line-height: 1.8; max-height: 70vh; overflow-y: auto;
-}
-
-/* ── Welcome ── */
-.welcome { text-align: center; padding: 80px 24px; }
-.welcome-title { font-size: 28px; font-weight: 700; margin-bottom: 12px; }
-.welcome-sub { font-size: 15px; color: var(--text-dim); max-width: 500px; margin: 0 auto 24px; }
-.welcome-badge {
-  display: inline-flex; align-items: center; gap: 8px;
-  padding: 6px 16px; border-radius: 20px;
-  background: var(--surface); border: 1px solid var(--border);
-  font-size: 12px; color: var(--text-dim); font-family: var(--mono);
-}
-.welcome-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
-
-/* ── Loading ── */
-.loading-spinner {
-  width: 32px; height: 32px; border: 3px solid var(--border);
-  border-top-color: var(--accent); border-radius: 50%;
-  animation: spin 0.8s linear infinite; margin: 40px auto;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-
-/* ── Model Progress ── */
-.model-progress {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 16px; margin-bottom: 16px;
-  display: none;
-}
-.model-progress.visible { display: block; }
-.prog-bar { height: 4px; background: var(--surface-2); border-radius: 4px; overflow: hidden; margin-top: 8px; }
-.prog-fill { height: 100%; background: var(--accent); transition: width 0.3s; width: 0; }
-.prog-text { font-size: 12px; color: var(--text-dim); display: flex; justify-content: space-between; margin-top: 6px; }
-
-/* ── Empty ── */
-.empty-state { text-align: center; padding: 60px 24px; color: var(--text-dim); font-size: 14px; }
-
-/* ============================
-   Chat UI Styles
-   ============================ */
-
-.chat-container {
-  display: none;
-  flex-direction: column;
-  height: calc(100vh - 53px - 64px);
-  max-height: calc(100vh - 53px - 64px);
-}
-.chat-container.active { display: flex; }
-
-/* Chat header bar */
-.chat-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding-bottom: 16px; border-bottom: 1px solid var(--border); margin-bottom: 0;
-  flex-shrink: 0;
-}
-.chat-header-left { display: flex; align-items: center; gap: 12px; }
-.chat-header-title { font-size: 16px; font-weight: 600; }
-.chat-backend-badge {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 3px 10px; border-radius: 12px;
-  background: var(--surface-2); border: 1px solid var(--border);
-  font-size: 11px; color: var(--text-dim); font-family: var(--mono);
-}
-.chat-backend-badge .bdot {
-  width: 6px; height: 6px; border-radius: 50%;
-}
-.bdot-ready { background: var(--green); }
-.bdot-loading { background: var(--yellow); animation: pulse-dot 1s infinite; }
-.bdot-off { background: var(--text-muted); }
-@keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.4} }
-
-.chat-actions { display: flex; align-items: center; gap: 8px; }
-.chat-btn {
-  padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border);
-  background: transparent; color: var(--text-dim); font-size: 12px;
-  cursor: pointer; font-family: inherit; transition: all 0.2s;
-}
-.chat-btn:hover { border-color: var(--accent); color: var(--text); }
-
-/* Settings dropdown */
-.settings-wrapper { position: relative; }
-.settings-dropdown {
-  display: none; position: absolute; top: calc(100% + 8px); right: 0;
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 16px; width: 320px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.4); z-index: 200;
-}
-.settings-dropdown.open { display: block; }
-.settings-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 8px; }
-.settings-radio-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
-.settings-radio {
-  display: flex; align-items: center; gap: 10px; padding: 8px 12px;
-  border-radius: 8px; border: 1px solid var(--border);
-  cursor: pointer; transition: all 0.15s;
-}
-.settings-radio:hover { border-color: var(--accent); }
-.settings-radio.selected { border-color: var(--accent); background: var(--accent-glow); }
-.settings-radio input { display: none; }
-.settings-radio-dot {
-  width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--border);
-  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-}
-.settings-radio.selected .settings-radio-dot { border-color: var(--accent); }
-.settings-radio.selected .settings-radio-dot::after {
-  content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
-}
-.settings-radio-info { flex: 1; }
-.settings-radio-name { font-size: 13px; font-weight: 600; }
-.settings-radio-desc { font-size: 11px; color: var(--text-dim); }
-
-.settings-apikey-row { display: none; margin-bottom: 8px; }
-.settings-apikey-row.visible { display: block; }
-.settings-apikey-input {
-  width: 100%; padding: 8px 12px; background: var(--surface-2);
-  border: 1px solid var(--border); border-radius: 6px;
-  color: var(--text); font-size: 13px; font-family: var(--mono);
-  outline: none;
-}
-.settings-apikey-input:focus { border-color: var(--accent); }
-.settings-hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
-
-/* Messages area */
-.chat-messages {
-  flex: 1; overflow-y: auto; padding: 20px 0;
-  display: flex; flex-direction: column; gap: 16px;
-}
-
-.chat-msg {
-  display: flex; gap: 12px; max-width: 100%;
-}
-.chat-msg-user { justify-content: flex-end; }
-.chat-msg-assistant { justify-content: flex-start; }
-
-.chat-avatar {
-  width: 28px; height: 28px; border-radius: 8px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 14px; flex-shrink: 0;
-}
-.avatar-user { background: var(--accent); color: white; }
-.avatar-assistant { background: linear-gradient(135deg, var(--purple), var(--accent)); color: white; }
-
-.chat-bubble {
-  padding: 12px 16px; border-radius: 12px; max-width: 85%;
-  font-size: 14px; line-height: 1.7;
-}
-.bubble-user {
-  background: var(--accent); color: white;
-  border-bottom-right-radius: 4px;
-}
-.bubble-assistant {
-  background: var(--surface); border: 1px solid var(--border);
-  border-bottom-left-radius: 4px;
-}
-
-/* Markdown in assistant bubbles */
-.bubble-assistant h1, .bubble-assistant h2, .bubble-assistant h3 {
-  font-size: 15px; font-weight: 700; margin: 12px 0 4px 0; color: var(--text);
-}
-.bubble-assistant h1 { font-size: 17px; }
-.bubble-assistant p { margin: 6px 0; }
-.bubble-assistant ul, .bubble-assistant ol { margin: 6px 0 6px 20px; }
-.bubble-assistant li { margin: 2px 0; }
-.bubble-assistant code {
-  background: var(--surface-2); padding: 1px 5px; border-radius: 4px;
-  font-family: var(--mono); font-size: 12px; color: var(--accent);
-}
-.bubble-assistant pre {
-  background: var(--surface-3); border: 1px solid var(--border);
-  border-radius: 8px; padding: 12px; margin: 8px 0;
-  overflow-x: auto; font-family: var(--mono); font-size: 12px;
-  line-height: 1.5;
-}
-.bubble-assistant pre code {
-  background: none; padding: 0; color: var(--text);
-}
-.bubble-assistant strong { color: var(--text); }
-.bubble-assistant a { color: var(--accent); }
-.bubble-assistant blockquote {
-  border-left: 3px solid var(--accent); padding-left: 12px;
-  margin: 8px 0; color: var(--text-dim);
-}
-
-/* Sources footer */
-.chat-sources {
-  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
-  font-size: 12px; color: var(--text-muted);
-}
-.chat-sources-title { font-weight: 600; margin-bottom: 4px; }
-.chat-source-link {
-  display: inline-block; margin-right: 8px; margin-bottom: 4px;
-  padding: 2px 8px; border-radius: 4px; background: var(--surface-2);
-  color: var(--accent); cursor: pointer; font-size: 11px;
-  text-decoration: none; transition: background 0.15s;
-}
-.chat-source-link:hover { background: var(--accent-glow); }
-
-/* Typing indicator */
-.typing-indicator {
-  display: flex; gap: 4px; padding: 8px 0;
-}
-.typing-indicator span {
-  width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted);
-  animation: typing-bounce 1.4s infinite;
-}
-.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
-.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
-@keyframes typing-bounce {
-  0%,60%,100% { transform: translateY(0); opacity: 0.4; }
-  30% { transform: translateY(-6px); opacity: 1; }
-}
-
-/* Chat welcome */
-.chat-welcome { text-align: center; padding: 40px 24px; }
-.chat-welcome-title { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
-.chat-welcome-sub { font-size: 14px; color: var(--text-dim); max-width: 460px; margin: 0 auto 20px; }
-.chat-suggestions {
-  display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 16px;
-}
-.chat-suggestion {
-  padding: 8px 16px; border-radius: 20px; border: 1px solid var(--border);
-  background: var(--surface); color: var(--text-dim); font-size: 13px;
-  cursor: pointer; transition: all 0.2s; font-family: inherit;
-}
-.chat-suggestion:hover { border-color: var(--accent); color: var(--text); }
-
-/* Chat input bar */
-.chat-input-bar {
-  display: flex; gap: 8px; padding-top: 16px; border-top: 1px solid var(--border);
-  flex-shrink: 0; align-items: flex-end;
-}
-.chat-input {
-  flex: 1; padding: 12px 16px; background: var(--surface);
-  border: 1px solid var(--border); border-radius: var(--radius);
-  color: var(--text); font-size: 14px; font-family: inherit;
-  outline: none; resize: none; min-height: 44px; max-height: 120px;
-  transition: border 0.2s;
-}
-.chat-input:focus { border-color: var(--accent); }
-.chat-input::placeholder { color: var(--text-muted); }
-.chat-send {
-  padding: 12px 20px; border-radius: var(--radius); border: none;
-  background: var(--purple); color: white; font-size: 14px;
-  cursor: pointer; font-family: inherit; font-weight: 600;
-  transition: opacity 0.2s; height: 44px;
-}
-.chat-send:hover { opacity: 0.9; }
-.chat-send:disabled { opacity: 0.4; cursor: not-allowed; }
-
-/* LLM progress bar (in chat) */
-.chat-llm-progress {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 12px 16px; margin-bottom: 12px;
-  display: none; flex-shrink: 0;
-}
-.chat-llm-progress.visible { display: block; }
-
-/* ── Tool Call Cards ── */
-.tool-call-card {
-  background: var(--surface-3);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 14px;
-  margin: 8px 0;
-  font-size: 12px;
-  transition: border-color 0.2s;
-}
-.tool-call-card:hover { border-color: rgba(20,184,166,0.4); }
-
-.tool-call-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  user-select: none;
-}
-.tool-call-icon { font-size: 14px; flex-shrink: 0; }
-.tool-call-name {
-  font-weight: 600;
-  color: var(--teal);
-  font-family: var(--mono);
-  font-size: 12px;
-  flex-shrink: 0;
-}
-.tool-call-args {
-  color: var(--text-dim);
-  font-family: var(--mono);
-  font-size: 11px;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.tool-call-status {
-  font-size: 11px;
-  color: var(--text-muted);
-  flex-shrink: 0;
-  font-family: var(--mono);
-}
-.tool-call-status.success { color: var(--green); }
-.tool-call-status.error { color: var(--red); }
-
-.tool-call-detail {
-  display: none;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--border);
-  max-height: 200px;
-  overflow-y: auto;
-  font-family: var(--mono);
-  font-size: 11px;
-  line-height: 1.5;
-  color: var(--text-dim);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-.tool-call-detail.open { display: block; }
-
-.tool-thinking {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 0;
-  font-size: 13px;
-  color: var(--text-dim);
-}
-.tool-thinking-spinner {
-  width: 14px; height: 14px;
-  border: 2px solid var(--border);
-  border-top-color: var(--teal);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-.agent-divider {
-  height: 1px;
-  background: var(--border);
-  margin: 12px 0;
-}
-
-.settings-divider-line {
-  height: 1px;
-  background: var(--border);
-  margin: 12px 0;
-}
-
-.tool-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.tool-badge-search { background: rgba(20,184,166,0.15); color: var(--teal); }
-.tool-badge-get { background: rgba(168,85,247,0.15); color: var(--purple); }
-.tool-badge-list { background: rgba(59,130,246,0.15); color: var(--accent); }
-
-/* ── Responsive ── */
-@media (max-width: 768px) {
-  .layout { grid-template-columns: 1fr; }
-  .sidebar { display: none; }
-  .main { padding: 20px 16px; }
-  .search-meta { flex-wrap: wrap; }
-  .filter-pills { margin-left: 0; }
-  .chat-bubble { max-width: 95%; }
-  .settings-dropdown { width: 280px; right: -60px; }
-}
-</style>
+        /* ===== Responsive ===== */
+        @media (max-width: 900px) {
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.25s ease;
+                z-index: 90;
+            }
+            .sidebar.open { transform: translateX(0); }
+            .content { margin-left: 0; padding: 32px 20px 60px; }
+            .menu-btn { display: block; }
+            .header-title { display: none; }
+        }
+    </style>
 </head>
 <body>
 
-<header>
-  <a href="../" class="logo">
-    <div class="logo-icon">⚡</div>
-    <span>Context Harness <span style="font-weight:400;color:var(--text-dim)">Docs</span></span>
-  </a>
-  <div class="header-right">
-    <a href="../demo/" class="header-link">Live Demo</a>
-    <a href="../api/context_harness/" class="header-link">API Reference</a>
-    <a href="https://github.com/parallax-labs/context-harness" class="header-link" target="_blank" rel="noopener">GitHub</a>
-  </div>
+<!-- ===== HEADER ===== -->
+<header class="header">
+    <div class="header-inner">
+        <div class="header-left">
+            <button class="menu-btn" onclick="document.querySelector('.sidebar').classList.toggle('open')" aria-label="Menu">☰</button>
+            <a href="../" class="header-brand">⚡ Context Harness</a>
+            <span class="header-sep">/</span>
+            <span class="header-title">Documentation</span>
+        </div>
+        <div class="header-links">
+            <a href="../">Home</a>
+            <a href="../api/context_harness/">API Reference</a>
+            <a href="https://github.com/parallax-labs/context-harness" class="gh-link" target="_blank" rel="noopener">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+            </a>
+        </div>
+    </div>
 </header>
 
+<!-- ===== SIDEBAR ===== -->
 <div class="layout">
-  <aside class="sidebar" id="sidebar">
-    <div class="sidebar-section">
-      <div class="sidebar-title">Guides</div>
-      <div id="sidebarGuides"></div>
+<nav class="sidebar" id="sidebar">
+    <div class="nav-group">
+        <div class="nav-group-title">Getting Started</div>
+        <a class="nav-link active" href="#overview">Overview</a>
+        <a class="nav-link" href="#installation">Installation</a>
+        <a class="nav-link" href="#quick-start">Quick Start</a>
     </div>
-    <div class="sidebar-divider"></div>
-    <div class="sidebar-section">
-      <div class="sidebar-title">Reference</div>
-      <div id="sidebarRef"></div>
+    <div class="nav-group">
+        <div class="nav-group-title">Configuration</div>
+        <a class="nav-link" href="#configuration">Config File</a>
+        <a class="nav-link" href="#connectors">Connectors</a>
+        <a class="nav-link" href="#connector-filesystem">Filesystem</a>
+        <a class="nav-link" href="#connector-git">Git</a>
+        <a class="nav-link" href="#connector-s3">S3</a>
+        <a class="nav-link" href="#embedding-config">Embeddings</a>
     </div>
-    <div class="sidebar-divider"></div>
-    <div class="sidebar-section">
-      <div class="sidebar-title">Source Modules</div>
-      <div id="sidebarModules"></div>
+    <div class="nav-group">
+        <div class="nav-group-title">CLI Reference</div>
+        <a class="nav-link" href="#cli">Commands</a>
+        <a class="nav-link" href="#cli-init">init</a>
+        <a class="nav-link" href="#cli-sync">sync</a>
+        <a class="nav-link" href="#cli-search">search</a>
+        <a class="nav-link" href="#cli-get">get</a>
+        <a class="nav-link" href="#cli-embed">embed</a>
+        <a class="nav-link" href="#cli-sources">sources</a>
+        <a class="nav-link" href="#cli-serve">serve mcp</a>
     </div>
-    <div class="sidebar-divider"></div>
-    <div class="sidebar-section">
-      <a href="../api/context_harness/" class="sidebar-link" target="_blank" rel="noopener">
-        📖 Full Rustdoc API
-      </a>
+    <div class="nav-group">
+        <div class="nav-group-title">HTTP API</div>
+        <a class="nav-link" href="#api">Endpoints</a>
+        <a class="nav-link" href="#api-search">POST /tools/search</a>
+        <a class="nav-link" href="#api-get">POST /tools/get</a>
+        <a class="nav-link" href="#api-sources">GET /tools/sources</a>
+        <a class="nav-link" href="#api-errors">Error Handling</a>
     </div>
-  </aside>
-
-  <div class="main">
-    <!-- Mode pills (shared between search and chat) -->
-    <div class="search-meta" id="modePillsBar">
-      <div class="mode-pills">
-        <button class="mode-pill active" data-mode="keyword">Keyword</button>
-        <button class="mode-pill" data-mode="semantic">Semantic</button>
-        <button class="mode-pill" data-mode="hybrid">Hybrid</button>
-        <button class="mode-pill" data-mode="chat">💬 Chat</button>
-      </div>
+    <div class="nav-group">
+        <div class="nav-group-title">Search &amp; Retrieval</div>
+        <a class="nav-link" href="#search">How Search Works</a>
+        <a class="nav-link" href="#hybrid-scoring">Hybrid Scoring</a>
     </div>
-
-    <!-- Search page -->
-    <div id="searchPage">
-      <div class="search-container">
-        <span class="search-icon">🔍</span>
-        <input type="text" class="search-input" id="searchInput" placeholder="Search documentation…" autofocus>
-      </div>
-
-      <div class="search-meta">
-        <div class="filter-pills">
-          <button class="filter-pill active" data-filter="all">All</button>
-          <button class="filter-pill" data-filter="guide">Guides</button>
-          <button class="filter-pill" data-filter="api">API</button>
-          <button class="filter-pill" data-filter="meta">Meta</button>
-        </div>
-      </div>
-
-      <div id="modelProgress" class="model-progress">
-        <span id="progDetail" style="font-size:13px;">Loading model…</span>
-        <div class="prog-bar"><div class="prog-fill" id="progFill"></div></div>
-        <div class="prog-text"><span id="progPct">0%</span></div>
-      </div>
-
-      <div id="resultCount" class="result-count"></div>
-      <div id="searchResults"></div>
-
-      <div id="welcomeState" class="welcome">
-        <div class="welcome-title">Documentation Search</div>
-        <div class="welcome-sub">
-          Search across guides, API reference, and source code.
-          This page is indexed by Context Harness itself — dogfooding the Git connector.
-        </div>
-        <div class="welcome-badge">
-          <span class="dot"></span>
-          <span id="docStats">Loading…</span>
-        </div>
-      </div>
+    <div class="nav-group">
+        <div class="nav-group-title">Integration</div>
+        <a class="nav-link" href="#cursor">Cursor / MCP</a>
+        <a class="nav-link" href="#ci-cd">CI/CD Pipelines</a>
     </div>
-
-    <!-- Chat page -->
-    <div class="chat-container" id="chatPage">
-      <div class="chat-header">
-        <div class="chat-header-left">
-          <span class="chat-header-title">Chat with Docs</span>
-          <span class="chat-backend-badge" id="chatBackendBadge">
-            <span class="bdot bdot-off" id="chatBdot"></span>
-            <span id="chatBackendLabel">No backend</span>
-          </span>
-        </div>
-        <div class="chat-actions">
-          <button class="chat-btn" onclick="clearChat()">New Chat</button>
-          <div class="settings-wrapper">
-            <button class="chat-btn" id="settingsBtn">⚙ Settings</button>
-            <div class="settings-dropdown" id="settingsDropdown">
-              <div class="settings-label">Inference Backend</div>
-              <div class="settings-radio-group">
-                <label class="settings-radio selected" id="radioWebllm" onclick="selectBackend('webllm')">
-                  <input type="radio" name="backend" value="webllm" checked>
-                  <div class="settings-radio-dot"></div>
-                  <div class="settings-radio-info">
-                    <div class="settings-radio-name">🖥 WebLLM (Offline)</div>
-                    <div class="settings-radio-desc">Runs Qwen3-4B in your browser via WebGPU. ~2.5GB download, cached for future visits. No API key needed.</div>
-                  </div>
-                </label>
-                <label class="settings-radio" id="radioOpenai" onclick="selectBackend('openai')">
-                  <input type="radio" name="backend" value="openai">
-                  <div class="settings-radio-dot"></div>
-                  <div class="settings-radio-info">
-                    <div class="settings-radio-name">🔑 OpenAI API</div>
-                    <div class="settings-radio-desc">Uses gpt-4o-mini via your own API key. Key stays in your browser, never sent to our servers.</div>
-                  </div>
-                </label>
-              </div>
-              <div class="settings-apikey-row" id="apikeyRow">
-                <div class="settings-label">OpenAI API Key</div>
-                <input type="password" class="settings-apikey-input" id="apikeyInput" placeholder="sk-…">
-                <div class="settings-hint">Stored in localStorage. Never leaves your browser.</div>
-              </div>
-              <div class="settings-divider-line"></div>
-              <div class="settings-label">Tool Execution</div>
-              <div class="settings-radio-group">
-                <label class="settings-radio selected" id="radioLocal" onclick="selectToolMode('local')">
-                  <input type="radio" name="toolmode" value="local" checked>
-                  <div class="settings-radio-dot"></div>
-                  <div class="settings-radio-info">
-                    <div class="settings-radio-name">📦 Browser (Offline)</div>
-                    <div class="settings-radio-desc">Agent tools run client-side using pre-indexed data. No server needed.</div>
-                  </div>
-                </label>
-                <label class="settings-radio" id="radioMcp" onclick="selectToolMode('mcp')">
-                  <input type="radio" name="toolmode" value="mcp">
-                  <div class="settings-radio-dot"></div>
-                  <div class="settings-radio-info">
-                    <div class="settings-radio-name">🔌 MCP Server</div>
-                    <div class="settings-radio-desc">Connect to a running <code style="font-size:11px">ctx serve mcp</code> for live data.</div>
-                  </div>
-                </label>
-              </div>
-              <div class="settings-apikey-row" id="mcpUrlRow">
-                <div class="settings-label">MCP Server URL</div>
-                <input type="text" class="settings-apikey-input" id="mcpUrlInput" placeholder="http://localhost:3636" value="http://localhost:3636">
-                <div class="settings-hint" id="mcpStatus">Not connected — start <code style="font-size:10px">ctx serve mcp</code> locally</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div id="chatLlmProgress" class="chat-llm-progress">
-        <span id="chatProgDetail" style="font-size:13px;">Loading LLM…</span>
-        <div class="prog-bar"><div class="prog-fill" id="chatProgFill"></div></div>
-        <div class="prog-text"><span id="chatProgPct">0%</span></div>
-      </div>
-
-      <div class="chat-messages" id="chatMessages">
-        <div class="chat-welcome" id="chatWelcome">
-          <div class="chat-welcome-title">Agent-Powered Documentation Chat</div>
-          <div class="chat-welcome-sub">
-            Ask questions and watch the agent use Context Harness MCP tools — search, retrieve, and synthesize answers.
-            The same tools available to Cursor and other AI editors, running right here in your browser.
-          </div>
-          <div class="chat-suggestions" id="chatSuggestions">
-            <button class="chat-suggestion" onclick="askSuggestion(this)">How do I set up the Git connector?</button>
-            <button class="chat-suggestion" onclick="askSuggestion(this)">What search modes are available?</button>
-            <button class="chat-suggestion" onclick="askSuggestion(this)">Show me the S3 connector config</button>
-            <button class="chat-suggestion" onclick="askSuggestion(this)">How does the chunking algorithm work?</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="chat-input-bar">
-        <textarea class="chat-input" id="chatInput" placeholder="Ask a question about the docs…" rows="1"></textarea>
-        <button class="chat-send" id="chatSend" onclick="sendChatMessage()">Send</button>
-      </div>
+    <div class="nav-group">
+        <div class="nav-group-title">Deployment</div>
+        <a class="nav-link" href="#deployment">Overview</a>
+        <a class="nav-link" href="#deploy-binary">Single Binary</a>
+        <a class="nav-link" href="#deploy-docker">Docker</a>
+        <a class="nav-link" href="#deploy-systemd">Systemd</a>
     </div>
-
-    <!-- Document view -->
-    <div id="docView" class="doc-view">
-      <a class="doc-back" onclick="showSearch()">← Back to results</a>
-      <h1 class="doc-title" id="docTitle"></h1>
-      <div class="doc-meta-bar" id="docMeta"></div>
-      <pre class="doc-body" id="docBody"></pre>
+    <div class="nav-group">
+        <div class="nav-group-title">Reference</div>
+        <a class="nav-link" href="#architecture">Architecture</a>
+        <a class="nav-link" href="#env-vars">Environment Variables</a>
+        <a class="nav-link" href="#contributing">Contributing</a>
     </div>
-  </div>
+</nav>
+
+<!-- ===== MAIN CONTENT ===== -->
+<main class="content">
+
+<!-- ==================== OVERVIEW ==================== -->
+<section class="section" id="overview">
+<h1>Context Harness</h1>
+<p class="lead">
+    A local-first context indexing framework that ingests documentation and code from any source,
+    stores it in SQLite, and exposes it to AI tools via CLI and MCP-compatible HTTP server.
+    One binary. Zero cloud dependencies. Designed for CI pipelines and static knowledge bases.
+</p>
+
+<p>Context Harness solves a specific problem: <strong>getting the right context to AI agents</strong>. Point it at your docs, source code, or S3 bucket. It chunks, indexes, and optionally embeds everything into a local SQLite database. Then expose that knowledge via the <code>ctx</code> CLI or the MCP server — Cursor, Claude, and any MCP-compatible tool can search your project knowledge instantly.</p>
+
+<h3>What it's for</h3>
+<ul>
+    <li><strong>CI-built knowledge bases</strong> — index your repo in CI, deploy the database as an artifact</li>
+    <li><strong>MCP context provider</strong> — give Cursor/Claude structured retrieval over your codebase</li>
+    <li><strong>Static docs search</strong> — replace Algolia with self-hosted search, no API keys needed</li>
+    <li><strong>Engineering onboarding</strong> — index ADRs, runbooks, incident reports into a searchable knowledge base</li>
+</ul>
+
+<h3>Key features</h3>
+<ul>
+    <li><strong>Connector-driven ingestion</strong> — filesystem, Git repos, S3 buckets (more coming)</li>
+    <li><strong>Hybrid retrieval</strong> — keyword (FTS5/BM25) + semantic (cosine similarity) + weighted merge</li>
+    <li><strong>Incremental sync</strong> — checkpointed, idempotent, deterministic</li>
+    <li><strong>Single binary</strong> — SQLite is embedded, no runtime dependencies</li>
+    <li><strong>MCP server</strong> — HTTP API for AI tool integration</li>
+</ul>
+</section>
+
+<!-- ==================== INSTALLATION ==================== -->
+<section class="section" id="installation">
+<h2>Installation</h2>
+
+<h3>From source (recommended)</h3>
+<pre><code><span class="prompt">$</span> cargo install --path .
+
+<span class="comment"># Or directly from the repository</span>
+<span class="prompt">$</span> cargo install --git https://github.com/parallax-labs/context-harness</code></pre>
+
+<h3>Build manually</h3>
+<pre><code><span class="prompt">$</span> git clone https://github.com/parallax-labs/context-harness.git
+<span class="prompt">$</span> cd context-harness
+<span class="prompt">$</span> cargo build --release
+<span class="prompt">$</span> ./target/release/ctx --help</code></pre>
+
+<h3>Prerequisites</h3>
+<table>
+    <tr><th>Tool</th><th>Version</th><th>Required For</th></tr>
+    <tr><td>Rust</td><td>1.75+ (stable)</td><td>Building the <code>ctx</code> binary</td></tr>
+    <tr><td>Git</td><td>2.x</td><td>Git connector</td></tr>
+</table>
+
+<p>SQLite is bundled — no system install needed.</p>
+</section>
+
+<!-- ==================== QUICK START ==================== -->
+<section class="section" id="quick-start">
+<h2>Quick Start</h2>
+
+<h3>1. Create a config file</h3>
+<pre><code><span class="prompt">$</span> cp config/ctx.example.toml config/ctx.toml</code></pre>
+
+<p>Edit <code>config/ctx.toml</code> to point at your documentation:</p>
+
+<pre><code><span class="key">[db]</span>
+path = <span class="val">"./data/ctx.sqlite"</span>
+
+<span class="key">[chunking]</span>
+max_tokens = <span class="val">700</span>
+
+<span class="key">[retrieval]</span>
+final_limit = <span class="val">12</span>
+
+<span class="key">[server]</span>
+bind = <span class="val">"127.0.0.1:7331"</span>
+
+<span class="key">[connectors.filesystem]</span>
+root = <span class="val">"./docs"</span>
+include_globs = [<span class="val">"**/*.md"</span>, <span class="val">"**/*.rs"</span>]</code></pre>
+
+<h3>2. Initialize and sync</h3>
+<pre><code><span class="prompt">$</span> ctx init --config ./config/ctx.toml
+<span class="comment"># Database initialized successfully.</span>
+
+<span class="prompt">$</span> ctx sync filesystem --config ./config/ctx.toml
+<span class="comment"># sync filesystem
+#   fetched: 47 items
+#   upserted documents: 47
+#   chunks written: 203
+# ok</span></code></pre>
+
+<h3>3. Search</h3>
+<pre><code><span class="prompt">$</span> ctx search "authentication" --config ./config/ctx.toml
+<span class="comment"># 1. [0.94] filesystem / auth-module.rs
+#    JWT signing key loaded from AWS Secrets Manager...
+# 2. [0.81] filesystem / deployment-runbook.md
+#    Key rotation procedure for production services...</span></code></pre>
+
+<h3>4. Start the MCP server</h3>
+<pre><code><span class="prompt">$</span> ctx serve mcp --config ./config/ctx.toml
+<span class="comment"># Listening on 127.0.0.1:7331</span></code></pre>
+
+<p>Your knowledge base is now queryable by Cursor, Claude, or any HTTP client.</p>
+</section>
+
+<!-- ==================== CONFIGURATION ==================== -->
+<section class="section" id="configuration">
+<h2>Configuration</h2>
+
+<p>Context Harness uses a TOML config file passed via <code>--config</code>. See <a href="https://github.com/parallax-labs/context-harness/blob/main/config/ctx.example.toml">ctx.example.toml</a> for a complete annotated example.</p>
+
+<h3>Full reference</h3>
+<pre><code><span class="key">[db]</span>
+path = <span class="val">"./data/ctx.sqlite"</span>          <span class="comment"># SQLite database file path</span>
+
+<span class="key">[chunking]</span>
+max_tokens = <span class="val">700</span>                    <span class="comment"># Max tokens per chunk (~4 chars/token)</span>
+overlap_tokens = <span class="val">80</span>                  <span class="comment"># Overlap between consecutive chunks</span>
+
+<span class="key">[embedding]</span>
+provider = <span class="val">"disabled"</span>                <span class="comment"># "disabled" or "openai"</span>
+<span class="comment"># model = "text-embedding-3-small"  # Required when provider != "disabled"</span>
+<span class="comment"># dims = 1536                       # Embedding dimensions</span>
+<span class="comment"># batch_size = 64                   # Texts per API call</span>
+<span class="comment"># max_retries = 5                   # Retry count for API failures</span>
+<span class="comment"># timeout_secs = 30                 # Per-request timeout</span>
+
+<span class="key">[retrieval]</span>
+final_limit = <span class="val">12</span>                     <span class="comment"># Max results returned</span>
+hybrid_alpha = <span class="val">0.6</span>                   <span class="comment"># 0.0 = keyword only, 1.0 = semantic only</span>
+candidate_k_keyword = <span class="val">80</span>             <span class="comment"># FTS candidates to fetch</span>
+candidate_k_vector = <span class="val">80</span>              <span class="comment"># Vector candidates to fetch</span>
+group_by = <span class="val">"document"</span>                <span class="comment"># Group results by document</span>
+doc_agg = <span class="val">"max"</span>                      <span class="comment"># Aggregation: max chunk score</span>
+max_chunks_per_doc = <span class="val">3</span>               <span class="comment"># Max chunks per document in results</span>
+
+<span class="key">[server]</span>
+bind = <span class="val">"127.0.0.1:7331"</span>             <span class="comment"># HTTP server bind address</span></code></pre>
+</section>
+
+<!-- ==================== CONNECTORS ==================== -->
+<section class="section" id="connectors">
+<h2>Connectors</h2>
+
+<p>Connectors fetch data from external sources and normalize it into a consistent <code>Document</code> model. All connectors support incremental sync via checkpoints — only changed content is re-processed on subsequent runs.</p>
+</section>
+
+<!-- Filesystem -->
+<section class="section" id="connector-filesystem">
+<h3>Filesystem Connector</h3>
+
+<p>Scan a local directory tree for files matching glob patterns.</p>
+
+<pre><code><span class="key">[connectors.filesystem]</span>
+root = <span class="val">"./docs"</span>                      <span class="comment"># Directory to scan</span>
+include_globs = [<span class="val">"**/*.md"</span>, <span class="val">"**/*.rs"</span>]  <span class="comment"># Files to include</span>
+exclude_globs = [<span class="val">"**/target/**"</span>]       <span class="comment"># Files to exclude</span>
+follow_symlinks = <span class="val">false</span>               <span class="comment"># Follow symbolic links</span></code></pre>
+
+<p>Each file becomes a <code>Document</code> with its content as the body, filesystem path as the source ID, and file modification time as the timestamp.</p>
+</section>
+
+<!-- Git -->
+<section class="section" id="connector-git">
+<h3>Git Connector</h3>
+
+<p>Clone and index any Git repository — local or remote. Extracts per-file commit metadata (author, timestamp, SHA) and auto-generates web URLs for GitHub/GitLab repos.</p>
+
+<pre><code><span class="key">[connectors.git]</span>
+url = <span class="val">"https://github.com/acme/platform.git"</span>   <span class="comment"># Repo URL or local path</span>
+branch = <span class="val">"main"</span>                               <span class="comment"># Branch to track</span>
+root = <span class="val">"docs/"</span>                                 <span class="comment"># Subdirectory to scope</span>
+include_globs = [<span class="val">"**/*.md"</span>, <span class="val">"**/*.rst"</span>]       <span class="comment"># File patterns</span>
+shallow = <span class="val">true</span>                                  <span class="comment"># --depth 1 clone</span>
+<span class="comment"># cache_dir = "./data/.git-cache/platform"     # Optional clone cache</span></code></pre>
+
+<p>Features:</p>
+<ul>
+    <li>Clones on first sync, pulls on subsequent syncs</li>
+    <li>Per-file last commit timestamp and author from <code>git log</code></li>
+    <li>GitHub/GitLab web URLs auto-generated for each file</li>
+    <li>Shallow clone support to minimize disk usage</li>
+    <li>Incremental sync via checkpoint timestamps</li>
+</ul>
+</section>
+
+<!-- S3 -->
+<section class="section" id="connector-s3">
+<h3>S3 Connector</h3>
+
+<p>Index documents from Amazon S3 buckets (or S3-compatible services like MinIO and LocalStack).</p>
+
+<pre><code><span class="key">[connectors.s3]</span>
+bucket = <span class="val">"acme-docs"</span>                          <span class="comment"># Bucket name</span>
+prefix = <span class="val">"engineering/runbooks/"</span>                <span class="comment"># Key prefix filter</span>
+region = <span class="val">"us-east-1"</span>                           <span class="comment"># AWS region</span>
+include_globs = [<span class="val">"**/*.md"</span>, <span class="val">"**/*.json"</span>]       <span class="comment"># Key patterns</span>
+<span class="comment"># endpoint_url = "http://localhost:9000"       # For MinIO/LocalStack</span></code></pre>
+
+<p>Requires <code>AWS_ACCESS_KEY_ID</code> and <code>AWS_SECRET_ACCESS_KEY</code> environment variables.</p>
+
+<p>Features:</p>
+<ul>
+    <li>Pagination for large buckets (1000+ objects)</li>
+    <li><code>LastModified</code> and <code>ETag</code> tracking for incremental sync</li>
+    <li>Custom endpoint URL for S3-compatible services</li>
+    <li>Glob-based include/exclude filtering on object keys</li>
+</ul>
+</section>
+
+<!-- Embedding Config -->
+<section class="section" id="embedding-config">
+<h3>Embedding Configuration</h3>
+
+<p>Embeddings enable semantic and hybrid search. Without embeddings, only keyword search (FTS5/BM25) is available.</p>
+
+<pre><code><span class="key">[embedding]</span>
+provider = <span class="val">"openai"</span>                  <span class="comment"># "disabled" or "openai"</span>
+model = <span class="val">"text-embedding-3-small"</span>      <span class="comment"># OpenAI model name</span>
+dims = <span class="val">1536</span>                           <span class="comment"># Vector dimensions</span>
+batch_size = <span class="val">64</span>                       <span class="comment"># Texts per API call</span>
+max_retries = <span class="val">5</span>                       <span class="comment"># Retry on failure</span>
+timeout_secs = <span class="val">30</span>                     <span class="comment"># Per-request timeout</span></code></pre>
+
+<p>Set the <code>OPENAI_API_KEY</code> environment variable before using embedding commands. Embedding is non-fatal during sync — documents are always ingested even if embedding fails.</p>
+</section>
+
+<!-- ==================== CLI REFERENCE ==================== -->
+<section class="section" id="cli">
+<h2>CLI Reference</h2>
+
+<p>Every command requires <code>--config &lt;path&gt;</code> to specify the TOML configuration file.</p>
+
+<table>
+    <tr><th>Command</th><th>Description</th></tr>
+    <tr><td><code>ctx init</code></td><td>Initialize database schema</td></tr>
+    <tr><td><code>ctx sources</code></td><td>List available connectors and status</td></tr>
+    <tr><td><code>ctx sync &lt;connector&gt;</code></td><td>Ingest data from a connector</td></tr>
+    <tr><td><code>ctx search "&lt;query&gt;"</code></td><td>Search indexed documents</td></tr>
+    <tr><td><code>ctx get &lt;id&gt;</code></td><td>Retrieve a document by ID</td></tr>
+    <tr><td><code>ctx embed pending</code></td><td>Backfill missing embeddings</td></tr>
+    <tr><td><code>ctx embed rebuild</code></td><td>Rebuild all embeddings</td></tr>
+    <tr><td><code>ctx serve mcp</code></td><td>Start MCP-compatible HTTP server</td></tr>
+</table>
+</section>
+
+<section class="section" id="cli-init">
+<h3>ctx init</h3>
+<p>Creates the SQLite database and all required tables. Idempotent — safe to run multiple times.</p>
+<pre><code><span class="prompt">$</span> ctx init --config ./config/ctx.toml</code></pre>
+<p>Creates: <code>documents</code>, <code>chunks</code>, <code>checkpoints</code>, <code>chunks_fts</code> (FTS5), <code>embeddings</code>, <code>chunk_vectors</code>.</p>
+</section>
+
+<section class="section" id="cli-sync">
+<h3>ctx sync</h3>
+<p>Ingest from a configured connector. Supports incremental sync via checkpoints.</p>
+<pre><code><span class="prompt">$</span> ctx sync filesystem --config ./config/ctx.toml
+<span class="prompt">$</span> ctx sync git --config ./config/ctx.toml
+<span class="prompt">$</span> ctx sync s3 --config ./config/ctx.toml</code></pre>
+
+<h4>Flags</h4>
+<table>
+    <tr><th>Flag</th><th>Description</th></tr>
+    <tr><td><code>--full</code></td><td>Ignore checkpoint, re-ingest everything</td></tr>
+    <tr><td><code>--dry-run</code></td><td>Preview without writing</td></tr>
+    <tr><td><code>--since &lt;date&gt;</code></td><td>Only items after this date</td></tr>
+    <tr><td><code>--until &lt;date&gt;</code></td><td>Only items before this date</td></tr>
+    <tr><td><code>--limit &lt;n&gt;</code></td><td>Cap number of items to process</td></tr>
+</table>
+</section>
+
+<section class="section" id="cli-search">
+<h3>ctx search</h3>
+<p>Search indexed documents. Returns ranked results with scores and snippets.</p>
+<pre><code><span class="prompt">$</span> ctx search "authentication flow" --config ./config/ctx.toml
+<span class="prompt">$</span> ctx search "deployment" --mode hybrid --config ./config/ctx.toml
+<span class="prompt">$</span> ctx search "error handling" --mode semantic --limit 5 --config ./config/ctx.toml</code></pre>
+
+<h4>Flags</h4>
+<table>
+    <tr><th>Flag</th><th>Description</th></tr>
+    <tr><td><code>--mode keyword|semantic|hybrid</code></td><td>Search mode (default: <code>keyword</code>)</td></tr>
+    <tr><td><code>--source &lt;name&gt;</code></td><td>Filter by connector source</td></tr>
+    <tr><td><code>--since &lt;date&gt;</code></td><td>Filter by date</td></tr>
+    <tr><td><code>--limit &lt;n&gt;</code></td><td>Max results</td></tr>
+</table>
+
+<div class="callout callout-info">
+    <p><strong>Note:</strong> <code>semantic</code> and <code>hybrid</code> modes require an embedding provider to be configured and embeddings to be generated.</p>
+</div>
+</section>
+
+<section class="section" id="cli-get">
+<h3>ctx get</h3>
+<p>Retrieve a full document by UUID, including metadata, body, and all chunks.</p>
+<pre><code><span class="prompt">$</span> ctx get a1b2c3d4-e5f6-7890-abcd-ef1234567890 --config ./config/ctx.toml</code></pre>
+</section>
+
+<section class="section" id="cli-embed">
+<h3>ctx embed</h3>
+<p>Manage the embedding pipeline. Requires <code>[embedding].provider</code> to be set to <code>"openai"</code>.</p>
+
+<pre><code><span class="comment"># Backfill missing or stale embeddings</span>
+<span class="prompt">$</span> ctx embed pending --config ./config/ctx.toml
+
+<span class="comment"># Delete and regenerate all embeddings</span>
+<span class="prompt">$</span> ctx embed rebuild --config ./config/ctx.toml</code></pre>
+
+<h4>Flags</h4>
+<table>
+    <tr><th>Flag</th><th>Description</th></tr>
+    <tr><td><code>--limit &lt;n&gt;</code></td><td>Max chunks to embed (pending only)</td></tr>
+    <tr><td><code>--batch-size &lt;n&gt;</code></td><td>Override config batch size</td></tr>
+    <tr><td><code>--dry-run</code></td><td>Preview without embedding (pending only)</td></tr>
+</table>
+
+<p>Staleness is detected via SHA-256 hash of chunk text — if the content changed since last embed, it's re-embedded.</p>
+</section>
+
+<section class="section" id="cli-sources">
+<h3>ctx sources</h3>
+<p>List configured connectors and their health status.</p>
+<pre><code><span class="prompt">$</span> ctx sources --config ./config/ctx.toml
+<span class="comment"># filesystem  OK
+# git         OK
+# s3          NOT CONFIGURED</span></code></pre>
+</section>
+
+<section class="section" id="cli-serve">
+<h3>ctx serve mcp</h3>
+<p>Start the MCP-compatible HTTP server. Binds to the address in <code>[server].bind</code>.</p>
+<pre><code><span class="prompt">$</span> ctx serve mcp --config ./config/ctx.toml
+<span class="comment"># Listening on 127.0.0.1:7331</span></code></pre>
+<p>CORS is enabled for cross-origin requests. See <a href="#api">HTTP API</a> for endpoint details.</p>
+</section>
+
+<!-- ==================== HTTP API ==================== -->
+<section class="section" id="api">
+<h2>HTTP API</h2>
+
+<p>The MCP server exposes a JSON HTTP API. All request/response bodies are UTF-8 JSON. Timestamps are ISO 8601 (RFC 3339). IDs are lowercase UUIDs.</p>
+
+<table>
+    <tr><th>Method</th><th>Path</th><th>Description</th></tr>
+    <tr><td>POST</td><td><code>/tools/search</code></td><td>Search indexed documents</td></tr>
+    <tr><td>POST</td><td><code>/tools/get</code></td><td>Retrieve document by ID</td></tr>
+    <tr><td>GET</td><td><code>/tools/sources</code></td><td>List connector status</td></tr>
+    <tr><td>GET</td><td><code>/health</code></td><td>Health check</td></tr>
+</table>
+</section>
+
+<section class="section" id="api-search">
+<h3>POST /tools/search</h3>
+
+<h4>Request</h4>
+<pre><code>{
+  "query": "authentication flow",
+  "mode": "hybrid",
+  "limit": 12,
+  "filters": {
+    "source": "filesystem",
+    "since": "2025-01-01T00:00:00Z",
+    "until": null
+  }
+}</code></pre>
+
+<h4>Response</h4>
+<pre><code>{
+  "results": [
+    {
+      "id": "a1b2c3d4-...",
+      "score": 0.92,
+      "title": "Auth Module",
+      "source": "filesystem",
+      "source_id": "docs/auth.md",
+      "updated_at": "2026-02-01T12:00:00Z",
+      "snippet": "JWT signing key loaded from...",
+      "source_url": null
+    }
+  ]
+}</code></pre>
+</section>
+
+<section class="section" id="api-get">
+<h3>POST /tools/get</h3>
+
+<h4>Request</h4>
+<pre><code>{
+  "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+}</code></pre>
+
+<h4>Response</h4>
+<pre><code>{
+  "id": "a1b2c3d4-...",
+  "source": "filesystem",
+  "source_id": "docs/auth.md",
+  "source_url": null,
+  "title": "Auth Module",
+  "author": null,
+  "created_at": "2026-01-15T10:00:00Z",
+  "updated_at": "2026-02-01T12:00:00Z",
+  "content_type": "text/markdown",
+  "body": "# Auth Module\n\n...",
+  "metadata": {},
+  "chunks": [
+    { "index": 0, "text": "# Auth Module..." },
+    { "index": 1, "text": "## JWT Signing..." }
+  ]
+}</code></pre>
+</section>
+
+<section class="section" id="api-sources">
+<h3>GET /tools/sources</h3>
+
+<h4>Response</h4>
+<pre><code>{
+  "sources": [
+    { "name": "filesystem", "configured": true, "healthy": true, "notes": null },
+    { "name": "git", "configured": true, "healthy": true, "notes": null },
+    { "name": "s3", "configured": false, "healthy": false, "notes": "not configured" }
+  ]
+}</code></pre>
+</section>
+
+<section class="section" id="api-errors">
+<h3>Error Handling</h3>
+
+<p>All errors follow a consistent JSON format:</p>
+
+<pre><code>{
+  "error": {
+    "code": "not_found",
+    "message": "document not found: a1b2c3d4-..."
+  }
+}</code></pre>
+
+<table>
+    <tr><th>Code</th><th>HTTP Status</th><th>Meaning</th></tr>
+    <tr><td><code>bad_request</code></td><td>400</td><td>Malformed JSON or missing fields</td></tr>
+    <tr><td><code>not_found</code></td><td>404</td><td>Document ID not present</td></tr>
+    <tr><td><code>embeddings_disabled</code></td><td>400</td><td>Semantic/hybrid requires embeddings</td></tr>
+    <tr><td><code>internal</code></td><td>500</td><td>Unexpected server error</td></tr>
+</table>
+</section>
+
+<!-- ==================== SEARCH & RETRIEVAL ==================== -->
+<section class="section" id="search">
+<h2>Search &amp; Retrieval</h2>
+
+<p>Context Harness supports three search modes, all returning scores normalized to [0, 1].</p>
+
+<table>
+    <tr><th>Mode</th><th>Requires Embeddings</th><th>Description</th></tr>
+    <tr><td><code>keyword</code></td><td>No</td><td>SQLite FTS5 with BM25 ranking</td></tr>
+    <tr><td><code>semantic</code></td><td>Yes</td><td>Cosine similarity over chunk embeddings</td></tr>
+    <tr><td><code>hybrid</code></td><td>Yes</td><td>Weighted merge of keyword + semantic</td></tr>
+</table>
+
+<p>Results are grouped by document (best chunk score wins), with deterministic tie-breaking: score descending → <code>updated_at</code> descending → <code>id</code> ascending.</p>
+</section>
+
+<section class="section" id="hybrid-scoring">
+<h3>Hybrid Scoring Algorithm</h3>
+
+<p>Hybrid search merges keyword and semantic signals using a configurable alpha weight:</p>
+
+<pre><code><span class="comment"># Per-chunk hybrid score</span>
+hybrid = (1 - alpha) × keyword_norm + alpha × vector_norm
+
+<span class="comment"># Per-document score (MAX aggregation)</span>
+doc_score = max(hybrid(chunk) for chunk in document)</code></pre>
+
+<p>Both keyword and vector scores are min-max normalized independently per query. Missing signals default to 0.0 — a document that only appears in keyword results still gets a hybrid score.</p>
+
+<h4>Alpha tuning</h4>
+<table>
+    <tr><th>Value</th><th>Behavior</th></tr>
+    <tr><td><code>0.0</code></td><td>Pure keyword search (FTS5/BM25)</td></tr>
+    <tr><td><code>0.3</code></td><td>Keyword-heavy hybrid</td></tr>
+    <tr><td><code>0.6</code></td><td>Balanced hybrid (default)</td></tr>
+    <tr><td><code>0.8</code></td><td>Semantic-heavy hybrid</td></tr>
+    <tr><td><code>1.0</code></td><td>Pure semantic search</td></tr>
+</table>
+</section>
+
+<!-- ==================== CURSOR / MCP ==================== -->
+<section class="section" id="cursor">
+<h2>Cursor / MCP Integration</h2>
+
+<p>Context Harness serves as a context provider for Cursor, Claude, and any MCP-compatible AI tool.</p>
+
+<h3>Setup</h3>
+
+<ol>
+    <li>Install and configure <code>ctx</code> with your documentation sources</li>
+    <li>Run <code>ctx init</code> and <code>ctx sync</code> to build the knowledge base</li>
+    <li>Add to your MCP configuration:</li>
+</ol>
+
+<pre><code>{
+  "mcpServers": {
+    "context-harness": {
+      "command": "ctx",
+      "args": ["--config", "/absolute/path/to/ctx.toml", "serve", "mcp"]
+    }
+  }
+}</code></pre>
+
+<p>Cursor will start the MCP server automatically and expose three tools to the agent:</p>
+<ul>
+    <li><code>context.search</code> — search your indexed documents</li>
+    <li><code>context.get</code> — retrieve full documents by ID</li>
+    <li><code>context.sources</code> — check connector status</li>
+</ul>
+
+<h3>Multi-project setup</h3>
+<p>Run separate Context Harness instances for different projects with unique database paths and server ports:</p>
+<pre><code>{
+  "mcpServers": {
+    "project-alpha": {
+      "command": "ctx",
+      "args": ["--config", "/projects/alpha/ctx.toml", "serve", "mcp"]
+    },
+    "project-beta": {
+      "command": "ctx",
+      "args": ["--config", "/projects/beta/ctx.toml", "serve", "mcp"]
+    }
+  }
+}</code></pre>
+
+<h3>Recommended config for Cursor</h3>
+<pre><code><span class="key">[chunking]</span>
+max_tokens = <span class="val">500</span>        <span class="comment"># Smaller chunks = more precise retrieval</span>
+
+<span class="key">[retrieval]</span>
+hybrid_alpha = <span class="val">0.6</span>      <span class="comment"># Balance keyword + semantic</span>
+final_limit = <span class="val">8</span>          <span class="comment"># Don't overwhelm the context window</span>
+
+<span class="key">[connectors.filesystem]</span>
+root = <span class="val">"./"</span>
+include_globs = [<span class="val">"**/*.md"</span>, <span class="val">"**/*.rs"</span>, <span class="val">"**/*.ts"</span>, <span class="val">"**/*.py"</span>]
+exclude_globs = [<span class="val">"**/target/**"</span>, <span class="val">"**/node_modules/**"</span>, <span class="val">"**/.git/**"</span>]</code></pre>
+</section>
+
+<!-- ==================== CI/CD ==================== -->
+<section class="section" id="ci-cd">
+<h2>CI/CD Integration</h2>
+
+<p>Context Harness is designed for CI pipelines. Build the knowledge base in CI, deploy the SQLite database as an artifact, and serve it wherever you need it.</p>
+
+<h3>GitHub Actions example</h3>
+<pre><code>name: Build Knowledge Base
+on:
+  push:
+    branches: [main]
+    paths: ['docs/**', 'src/**']
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build ctx
+        run: cargo build --release
+
+      - name: Build knowledge base
+        run: |
+          ./target/release/ctx init --config ./config/ctx.toml
+          ./target/release/ctx sync filesystem --config ./config/ctx.toml
+
+      - name: Upload database
+        uses: actions/upload-artifact@v4
+        with:
+          name: knowledge-base
+          path: data/ctx.sqlite</code></pre>
+
+<h3>Cron-based sync</h3>
+<pre><code><span class="comment"># Re-sync every 15 minutes</span>
+*/15 * * * * /opt/ctx sync filesystem --config /opt/ctx.toml >> /var/log/ctx-sync.log 2>&1</code></pre>
+</section>
+
+<!-- ==================== DEPLOYMENT ==================== -->
+<section class="section" id="deployment">
+<h2>Deployment</h2>
+
+<p>Context Harness compiles to a single static binary with embedded SQLite. Deploy by copying the binary and a config file.</p>
+</section>
+
+<section class="section" id="deploy-binary">
+<h3>Single Binary</h3>
+<pre><code><span class="prompt">$</span> cargo build --release
+<span class="prompt">$</span> scp target/release/ctx server:/opt/ctx/
+<span class="prompt">$</span> scp config/ctx.toml server:/opt/ctx/
+
+<span class="comment"># On the server</span>
+<span class="prompt">$</span> /opt/ctx/ctx init --config /opt/ctx/ctx.toml
+<span class="prompt">$</span> /opt/ctx/ctx sync filesystem --config /opt/ctx/ctx.toml
+<span class="prompt">$</span> /opt/ctx/ctx serve mcp --config /opt/ctx/ctx.toml</code></pre>
+</section>
+
+<section class="section" id="deploy-docker">
+<h3>Docker</h3>
+<pre><code>FROM rust:1.82-slim AS builder
+WORKDIR /app
+COPY Cargo.toml Cargo.lock ./
+COPY src/ src/
+RUN cargo build --release
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /app/target/release/ctx /usr/local/bin/ctx
+WORKDIR /data
+COPY config/ctx.example.toml /etc/ctx/ctx.toml
+EXPOSE 7331
+ENTRYPOINT ["ctx"]
+CMD ["serve", "mcp", "--config", "/etc/ctx/ctx.toml"]</code></pre>
+
+<pre><code><span class="prompt">$</span> docker build -t context-harness .
+<span class="prompt">$</span> docker run --rm -v ctx-data:/data context-harness init --config /etc/ctx/ctx.toml
+<span class="prompt">$</span> docker run --rm -v ctx-data:/data context-harness sync filesystem --config /etc/ctx/ctx.toml
+<span class="prompt">$</span> docker run -d --name ctx -p 7331:7331 -v ctx-data:/data context-harness</code></pre>
+</section>
+
+<section class="section" id="deploy-systemd">
+<h3>Systemd Service</h3>
+<pre><code>[Unit]
+Description=Context Harness MCP Server
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/opt/ctx/ctx serve mcp --config /opt/ctx/ctx.toml
+Environment=OPENAI_API_KEY=sk-...
+Restart=on-failure
+RestartSec=5
+User=ctx
+WorkingDirectory=/opt/ctx
+
+[Install]
+WantedBy=multi-user.target</code></pre>
+
+<pre><code><span class="prompt">$</span> sudo systemctl enable context-harness
+<span class="prompt">$</span> sudo systemctl start context-harness</code></pre>
+</section>
+
+<!-- ==================== ARCHITECTURE ==================== -->
+<section class="section" id="architecture">
+<h2>Architecture</h2>
+
+<h3>Data flow</h3>
+<pre><code>Connector → SourceItem → normalize() → Document → chunk() → Chunks
+                                          ↓                     ↓
+                                   upsert_document()     replace_chunks()
+                                                               ↓
+                                                         embed() → vectors
+                                                               ↓
+                                                     SQLite (FTS5 + sqlite-vec)
+                                                               ↓
+                                                     Query Engine (keyword / semantic / hybrid)
+                                                               ↓
+                                                     CLI  ·  MCP Server</code></pre>
+
+<h3>Module map</h3>
+<table>
+    <tr><th>Module</th><th>Responsibility</th></tr>
+    <tr><td><code>models.rs</code></td><td>Document, Chunk, SourceItem structs</td></tr>
+    <tr><td><code>config.rs</code></td><td>TOML configuration parsing</td></tr>
+    <tr><td><code>connector_fs.rs</code></td><td>Filesystem connector</td></tr>
+    <tr><td><code>connector_git.rs</code></td><td>Git repository connector</td></tr>
+    <tr><td><code>connector_s3.rs</code></td><td>S3 bucket connector</td></tr>
+    <tr><td><code>chunk.rs</code></td><td>Paragraph-boundary text chunker</td></tr>
+    <tr><td><code>ingest.rs</code></td><td>Ingestion pipeline orchestration</td></tr>
+    <tr><td><code>db.rs</code></td><td>SQLite connection (WAL mode)</td></tr>
+    <tr><td><code>migrate.rs</code></td><td>Schema migrations</td></tr>
+    <tr><td><code>embedding.rs</code></td><td>EmbeddingProvider trait + OpenAI implementation</td></tr>
+    <tr><td><code>embed_cmd.rs</code></td><td>embed pending / embed rebuild commands</td></tr>
+    <tr><td><code>search.rs</code></td><td>Keyword, semantic, hybrid search</td></tr>
+    <tr><td><code>get.rs</code></td><td>Document retrieval by ID</td></tr>
+    <tr><td><code>sources.rs</code></td><td>Connector health listing</td></tr>
+    <tr><td><code>server.rs</code></td><td>Axum HTTP server (MCP-compatible)</td></tr>
+    <tr><td><code>main.rs</code></td><td>CLI entrypoint (clap)</td></tr>
+</table>
+
+<p>Full API documentation is available in the <a href="../api/context_harness/">Rustdoc API Reference</a>.</p>
+</section>
+
+<!-- ==================== ENV VARS ==================== -->
+<section class="section" id="env-vars">
+<h2>Environment Variables</h2>
+
+<table>
+    <tr><th>Variable</th><th>Required For</th><th>Description</th></tr>
+    <tr><td><code>OPENAI_API_KEY</code></td><td>Embeddings</td><td>OpenAI API key for embedding generation</td></tr>
+    <tr><td><code>AWS_ACCESS_KEY_ID</code></td><td>S3 connector</td><td>AWS access key</td></tr>
+    <tr><td><code>AWS_SECRET_ACCESS_KEY</code></td><td>S3 connector</td><td>AWS secret key</td></tr>
+    <tr><td><code>AWS_SESSION_TOKEN</code></td><td>S3 connector</td><td>AWS session token (optional, temporary credentials)</td></tr>
+</table>
+</section>
+
+<!-- ==================== CONTRIBUTING ==================== -->
+<section class="section" id="contributing">
+<h2>Contributing</h2>
+
+<pre><code><span class="prompt">$</span> git clone https://github.com/parallax-labs/context-harness.git
+<span class="prompt">$</span> cd context-harness
+<span class="prompt">$</span> cp config/ctx.example.toml config/ctx.toml
+<span class="prompt">$</span> cargo build
+<span class="prompt">$</span> cargo test</code></pre>
+
+<p>Before submitting a PR:</p>
+<ul>
+    <li>Run <code>cargo fmt</code> and <code>cargo clippy</code></li>
+    <li>All tests must pass (<code>cargo test</code>)</li>
+    <li>Keep functions focused and well-documented</li>
+</ul>
+
+<p>See <a href="https://github.com/parallax-labs/context-harness/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a> for the full guide.</p>
+</section>
+
+</main>
 </div>
 
 <script>
-/* ====================================================================
-   Context Harness Documentation — Client-Side Search + Chat
-   Uses BM25 for keyword search, Transformers.js for semantic search,
-   and WebLLM/OpenAI for RAG-powered chat.
-   Data is pre-indexed in CI via the Git connector.
-   ==================================================================== */
+// Sidebar active link tracking
+const sections = document.querySelectorAll('.section');
+const navLinks = document.querySelectorAll('.nav-link');
 
-let DATA = { documents: [], chunks: [] };
-let currentMode = 'keyword';
-let currentFilter = 'all';
-
-// Semantic search state
-let pipeline = null;
-let modelReady = false;
-let modelLoading = false;
-let chunkEmbeddings = [];
-let _modelPromise = null;
-
-// ── Data Loading ──
-async function init() {
-  try {
-    const resp = await fetch('data.json');
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    DATA = await resp.json();
-  } catch (e) {
-    document.getElementById('docStats').textContent = 'data.json not found — run scripts/build-docs.sh first';
-    return;
-  }
-
-  document.getElementById('docStats').textContent =
-    `${DATA.documents.length} documents · ${DATA.chunks.length} chunks · indexed via Git connector`;
-
-  buildSidebar();
-  buildIndex();
-
-  // Try to load cached embeddings
-  if (loadCachedEmbeddings()) {
-    modelReady = true;
-    _modelPromise = loadModel().catch(e => console.warn('Background model load:', e));
-  }
-
-  // Restore chat settings
-  initChatSettings();
-}
-
-// ── Sidebar ──
-function classifyDoc(sourceId) {
-  if (sourceId.startsWith('docs/')) return 'guide';
-  if (sourceId.startsWith('src/')) return 'api';
-  return 'meta';
-}
-
-function buildSidebar() {
-  const guides = [], refs = [], modules = [];
-
-  DATA.documents.forEach(d => {
-    const kind = classifyDoc(d.source_id);
-    const title = d.title || d.source_id;
-    const entry = { id: d.id, title, sourceId: d.source_id };
-    if (kind === 'guide') guides.push(entry);
-    else if (kind === 'api') modules.push(entry);
-    else refs.push(entry);
-  });
-
-  const renderList = (items, container) => {
-    container.innerHTML = items.map(item =>
-      `<a class="sidebar-link" onclick="viewDocument('${item.id}')" title="${item.sourceId}">${item.title}</a>`
-    ).join('');
-  };
-
-  renderList(guides, document.getElementById('sidebarGuides'));
-  renderList(refs, document.getElementById('sidebarRef'));
-  renderList(modules, document.getElementById('sidebarModules'));
-}
-
-// ── BM25 Index ──
-let bm25Index = {};
-let avgDl = 0;
-const BM25_K1 = 1.2, BM25_B = 0.75;
-
-function tokenize(text) {
-  return text.toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/).filter(t => t.length > 1);
-}
-
-function buildIndex() {
-  const N = DATA.chunks.length;
-  const dl = [];
-  const tf = [];
-  const df = {};
-
-  DATA.chunks.forEach((chunk, i) => {
-    const tokens = tokenize(chunk.text);
-    dl.push(tokens.length);
-    const freq = {};
-    tokens.forEach(t => { freq[t] = (freq[t] || 0) + 1; });
-    tf.push(freq);
-    const seen = new Set(tokens);
-    seen.forEach(t => { df[t] = (df[t] || 0) + 1; });
-  });
-
-  avgDl = dl.reduce((a, b) => a + b, 0) / (N || 1);
-  bm25Index = { N, dl, tf, df };
-}
-
-function bm25Search(query) {
-  const qTokens = tokenize(query);
-  if (qTokens.length === 0) return [];
-
-  const { N, dl, tf, df } = bm25Index;
-  const scores = [];
-
-  for (let i = 0; i < N; i++) {
-    let score = 0;
-    for (const qt of qTokens) {
-      const tfi = tf[i][qt] || 0;
-      if (tfi === 0) continue;
-      const dfi = df[qt] || 0;
-      const idf = Math.log((N - dfi + 0.5) / (dfi + 0.5) + 1);
-      const num = tfi * (BM25_K1 + 1);
-      const denom = tfi + BM25_K1 * (1 - BM25_B + BM25_B * dl[i] / avgDl);
-      score += idf * num / denom;
-    }
-    if (score > 0) scores.push({ idx: i, score });
-  }
-
-  scores.sort((a, b) => b.score - a.score);
-  return scores.slice(0, 20).map(s => chunkToResult(s.idx, s.score));
-}
-
-function chunkToResult(chunkIdx, rawScore) {
-  const chunk = DATA.chunks[chunkIdx];
-  const doc = DATA.documents.find(d => d.id === chunk.document_id);
-
-  return {
-    id: doc?.id || '',
-    title: doc?.title || '',
-    source: doc?.source || 'git',
-    source_id: doc?.source_id || '',
-    source_url: doc?.source_url || '',
-    updated_at: doc?.updated_at || 0,
-    score: Math.min(rawScore / (rawScore + 2), 1),
-    snippet: chunk.text.substring(0, 300),
-    chunk_index: chunk.chunk_index,
-    text: chunk.text,
-  };
-}
-
-// ── Semantic Search ──
-function loadCachedEmbeddings() {
-  try {
-    const hash = DATA.chunks.map(c => c.id).join(',');
-    if (localStorage.getItem('ctx_docs_hash') === hash) {
-      const cached = JSON.parse(localStorage.getItem('ctx_docs_embeddings'));
-      if (cached && cached.length === DATA.chunks.length) {
-        chunkEmbeddings = cached;
-        return true;
-      }
-    }
-  } catch (e) { /* ignore */ }
-  return false;
-}
-
-async function loadModel() {
-  if (_modelPromise) return _modelPromise;
-
-  _modelPromise = (async () => {
-    modelLoading = true;
-    const prog = document.getElementById('modelProgress');
-    prog.classList.add('visible');
-
-    try {
-      const { pipeline: createPipeline, env } = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1');
-      env.allowLocalModels = false;
-
-      document.getElementById('progDetail').textContent = 'Initializing model…';
-      document.getElementById('progFill').style.width = '20%';
-      document.getElementById('progPct').textContent = '20%';
-
-      pipeline = await createPipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', {
-        progress_callback: (p) => {
-          if (p.status === 'progress' && p.progress) {
-            const pct = Math.round(20 + p.progress * 0.4);
-            document.getElementById('progFill').style.width = pct + '%';
-            document.getElementById('progPct').textContent = pct + '%';
-            document.getElementById('progDetail').textContent = `Downloading model: ${p.file || ''}`;
-          }
+const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+        if (entry.isIntersecting) {
+            navLinks.forEach(l => l.classList.remove('active'));
+            const id = entry.target.id;
+            const link = document.querySelector(`.nav-link[href="#${id}"]`);
+            if (link) link.classList.add('active');
         }
-      });
-
-      document.getElementById('progDetail').textContent = `Embedding ${DATA.chunks.length} chunks…`;
-      document.getElementById('progFill').style.width = '60%';
-      document.getElementById('progPct').textContent = '60%';
-
-      chunkEmbeddings = [];
-      for (let i = 0; i < DATA.chunks.length; i++) {
-        const result = await pipeline(DATA.chunks[i].text, { pooling: 'mean', normalize: true });
-        chunkEmbeddings.push(Array.from(result.data));
-        const pct = Math.round(60 + (i / DATA.chunks.length) * 40);
-        document.getElementById('progFill').style.width = pct + '%';
-        document.getElementById('progPct').textContent = pct + '%';
-        document.getElementById('progDetail').textContent = `Embedding chunk ${i + 1}/${DATA.chunks.length}…`;
-      }
-
-      try {
-        localStorage.setItem('ctx_docs_embeddings', JSON.stringify(chunkEmbeddings));
-        localStorage.setItem('ctx_docs_hash', DATA.chunks.map(c => c.id).join(','));
-      } catch (e) { /* storage full */ }
-
-      modelReady = true;
-      document.getElementById('progFill').style.width = '100%';
-      document.getElementById('progPct').textContent = '100%';
-      document.getElementById('progDetail').textContent = 'Ready!';
-      setTimeout(() => prog.classList.remove('visible'), 2000);
-      return true;
-    } catch (e) {
-      document.getElementById('progDetail').textContent = `Error: ${e.message}`;
-      document.getElementById('progFill').style.background = 'var(--red)';
-      modelLoading = false;
-      _modelPromise = null;
-      throw e;
-    }
-  })();
-
-  return _modelPromise;
-}
-
-function cosineSim(a, b) {
-  let dot = 0, na = 0, nb = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    na += a[i] * a[i];
-    nb += b[i] * b[i];
-  }
-  return dot / (Math.sqrt(na) * Math.sqrt(nb) + 1e-8);
-}
-
-async function semanticSearch(query) {
-  const result = await pipeline(query, { pooling: 'mean', normalize: true });
-  const qVec = Array.from(result.data);
-
-  const scores = [];
-  for (let i = 0; i < DATA.chunks.length; i++) {
-    const sim = cosineSim(qVec, chunkEmbeddings[i]);
-    if (sim > 0.1) scores.push({ idx: i, score: sim });
-  }
-  scores.sort((a, b) => b.score - a.score);
-  return scores.slice(0, 20).map(s => chunkToResult(s.idx, s.score));
-}
-
-async function hybridSearch(query, topK = 20) {
-  const kw = bm25Search(query);
-  const sem = modelReady ? await semanticSearch(query) : [];
-
-  const normalize = (arr) => {
-    if (arr.length === 0) return [];
-    const scores = arr.map(r => r.score);
-    const min = Math.min(...scores), max = Math.max(...scores);
-    const range = max - min || 1;
-    return arr.map(r => ({ ...r, score: (r.score - min) / range }));
-  };
-
-  const alpha = sem.length > 0 ? 0.6 : 0;
-  const kwNorm = normalize(kw);
-  const semNorm = normalize(sem);
-  const merged = {};
-
-  kwNorm.forEach(r => {
-    const key = r.id + ':' + r.chunk_index;
-    merged[key] = { ...r, score: (1 - alpha) * r.score };
-  });
-  semNorm.forEach(r => {
-    const key = r.id + ':' + r.chunk_index;
-    if (merged[key]) merged[key].score += alpha * r.score;
-    else merged[key] = { ...r, score: alpha * r.score };
-  });
-
-  return Object.values(merged).sort((a, b) => b.score - a.score).slice(0, topK);
-}
-
-// ── Search Execution ──
-let debounceTimer;
-const searchInput = document.getElementById('searchInput');
-
-searchInput.addEventListener('input', () => {
-  clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(doSearch, 200);
-});
-
-searchInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') { clearTimeout(debounceTimer); doSearch(); }
-});
-
-async function doSearch() {
-  const query = searchInput.value.trim();
-  if (!query) {
-    document.getElementById('searchResults').innerHTML = '';
-    document.getElementById('resultCount').textContent = '';
-    document.getElementById('welcomeState').style.display = 'block';
-    return;
-  }
-
-  document.getElementById('welcomeState').style.display = 'none';
-  const area = document.getElementById('searchResults');
-  area.innerHTML = '<div class="loading-spinner"></div>';
-  document.getElementById('resultCount').textContent = 'Searching…';
-
-  const start = performance.now();
-
-  try {
-    let results = [];
-    if (currentMode === 'keyword') {
-      results = bm25Search(query);
-    } else if (currentMode === 'semantic') {
-      if (!modelReady) await loadModel();
-      results = await semanticSearch(query);
-    } else if (currentMode === 'hybrid') {
-      if (!modelReady) await loadModel();
-      results = await hybridSearch(query);
-    }
-
-    // Apply filter
-    if (currentFilter !== 'all') {
-      results = results.filter(r => classifyDoc(r.source_id) === currentFilter);
-    }
-
-    const elapsed = (performance.now() - start).toFixed(0);
-    document.getElementById('resultCount').textContent =
-      `${results.length} result${results.length !== 1 ? 's' : ''} in ${elapsed}ms`;
-
-    if (results.length === 0) {
-      area.innerHTML = '<div class="empty-state">No results found. Try different terms or search mode.</div>';
-      return;
-    }
-
-    area.innerHTML = results.map((r, i) => renderResult(r, query)).join('');
-  } catch (e) {
-    area.innerHTML = `<div class="empty-state" style="color:var(--red)">Search error: ${e.message}</div>`;
-    document.getElementById('resultCount').textContent = 'Error';
-    console.error('Search failed:', e);
-  }
-}
-
-function renderResult(r, query) {
-  const score = r.score.toFixed(2);
-  const scoreClass = r.score >= 0.7 ? 'score-high' : r.score >= 0.4 ? 'score-mid' : 'score-low';
-  const kind = classifyDoc(r.source_id);
-  const tagClass = kind === 'guide' ? 'tag-guide' : kind === 'api' ? 'tag-api' : 'tag-meta';
-  const tagLabel = kind === 'guide' ? 'Guide' : kind === 'api' ? 'Source' : 'Meta';
-
-  let date = '';
-  if (r.updated_at) {
-    if (typeof r.updated_at === 'string') date = r.updated_at.split('T')[0];
-    else if (typeof r.updated_at === 'number') date = new Date(r.updated_at * 1000).toISOString().split('T')[0];
-  }
-
-  let snippet = escapeHtml(r.snippet);
-  if (query) {
-    const terms = query.toLowerCase().split(/\s+/).filter(t => t.length > 1);
-    terms.forEach(term => {
-      const re = new RegExp(`(${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-      snippet = snippet.replace(re, '<mark>$1</mark>');
     });
-  }
+}, { rootMargin: '-80px 0px -70% 0px', threshold: 0 });
 
-  return `
-    <div class="result-card" onclick="viewDocument('${r.id}')">
-      <div class="result-header">
-        <span class="result-title">${escapeHtml(r.title)}</span>
-        <span class="result-score ${scoreClass}">${score}</span>
-      </div>
-      <div class="result-meta">
-        <span class="result-tag ${tagClass}">${tagLabel}</span>
-        <span>${r.source_id}</span>
-        ${date ? `<span>${date}</span>` : ''}
-      </div>
-      <div class="result-snippet">${snippet}</div>
-      ${r.source_url ? `<div class="result-source"><a href="${escapeHtml(r.source_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">View source →</a></div>` : ''}
-    </div>
-  `;
-}
+sections.forEach(s => observer.observe(s));
 
-function escapeHtml(str) {
-  if (!str) return '';
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-// ── Document View ──
-function viewDocument(id) {
-  const doc = DATA.documents.find(d => d.id === id);
-  if (!doc) return;
-
-  document.getElementById('searchPage').style.display = 'none';
-  document.getElementById('chatPage').classList.remove('active');
-  document.getElementById('docView').classList.add('active');
-
-  document.getElementById('docTitle').textContent = doc.title || doc.source_id;
-
-  const kind = classifyDoc(doc.source_id);
-  let date = '';
-  if (doc.updated_at) {
-    if (typeof doc.updated_at === 'number') date = new Date(doc.updated_at * 1000).toISOString().split('T')[0];
-    else date = String(doc.updated_at).split('T')[0];
-  }
-
-  document.getElementById('docMeta').innerHTML = `
-    <span class="result-tag ${kind === 'guide' ? 'tag-guide' : kind === 'api' ? 'tag-api' : 'tag-meta'}">${kind}</span>
-    <span>${doc.source_id}</span>
-    ${date ? `<span>${date}</span>` : ''}
-    ${doc.source_url ? `<a href="${escapeHtml(doc.source_url)}" target="_blank" rel="noopener" style="color:var(--accent)">View on GitHub →</a>` : ''}
-  `;
-
-  document.getElementById('docBody').textContent = doc.body;
-  document.querySelectorAll('.sidebar-link').forEach(el => el.classList.remove('active'));
-}
-
-function showSearch() {
-  document.getElementById('docView').classList.remove('active');
-  if (currentMode === 'chat') {
-    document.getElementById('chatPage').classList.add('active');
-    document.getElementById('searchPage').style.display = 'none';
-  } else {
-    document.getElementById('searchPage').style.display = 'block';
-    document.getElementById('chatPage').classList.remove('active');
-    searchInput.focus();
-  }
-}
-
-// ── Mode & Filter Pills ──
-document.querySelectorAll('.mode-pill').forEach(pill => {
-  pill.addEventListener('click', () => {
-    document.querySelectorAll('.mode-pill').forEach(p => p.classList.remove('active'));
-    pill.classList.add('active');
-    currentMode = pill.dataset.mode;
-
-    document.getElementById('docView').classList.remove('active');
-
-    if (currentMode === 'chat') {
-      document.getElementById('searchPage').style.display = 'none';
-      document.getElementById('chatPage').classList.add('active');
-      document.getElementById('chatInput').focus();
-    } else {
-      document.getElementById('chatPage').classList.remove('active');
-      document.getElementById('searchPage').style.display = 'block';
-      searchInput.focus();
-      doSearch();
-    }
-  });
-});
-
-document.querySelectorAll('.filter-pill').forEach(pill => {
-  pill.addEventListener('click', () => {
-    document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
-    pill.classList.add('active');
-    currentFilter = pill.dataset.filter;
-    doSearch();
-  });
-});
-
-// ── Keyboard Shortcut ──
-document.addEventListener('keydown', (e) => {
-  if (e.key === '/' && document.activeElement !== searchInput && document.activeElement !== document.getElementById('chatInput')) {
-    e.preventDefault();
-    if (currentMode === 'chat') document.getElementById('chatInput').focus();
-    else searchInput.focus();
-  }
-  if (e.key === 'Escape') {
-    if (document.getElementById('docView').classList.contains('active')) showSearch();
-    const dd = document.getElementById('settingsDropdown');
-    if (dd.classList.contains('open')) dd.classList.remove('open');
-  }
-});
-
-/* ====================================================================
-   CHAT SYSTEM — Agent with MCP Tool Calling
-   The LLM calls search/get_document/list_sources tools in a loop,
-   executing them client-side (from data.json) or against a local
-   MCP server. This is the same tool protocol used by Cursor/Claude.
-   ==================================================================== */
-
-let chatHistory = [];   // { role, content, sources? }
-let chatBackend = 'webllm';   // 'webllm' | 'openai'
-let toolMode = 'local';       // 'local' | 'mcp'
-let mcpServerUrl = 'http://localhost:3636';
-let webllmEngine = null;
-let webllmReady = false;
-let webllmLoading = false;
-let _webllmPromise = null;
-let chatGenerating = false;
-
-const MAX_TOOL_ROUNDS = 6;
-
-// ── MCP Tool Definitions (OpenAI function-calling format) ──
-const AGENT_TOOLS = [
-  {
-    type: 'function',
-    function: {
-      name: 'search',
-      description: 'Search the Context Harness documentation index. Returns ranked document chunks with relevance scores. Use this to find information about features, configuration, APIs, architecture, and usage patterns. Always search before answering.',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: { type: 'string', description: 'Natural language search query. Be specific.' },
-          mode:  { type: 'string', enum: ['keyword', 'hybrid'], description: 'Search mode. "hybrid" combines keyword + semantic for best results. Default: "hybrid".' },
-          limit: { type: 'number', description: 'Max results to return. Default: 5.' }
-        },
-        required: ['query']
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'get_document',
-      description: 'Retrieve the full content of a specific document by its UUID. Use after search when you need more context than the snippet provides.',
-      parameters: {
-        type: 'object',
-        properties: {
-          id: { type: 'string', description: 'Document UUID from search results.' }
-        },
-        required: ['id']
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'list_sources',
-      description: 'List all configured data source connectors and how many documents each has indexed.',
-      parameters: { type: 'object', properties: {} }
-    }
-  }
-];
-
-// ── Agent System Prompt ──
-function buildAgentSystemPrompt() {
-  return `You are an expert documentation assistant for Context Harness, a local-first context indexing and retrieval framework for AI tools, written in Rust.
-
-You have access to tools that let you search and retrieve documentation. Use them to find accurate information before answering.
-
-## How to use your tools:
-
-1. **Always search first** — use the \`search\` tool with a clear query before answering any question. Do not guess.
-2. **Read full documents** — if a search snippet looks relevant but incomplete, use \`get_document\` to read the full text.
-3. **Try different queries** — if your first search doesn't find what you need, rephrase and search again.
-4. **Be thorough** — it's better to search twice than to give an incomplete answer.
-
-## Response guidelines:
-
-- Be concise, accurate, and helpful.
-- Use markdown: code blocks for code, bold for emphasis, lists for steps.
-- Cite sources naturally (e.g., "According to USAGE.md…" or "The search module implements…").
-- If you can't find the answer, say so honestly.
-- Show exact configuration and code from the documentation when relevant.`;
-}
-
-// ══════════════════════════════════════════════
-//  Tool Execution Layer
-// ══════════════════════════════════════════════
-
-async function executeToolCall(name, args) {
-  if (toolMode === 'mcp') {
-    try { return await executeToolViaMCP(name, args); }
-    catch (e) {
-      console.warn('MCP tool call failed, falling back to local:', e);
-      return executeToolLocally(name, args);
-    }
-  }
-  return executeToolLocally(name, args);
-}
-
-// ── Client-side tool execution (from data.json) ──
-async function executeToolLocally(name, args) {
-  if (name === 'search') {
-    const mode = args.mode || 'hybrid';
-    const limit = args.limit || 5;
-    let results;
-    if (mode === 'keyword') results = bm25Search(args.query || '');
-    else results = await hybridSearch(args.query || '', limit);
-    return { results: results.slice(0, limit) };
-  }
-
-  if (name === 'get_document') {
-    const doc = DATA.documents.find(d => d.id === args.id);
-    if (!doc) return { error: `Document not found: ${args.id}` };
-    return {
-      id: doc.id,
-      title: doc.title,
-      source: doc.source,
-      source_id: doc.source_id,
-      source_url: doc.source_url,
-      body: doc.body,
-      chunk_count: DATA.chunks.filter(c => c.document_id === doc.id).length
-    };
-  }
-
-  if (name === 'list_sources') {
-    const sourceMap = {};
-    DATA.documents.forEach(d => {
-      const src = d.source || 'unknown';
-      if (!sourceMap[src]) sourceMap[src] = { name: src, document_count: 0 };
-      sourceMap[src].document_count++;
+// Close sidebar on link click (mobile)
+navLinks.forEach(link => {
+    link.addEventListener('click', () => {
+        document.getElementById('sidebar').classList.remove('open');
     });
-    return { sources: Object.values(sourceMap) };
-  }
-
-  return { error: `Unknown tool: ${name}` };
-}
-
-// ── MCP server tool execution ──
-async function executeToolViaMCP(name, args) {
-  const routes = { search: '/tools/search', get_document: '/tools/get', list_sources: '/tools/sources' };
-  const endpoint = routes[name];
-  if (!endpoint) return { error: `Unknown tool: ${name}` };
-
-  const method = name === 'list_sources' ? 'GET' : 'POST';
-  const resp = await fetch(mcpServerUrl + endpoint, {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-    body: method === 'POST' ? JSON.stringify(name === 'get_document' ? { id: args.id } : args) : undefined,
-  });
-
-  if (!resp.ok) {
-    const err = await resp.json().catch(() => ({ error: { message: resp.statusText } }));
-    throw new Error(err.error?.message || `MCP ${resp.status}`);
-  }
-  return resp.json();
-}
-
-// ══════════════════════════════════════════════
-//  Tool Call UI
-// ══════════════════════════════════════════════
-
-function appendToolCallCard(bubble, tc) {
-  const card = document.createElement('div');
-  card.className = 'tool-call-card';
-
-  const icons = { search: '🔍', get_document: '📖', list_sources: '📋' };
-  const badges = { search: 'tool-badge-search', get_document: 'tool-badge-get', list_sources: 'tool-badge-list' };
-  const icon = icons[tc.name] || '🔧';
-  const badgeClass = badges[tc.name] || 'tool-badge-search';
-
-  let argsSummary = '';
-  if (tc.name === 'search') argsSummary = `"${tc.args.query || ''}"`;
-  else if (tc.name === 'get_document') argsSummary = tc.args.id ? tc.args.id.substring(0, 12) + '…' : '';
-
-  card.innerHTML = `
-    <div class="tool-call-header" onclick="this.parentElement.querySelector('.tool-call-detail')?.classList.toggle('open')">
-      <span class="tool-call-icon">${icon}</span>
-      <span class="tool-badge ${badgeClass}">${tc.name}</span>
-      <span class="tool-call-args">${escapeHtml(argsSummary)}</span>
-      <span class="tool-call-status">running…</span>
-    </div>
-    <div class="tool-call-detail"></div>
-  `;
-
-  bubble.appendChild(card);
-  document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight;
-  return card;
-}
-
-function updateToolCallCard(card, result, toolName) {
-  const status = card.querySelector('.tool-call-status');
-  const detail = card.querySelector('.tool-call-detail');
-
-  if (result.error) {
-    status.textContent = '✗ error';
-    status.classList.add('error');
-    detail.textContent = result.error;
-    detail.classList.add('open');
-    return;
-  }
-
-  status.classList.add('success');
-
-  if (toolName === 'search') {
-    const n = result.results?.length || 0;
-    status.textContent = `✓ ${n} result${n !== 1 ? 's' : ''}`;
-    if (n > 0) {
-      detail.innerHTML = result.results.map(r =>
-        `<div style="margin-bottom:4px"><strong>${escapeHtml(r.source_id || r.title || '')}</strong> <span style="color:var(--green)">${(r.score||0).toFixed(2)}</span></div><div style="color:var(--text-muted);margin-bottom:8px">${escapeHtml((r.snippet || r.text || '').substring(0, 150))}…</div>`
-      ).join('');
-    }
-  } else if (toolName === 'get_document') {
-    const title = result.source_id || result.title || result.id;
-    const len = result.body ? result.body.length : 0;
-    status.textContent = `✓ ${len.toLocaleString()} chars`;
-    detail.textContent = `${title}\n\n${(result.body || '').substring(0, 500)}…`;
-  } else if (toolName === 'list_sources') {
-    const n = result.sources?.length || 0;
-    status.textContent = `✓ ${n} source${n !== 1 ? 's' : ''}`;
-    detail.textContent = (result.sources || []).map(s => `${s.name}: ${s.document_count} docs`).join('\n');
-  }
-}
-
-// ══════════════════════════════════════════════
-//  Chat Settings
-// ══════════════════════════════════════════════
-
-function initChatSettings() {
-  // Restore backend
-  const saved = localStorage.getItem('ctx_chat_backend');
-  if (saved === 'openai' || saved === 'webllm') chatBackend = saved;
-
-  // Restore tool mode
-  const savedTool = localStorage.getItem('ctx_tool_mode');
-  if (savedTool === 'mcp' || savedTool === 'local') toolMode = savedTool;
-
-  // Restore MCP URL
-  const savedUrl = localStorage.getItem('ctx_mcp_url');
-  if (savedUrl) { mcpServerUrl = savedUrl; document.getElementById('mcpUrlInput').value = savedUrl; }
-
-  // Restore API key
-  const key = localStorage.getItem('ctx_chat_apikey');
-  if (key) document.getElementById('apikeyInput').value = key;
-
-  updateBackendUI();
-  updateToolModeUI();
-
-  // Settings toggle
-  document.getElementById('settingsBtn').addEventListener('click', (e) => {
-    e.stopPropagation();
-    document.getElementById('settingsDropdown').classList.toggle('open');
-  });
-  document.addEventListener('click', (e) => {
-    const dd = document.getElementById('settingsDropdown');
-    if (dd.classList.contains('open') && !dd.contains(e.target) && e.target !== document.getElementById('settingsBtn')) {
-      dd.classList.remove('open');
-    }
-  });
-
-  // API key input
-  document.getElementById('apikeyInput').addEventListener('input', (e) => {
-    const key = e.target.value.trim();
-    if (key) localStorage.setItem('ctx_chat_apikey', key);
-    else localStorage.removeItem('ctx_chat_apikey');
-    updateBackendUI();
-  });
-
-  // MCP URL input
-  document.getElementById('mcpUrlInput').addEventListener('change', (e) => {
-    mcpServerUrl = e.target.value.trim() || 'http://localhost:3636';
-    localStorage.setItem('ctx_mcp_url', mcpServerUrl);
-    if (toolMode === 'mcp') testMcpConnection();
-  });
-
-  // Chat input auto-resize
-  const chatInput = document.getElementById('chatInput');
-  chatInput.addEventListener('input', () => {
-    chatInput.style.height = 'auto';
-    chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
-  });
-  chatInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }
-  });
-
-  // If MCP mode was saved, test connection
-  if (toolMode === 'mcp') testMcpConnection();
-}
-
-function selectBackend(backend) {
-  chatBackend = backend;
-  localStorage.setItem('ctx_chat_backend', backend);
-  document.getElementById('radioWebllm').classList.toggle('selected', backend === 'webllm');
-  document.getElementById('radioOpenai').classList.toggle('selected', backend === 'openai');
-  document.getElementById('apikeyRow').classList.toggle('visible', backend === 'openai');
-  updateBackendUI();
-}
-
-function selectToolMode(mode) {
-  toolMode = mode;
-  localStorage.setItem('ctx_tool_mode', mode);
-  document.getElementById('radioLocal').classList.toggle('selected', mode === 'local');
-  document.getElementById('radioMcp').classList.toggle('selected', mode === 'mcp');
-  document.getElementById('mcpUrlRow').classList.toggle('visible', mode === 'mcp');
-  updateToolModeUI();
-  if (mode === 'mcp') testMcpConnection();
-}
-
-function updateToolModeUI() {
-  document.getElementById('radioLocal').classList.toggle('selected', toolMode === 'local');
-  document.getElementById('radioMcp').classList.toggle('selected', toolMode === 'mcp');
-  document.getElementById('mcpUrlRow').classList.toggle('visible', toolMode === 'mcp');
-}
-
-async function testMcpConnection() {
-  const el = document.getElementById('mcpStatus');
-  el.textContent = 'Testing connection…';
-  try {
-    const resp = await fetch(mcpServerUrl + '/health', { signal: AbortSignal.timeout(3000) });
-    if (resp.ok) {
-      const data = await resp.json();
-      el.innerHTML = `<span style="color:var(--green)">✓ Connected</span> — v${data.version || '?'}`;
-    } else {
-      el.innerHTML = `<span style="color:var(--red)">✗ HTTP ${resp.status}</span>`;
-    }
-  } catch (e) {
-    el.innerHTML = `<span style="color:var(--text-muted)">✗ Not reachable</span> — start <code style="font-size:10px">ctx serve mcp</code>`;
-  }
-}
-
-function updateBackendUI() {
-  const bdot = document.getElementById('chatBdot');
-  const label = document.getElementById('chatBackendLabel');
-
-  if (chatBackend === 'webllm') {
-    document.getElementById('radioWebllm').classList.add('selected');
-    document.getElementById('radioOpenai').classList.remove('selected');
-    document.getElementById('apikeyRow').classList.remove('visible');
-    if (webllmReady) {
-      bdot.className = 'bdot bdot-ready'; label.textContent = 'WebLLM ready';
-    } else if (webllmLoading) {
-      bdot.className = 'bdot bdot-loading'; label.textContent = 'Loading model…';
-    } else {
-      bdot.className = 'bdot bdot-off';
-      label.textContent = navigator.gpu ? 'WebLLM (click Send to load)' : 'WebGPU not supported — use API key';
-    }
-  } else {
-    document.getElementById('radioOpenai').classList.add('selected');
-    document.getElementById('radioWebllm').classList.remove('selected');
-    document.getElementById('apikeyRow').classList.add('visible');
-    const key = localStorage.getItem('ctx_chat_apikey');
-    bdot.className = key ? 'bdot bdot-ready' : 'bdot bdot-off';
-    label.textContent = key ? 'OpenAI API ready' : 'Enter API key';
-  }
-}
-
-// ══════════════════════════════════════════════
-//  WebLLM Engine
-// ══════════════════════════════════════════════
-
-async function ensureWebLLM() {
-  if (webllmReady && webllmEngine) return webllmEngine;
-  if (_webllmPromise) return _webllmPromise;
-
-  if (!navigator.gpu) {
-    throw new Error('WebGPU is not supported in this browser. Please use Chrome/Edge 113+ or switch to the OpenAI API backend.');
-  }
-
-  _webllmPromise = (async () => {
-    webllmLoading = true;
-    updateBackendUI();
-    const prog = document.getElementById('chatLlmProgress');
-    prog.classList.add('visible');
-
-    try {
-      const webllm = await import('https://esm.run/@mlc-ai/web-llm');
-      const modelId = 'Qwen3-4B-q4f16_1-MLC';
-
-      document.getElementById('chatProgDetail').textContent = 'Loading Qwen3-4B…';
-      document.getElementById('chatProgFill').style.width = '5%';
-      document.getElementById('chatProgPct').textContent = '5%';
-
-      webllmEngine = await webllm.CreateMLCEngine(modelId, {
-        initProgressCallback: (report) => {
-          const pct = Math.round((report.progress || 0) * 100);
-          document.getElementById('chatProgFill').style.width = pct + '%';
-          document.getElementById('chatProgPct').textContent = pct + '%';
-          document.getElementById('chatProgDetail').textContent = report.text || 'Loading…';
-        }
-      });
-
-      webllmReady = true;
-      webllmLoading = false;
-      updateBackendUI();
-      document.getElementById('chatProgFill').style.width = '100%';
-      document.getElementById('chatProgPct').textContent = '100%';
-      document.getElementById('chatProgDetail').textContent = 'Model ready!';
-      setTimeout(() => prog.classList.remove('visible'), 1500);
-      return webllmEngine;
-    } catch (e) {
-      webllmLoading = false;
-      _webllmPromise = null;
-      updateBackendUI();
-      document.getElementById('chatProgDetail').textContent = `Error: ${e.message}`;
-      document.getElementById('chatProgFill').style.background = 'var(--red)';
-      throw e;
-    }
-  })();
-
-  return _webllmPromise;
-}
-
-// ══════════════════════════════════════════════
-//  Streaming with Tool Call Detection
-// ══════════════════════════════════════════════
-
-// Unified stream parser: detects tool calls vs text content
-async function parseStreamResponse(asyncIterator, bubble, existingContent) {
-  let fullText = existingContent || '';
-  const toolCalls = {};
-  let hasToolCalls = false;
-
-  for await (const chunk of asyncIterator) {
-    const choice = chunk.choices?.[0];
-    if (!choice) continue;
-    const delta = choice.delta || {};
-
-    // Accumulate tool call deltas
-    if (delta.tool_calls) {
-      hasToolCalls = true;
-      for (const tc of delta.tool_calls) {
-        const idx = tc.index ?? 0;
-        if (!toolCalls[idx]) toolCalls[idx] = { id: '', name: '', arguments: '' };
-        if (tc.id) toolCalls[idx].id = tc.id;
-        if (tc.function?.name) toolCalls[idx].name += tc.function.name;
-        if (tc.function?.arguments != null) toolCalls[idx].arguments += tc.function.arguments;
-      }
-    }
-
-    // Stream text content
-    if (delta.content) {
-      fullText += delta.content;
-      bubble.innerHTML = renderMarkdown(fullText) + '<span style="opacity:0.4">▌</span>';
-      document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight;
-    }
-  }
-
-  if (hasToolCalls) {
-    const calls = Object.values(toolCalls).map(tc => ({
-      id: tc.id || `call_${Date.now()}_${tc.name}`,
-      name: tc.name,
-      args: (() => { try { return JSON.parse(tc.arguments || '{}'); } catch { return {}; } })(),
-    }));
-    return { type: 'tool_calls', calls };
-  }
-
-  return { type: 'text', text: fullText };
-}
-
-// OpenAI streaming → async iterator of parsed chunks
-async function* streamOpenAIChunks(resp) {
-  const reader = resp.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed === 'data: [DONE]') continue;
-      if (!trimmed.startsWith('data: ')) continue;
-      try { yield JSON.parse(trimmed.slice(6)); } catch { /* skip */ }
-    }
-  }
-}
-
-// Call OpenAI with tools, return parsed stream result
-async function openaiWithTools(messages, bubble, forceNoTools) {
-  const apiKey = localStorage.getItem('ctx_chat_apikey');
-  if (!apiKey) throw new Error('No OpenAI API key configured. Open Settings to add one.');
-
-  const body = {
-    model: 'gpt-4o-mini',
-    messages,
-    stream: true,
-    max_tokens: 2048,
-    temperature: 0.3,
-  };
-  if (!forceNoTools) {
-    body.tools = AGENT_TOOLS;
-    body.tool_choice = 'auto';
-  }
-
-  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-    body: JSON.stringify(body),
-  });
-
-  if (!resp.ok) {
-    const err = await resp.text();
-    throw new Error(`OpenAI API error (${resp.status}): ${err}`);
-  }
-
-  return parseStreamResponse(streamOpenAIChunks(resp), bubble, '');
-}
-
-// Call WebLLM with tools, return parsed stream result
-async function webllmWithTools(messages, bubble, forceNoTools) {
-  const engine = await ensureWebLLM();
-
-  const opts = { messages, stream: true, max_tokens: 2048, temperature: 0.3 };
-  if (!forceNoTools) {
-    opts.tools = AGENT_TOOLS;
-    opts.tool_choice = 'auto';
-  }
-
-  let completion;
-  try {
-    completion = await engine.chat.completions.create(opts);
-  } catch (e) {
-    // If model doesn't support tools, retry without
-    if (!forceNoTools && (e.message?.includes('tool') || e.message?.includes('function'))) {
-      console.warn('WebLLM tool calling failed, retrying without tools:', e.message);
-      delete opts.tools;
-      delete opts.tool_choice;
-      completion = await engine.chat.completions.create(opts);
-    } else {
-      throw e;
-    }
-  }
-
-  return parseStreamResponse(completion, bubble, '');
-}
-
-// ══════════════════════════════════════════════
-//  Agent Loop
-// ══════════════════════════════════════════════
-
-async function agentLoop(query, bubble) {
-  const systemPrompt = buildAgentSystemPrompt();
-  const messages = [
-    { role: 'system', content: systemPrompt },
-    ...chatHistory.slice(-12).map(m => ({ role: m.role, content: m.content })),
-    { role: 'user', content: query },
-  ];
-
-  const allSources = [];
-  // Track content that tool cards have built up in the bubble
-  let toolCardsHTML = '';
-
-  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    // Show thinking state (keep existing tool cards)
-    if (round === 0) {
-      bubble.innerHTML = '<div class="tool-thinking"><span class="tool-thinking-spinner"></span> Analyzing question…</div>';
-    } else {
-      // Preserve tool cards, update thinking indicator
-      const existing = bubble.querySelectorAll('.tool-call-card');
-      // Thinking indicator is managed by stream parser
-    }
-
-    // On last round, force text output
-    const forceNoTools = round === MAX_TOOL_ROUNDS - 1;
-
-    let result;
-    if (chatBackend === 'openai') {
-      result = await openaiWithTools(messages, bubble, forceNoTools);
-    } else {
-      result = await webllmWithTools(messages, bubble, forceNoTools);
-    }
-
-    if (result.type === 'text') {
-      return { text: result.text, sources: allSources };
-    }
-
-    // ── Execute tool calls ──
-    // Clear the thinking indicator, restore tool cards
-    bubble.innerHTML = toolCardsHTML;
-
-    for (const tc of result.calls) {
-      // Show tool call card
-      const card = appendToolCallCard(bubble, tc);
-
-      // Execute tool
-      const toolResult = await executeToolCall(tc.name, tc.args);
-
-      // Update card with results
-      updateToolCallCard(card, toolResult, tc.name);
-
-      // Collect sources from search results
-      if (tc.name === 'search' && toolResult.results) {
-        for (const r of toolResult.results) {
-          if (!allSources.find(s => s.id === r.id && s.chunk_index === r.chunk_index)) {
-            allSources.push(r);
-          }
-        }
-      }
-
-      // Add to LLM message history
-      messages.push({
-        role: 'assistant',
-        content: null,
-        tool_calls: [{
-          id: tc.id,
-          type: 'function',
-          function: { name: tc.name, arguments: JSON.stringify(tc.args) }
-        }]
-      });
-      messages.push({
-        role: 'tool',
-        tool_call_id: tc.id,
-        content: JSON.stringify(toolResult)
-      });
-    }
-
-    // Save the current bubble HTML (tool cards) so we can preserve them
-    toolCardsHTML = bubble.innerHTML;
-
-    // Add divider before next round or final response
-    const divider = document.createElement('div');
-    divider.className = 'agent-divider';
-    bubble.appendChild(divider);
-    toolCardsHTML = bubble.innerHTML;
-  }
-
-  return { text: '*(Reached maximum tool iterations. Try a more specific question.)*', sources: allSources };
-}
-
-// Fallback: one-shot RAG (no tool calling)
-async function fallbackRAG(query, bubble) {
-  const results = await hybridSearch(query, 5);
-  const seen = new Set();
-  const unique = [];
-  for (const r of results) {
-    const key = r.id + ':' + r.chunk_index;
-    if (!seen.has(key)) { seen.add(key); unique.push(r); }
-  }
-  const contextChunks = unique.slice(0, 5);
-
-  let contextBlock = contextChunks.length === 0
-    ? '(No relevant documentation found.)'
-    : contextChunks.map((c, i) => `### Source ${i + 1}: ${c.source_id}\n${c.text}`).join('\n\n');
-
-  const systemPrompt = `You are a documentation assistant for Context Harness, a local-first context indexing framework in Rust.
-Answer using ONLY the documentation below. Be concise and use markdown.
-
-## Documentation Context
-
-${contextBlock}`;
-
-  const messages = [
-    { role: 'system', content: systemPrompt },
-    ...chatHistory.slice(-12).map(m => ({ role: m.role, content: m.content })),
-    { role: 'user', content: query },
-  ];
-
-  let fullText = '';
-  if (chatBackend === 'openai') {
-    const apiKey = localStorage.getItem('ctx_chat_apikey');
-    if (!apiKey) throw new Error('No OpenAI API key. Open Settings.');
-    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({ model: 'gpt-4o-mini', messages, stream: true, max_tokens: 2048, temperature: 0.3 }),
-    });
-    if (!resp.ok) throw new Error(`OpenAI error ${resp.status}`);
-    const result = await parseStreamResponse(streamOpenAIChunks(resp), bubble, '');
-    fullText = result.text;
-  } else {
-    const engine = await ensureWebLLM();
-    const completion = await engine.chat.completions.create({ messages, stream: true, max_tokens: 2048, temperature: 0.3 });
-    const result = await parseStreamResponse(completion, bubble, '');
-    fullText = result.text;
-  }
-
-  return { text: fullText, sources: contextChunks };
-}
-
-// ══════════════════════════════════════════════
-//  Markdown Renderer
-// ══════════════════════════════════════════════
-
-function renderMarkdown(text) {
-  let html = escapeHtml(text);
-
-  // Code blocks
-  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => `<pre><code>${code.trim()}</code></pre>`);
-
-  // Inline code
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-
-  // Headers
-  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-
-  // Bold and italic
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-
-  // Blockquotes
-  html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
-
-  // Unordered lists
-  html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
-  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
-
-  // Ordered lists
-  html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
-
-  // Links
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-
-  // Paragraphs
-  html = html.replace(/\n\n/g, '</p><p>');
-  html = '<p>' + html + '</p>';
-
-  // Clean up
-  html = html.replace(/<p>\s*<(h[123]|pre|ul|ol|blockquote)/g, '<$1');
-  html = html.replace(/<\/(h[123]|pre|ul|ol|blockquote)>\s*<\/p>/g, '</$1>');
-  html = html.replace(/<p>\s*<\/p>/g, '');
-
-  return html;
-}
-
-// ══════════════════════════════════════════════
-//  Chat Message Rendering
-// ══════════════════════════════════════════════
-
-function appendUserMessage(text) {
-  const welcome = document.getElementById('chatWelcome');
-  if (welcome) welcome.remove();
-
-  const container = document.getElementById('chatMessages');
-  const div = document.createElement('div');
-  div.className = 'chat-msg chat-msg-user';
-  div.innerHTML = `
-    <div class="chat-bubble bubble-user">${escapeHtml(text)}</div>
-    <div class="chat-avatar avatar-user">U</div>
-  `;
-  container.appendChild(div);
-  container.scrollTop = container.scrollHeight;
-}
-
-function createAssistantBubble() {
-  const container = document.getElementById('chatMessages');
-  const div = document.createElement('div');
-  div.className = 'chat-msg chat-msg-assistant';
-  div.innerHTML = `
-    <div class="chat-avatar avatar-assistant">⚡</div>
-    <div class="chat-bubble bubble-assistant">
-      <div class="typing-indicator"><span></span><span></span><span></span></div>
-    </div>
-  `;
-  container.appendChild(div);
-  container.scrollTop = container.scrollHeight;
-  return div.querySelector('.bubble-assistant');
-}
-
-function updateAssistantBubble(bubble, text, sources) {
-  // Preserve tool call cards, replace or append the text response
-  const existingCards = bubble.querySelectorAll('.tool-call-card, .agent-divider');
-  const fragment = document.createDocumentFragment();
-  existingCards.forEach(card => fragment.appendChild(card.cloneNode(true)));
-
-  bubble.innerHTML = '';
-  bubble.appendChild(fragment);
-
-  // Add text response
-  if (text) {
-    const responseDiv = document.createElement('div');
-    responseDiv.innerHTML = renderMarkdown(text);
-    bubble.appendChild(responseDiv);
-  }
-
-  // Add source links
-  if (sources && sources.length > 0) {
-    // Deduplicate sources by document id
-    const seen = new Set();
-    const uniqueSources = [];
-    for (const s of sources) {
-      if (!seen.has(s.id)) { seen.add(s.id); uniqueSources.push(s); }
-    }
-    if (uniqueSources.length > 0) {
-      const srcDiv = document.createElement('div');
-      srcDiv.className = 'chat-sources';
-      srcDiv.innerHTML = `
-        <div class="chat-sources-title">Sources</div>
-        ${uniqueSources.map(s =>
-          `<a class="chat-source-link" onclick="viewDocument('${s.id}')" title="${s.source_id}">${s.source_id}</a>`
-        ).join('')}
-      `;
-      bubble.appendChild(srcDiv);
-    }
-  }
-
-  document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight;
-}
-
-// ══════════════════════════════════════════════
-//  Send Message (entry point)
-// ══════════════════════════════════════════════
-
-async function sendChatMessage() {
-  const input = document.getElementById('chatInput');
-  const query = input.value.trim();
-  if (!query || chatGenerating) return;
-
-  chatGenerating = true;
-  document.getElementById('chatSend').disabled = true;
-  input.value = '';
-  input.style.height = 'auto';
-
-  appendUserMessage(query);
-  chatHistory.push({ role: 'user', content: query });
-
-  const bubble = createAssistantBubble();
-
-  try {
-    // Try agent loop with tool calling
-    const result = await agentLoop(query, bubble);
-    updateAssistantBubble(bubble, result.text, result.sources);
-    chatHistory.push({ role: 'assistant', content: result.text, sources: result.sources });
-  } catch (e) {
-    console.warn('Agent loop error:', e);
-    // Fall back to one-shot RAG if tool calling fails
-    try {
-      bubble.innerHTML = '<div class="tool-thinking"><span class="tool-thinking-spinner"></span> Falling back to direct search…</div>';
-      const result = await fallbackRAG(query, bubble);
-      updateAssistantBubble(bubble, result.text, result.sources);
-      chatHistory.push({ role: 'assistant', content: result.text, sources: result.sources });
-    } catch (e2) {
-      bubble.innerHTML = `<div style="color:var(--red)">Error: ${escapeHtml(e2.message)}</div>`;
-      console.error('Fallback RAG also failed:', e2);
-    }
-  }
-
-  chatGenerating = false;
-  document.getElementById('chatSend').disabled = false;
-  input.focus();
-}
-
-// ══════════════════════════════════════════════
-//  Chat Utilities
-// ══════════════════════════════════════════════
-
-function clearChat() {
-  chatHistory = [];
-  const container = document.getElementById('chatMessages');
-  container.innerHTML = `
-    <div class="chat-welcome" id="chatWelcome">
-      <div class="chat-welcome-title">Agent-Powered Documentation Chat</div>
-      <div class="chat-welcome-sub">
-        Ask questions and watch the agent use Context Harness MCP tools — search, retrieve, and synthesize answers.
-        The same tools available to Cursor and other AI editors, running right here in your browser.
-      </div>
-      <div class="chat-suggestions" id="chatSuggestions">
-        <button class="chat-suggestion" onclick="askSuggestion(this)">How do I set up the Git connector?</button>
-        <button class="chat-suggestion" onclick="askSuggestion(this)">What search modes are available?</button>
-        <button class="chat-suggestion" onclick="askSuggestion(this)">Show me the S3 connector config</button>
-        <button class="chat-suggestion" onclick="askSuggestion(this)">How does the chunking algorithm work?</button>
-      </div>
-    </div>
-  `;
-}
-
-function askSuggestion(btn) {
-  document.getElementById('chatInput').value = btn.textContent;
-  sendChatMessage();
-}
-
-// ── Init ──
-init();
+});
 </script>
+
 </body>
 </html>

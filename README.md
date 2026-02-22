@@ -247,17 +247,10 @@ See [`config/ctx.example.toml`](config/ctx.example.toml) for a complete example.
 
 ## Documentation
 
-The documentation site is live at **[parallax-labs.github.io/context-harness](https://parallax-labs.github.io/context-harness/)** and includes:
+Documentation is live at **[parallax-labs.github.io/context-harness/docs/](https://parallax-labs.github.io/context-harness/docs/)**.
 
-- **[Searchable Docs](https://parallax-labs.github.io/context-harness/docs/)** — search all guides and source code, powered by Context Harness itself (dogfooding the Git connector)
+- **[Docs](https://parallax-labs.github.io/context-harness/docs/)** — getting started, configuration, CLI reference, HTTP API, deployment
 - **[Rustdoc API Reference](https://parallax-labs.github.io/context-harness/api/context_harness/)** — full API docs generated from source
-- **[Live Demo](https://parallax-labs.github.io/context-harness/demo/)** — try keyword and semantic search in the browser
-
-The docs section is built in CI: the Git connector indexes this repo's `docs/` and `src/` directories, exports the data as JSON, and serves it as a browser-based search page. To build locally:
-
-```bash
-./scripts/build-docs.sh
-```
 
 ## License
 
