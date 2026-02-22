@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Chat with Docs** — RAG-powered chat interface in the docs page. Ask questions in natural language and get answers grounded in the documentation with source citations.
+  - **WebLLM backend** — fully offline LLM inference via WebGPU (Phi-3.5-mini). Model cached in IndexedDB after first download (~1.4GB).
+  - **OpenAI API backend** — paste your own API key for gpt-4o-mini. Key stays in localStorage, never leaves the browser.
+  - Hybrid search retrieval (BM25 + semantic) feeds top-5 relevant chunks as context to the LLM.
+  - Streaming token display with Markdown rendering (code blocks, headers, lists, bold/italic).
+  - Source document links appended to each answer for easy navigation.
+  - Conversation history (last 6 exchanges) for follow-up questions.
+  - Settings panel to switch backends and configure API key.
 - **Git connector** — ingest documents from any Git repository (local or remote), with support for branch selection, subdirectory scoping, shallow clones, and glob filtering. Use `ctx sync git`.
 - **S3 connector** — ingest documents from Amazon S3 buckets with prefix filtering, glob matching, and AWS credential resolution. Use `ctx sync s3`.
 - **Documentation site** — searchable docs at `site/docs/`, dogfooding the Git connector to index the repo's own guides and source code. Built automatically in CI.

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Context Harness — Documentation</title>
-<meta name="description" content="Search Context Harness documentation — guides, API reference, and architecture. Dogfooded with the Git connector and indexed by Context Harness itself.">
+<meta name="description" content="Search and chat with Context Harness documentation — guides, API reference, and architecture. Dogfooded with the Git connector and indexed by Context Harness itself.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
 <style>
 :root {
@@ -130,6 +130,7 @@ header {
 }
 .mode-pill:hover { color: var(--text); }
 .mode-pill.active { background: var(--accent); color: white; }
+.mode-pill[data-mode="chat"].active { background: var(--purple); }
 
 .filter-pills { display: flex; gap: 4px; margin-left: auto; }
 .filter-pill {
@@ -237,6 +238,225 @@ header {
 /* ── Empty ── */
 .empty-state { text-align: center; padding: 60px 24px; color: var(--text-dim); font-size: 14px; }
 
+/* ============================
+   Chat UI Styles
+   ============================ */
+
+.chat-container {
+  display: none;
+  flex-direction: column;
+  height: calc(100vh - 53px - 64px);
+  max-height: calc(100vh - 53px - 64px);
+}
+.chat-container.active { display: flex; }
+
+/* Chat header bar */
+.chat-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-bottom: 16px; border-bottom: 1px solid var(--border); margin-bottom: 0;
+  flex-shrink: 0;
+}
+.chat-header-left { display: flex; align-items: center; gap: 12px; }
+.chat-header-title { font-size: 16px; font-weight: 600; }
+.chat-backend-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 10px; border-radius: 12px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  font-size: 11px; color: var(--text-dim); font-family: var(--mono);
+}
+.chat-backend-badge .bdot {
+  width: 6px; height: 6px; border-radius: 50%;
+}
+.bdot-ready { background: var(--green); }
+.bdot-loading { background: var(--yellow); animation: pulse-dot 1s infinite; }
+.bdot-off { background: var(--text-muted); }
+@keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+.chat-actions { display: flex; align-items: center; gap: 8px; }
+.chat-btn {
+  padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border);
+  background: transparent; color: var(--text-dim); font-size: 12px;
+  cursor: pointer; font-family: inherit; transition: all 0.2s;
+}
+.chat-btn:hover { border-color: var(--accent); color: var(--text); }
+
+/* Settings dropdown */
+.settings-wrapper { position: relative; }
+.settings-dropdown {
+  display: none; position: absolute; top: calc(100% + 8px); right: 0;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px; width: 320px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4); z-index: 200;
+}
+.settings-dropdown.open { display: block; }
+.settings-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 8px; }
+.settings-radio-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.settings-radio {
+  display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+  border-radius: 8px; border: 1px solid var(--border);
+  cursor: pointer; transition: all 0.15s;
+}
+.settings-radio:hover { border-color: var(--accent); }
+.settings-radio.selected { border-color: var(--accent); background: var(--accent-glow); }
+.settings-radio input { display: none; }
+.settings-radio-dot {
+  width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--border);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.settings-radio.selected .settings-radio-dot { border-color: var(--accent); }
+.settings-radio.selected .settings-radio-dot::after {
+  content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+}
+.settings-radio-info { flex: 1; }
+.settings-radio-name { font-size: 13px; font-weight: 600; }
+.settings-radio-desc { font-size: 11px; color: var(--text-dim); }
+
+.settings-apikey-row { display: none; margin-bottom: 8px; }
+.settings-apikey-row.visible { display: block; }
+.settings-apikey-input {
+  width: 100%; padding: 8px 12px; background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); font-size: 13px; font-family: var(--mono);
+  outline: none;
+}
+.settings-apikey-input:focus { border-color: var(--accent); }
+.settings-hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+/* Messages area */
+.chat-messages {
+  flex: 1; overflow-y: auto; padding: 20px 0;
+  display: flex; flex-direction: column; gap: 16px;
+}
+
+.chat-msg {
+  display: flex; gap: 12px; max-width: 100%;
+}
+.chat-msg-user { justify-content: flex-end; }
+.chat-msg-assistant { justify-content: flex-start; }
+
+.chat-avatar {
+  width: 28px; height: 28px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; flex-shrink: 0;
+}
+.avatar-user { background: var(--accent); color: white; }
+.avatar-assistant { background: linear-gradient(135deg, var(--purple), var(--accent)); color: white; }
+
+.chat-bubble {
+  padding: 12px 16px; border-radius: 12px; max-width: 85%;
+  font-size: 14px; line-height: 1.7;
+}
+.bubble-user {
+  background: var(--accent); color: white;
+  border-bottom-right-radius: 4px;
+}
+.bubble-assistant {
+  background: var(--surface); border: 1px solid var(--border);
+  border-bottom-left-radius: 4px;
+}
+
+/* Markdown in assistant bubbles */
+.bubble-assistant h1, .bubble-assistant h2, .bubble-assistant h3 {
+  font-size: 15px; font-weight: 700; margin: 12px 0 4px 0; color: var(--text);
+}
+.bubble-assistant h1 { font-size: 17px; }
+.bubble-assistant p { margin: 6px 0; }
+.bubble-assistant ul, .bubble-assistant ol { margin: 6px 0 6px 20px; }
+.bubble-assistant li { margin: 2px 0; }
+.bubble-assistant code {
+  background: var(--surface-2); padding: 1px 5px; border-radius: 4px;
+  font-family: var(--mono); font-size: 12px; color: var(--accent);
+}
+.bubble-assistant pre {
+  background: var(--surface-3); border: 1px solid var(--border);
+  border-radius: 8px; padding: 12px; margin: 8px 0;
+  overflow-x: auto; font-family: var(--mono); font-size: 12px;
+  line-height: 1.5;
+}
+.bubble-assistant pre code {
+  background: none; padding: 0; color: var(--text);
+}
+.bubble-assistant strong { color: var(--text); }
+.bubble-assistant a { color: var(--accent); }
+.bubble-assistant blockquote {
+  border-left: 3px solid var(--accent); padding-left: 12px;
+  margin: 8px 0; color: var(--text-dim);
+}
+
+/* Sources footer */
+.chat-sources {
+  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
+  font-size: 12px; color: var(--text-muted);
+}
+.chat-sources-title { font-weight: 600; margin-bottom: 4px; }
+.chat-source-link {
+  display: inline-block; margin-right: 8px; margin-bottom: 4px;
+  padding: 2px 8px; border-radius: 4px; background: var(--surface-2);
+  color: var(--accent); cursor: pointer; font-size: 11px;
+  text-decoration: none; transition: background 0.15s;
+}
+.chat-source-link:hover { background: var(--accent-glow); }
+
+/* Typing indicator */
+.typing-indicator {
+  display: flex; gap: 4px; padding: 8px 0;
+}
+.typing-indicator span {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted);
+  animation: typing-bounce 1.4s infinite;
+}
+.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes typing-bounce {
+  0%,60%,100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-6px); opacity: 1; }
+}
+
+/* Chat welcome */
+.chat-welcome { text-align: center; padding: 40px 24px; }
+.chat-welcome-title { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+.chat-welcome-sub { font-size: 14px; color: var(--text-dim); max-width: 460px; margin: 0 auto 20px; }
+.chat-suggestions {
+  display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 16px;
+}
+.chat-suggestion {
+  padding: 8px 16px; border-radius: 20px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text-dim); font-size: 13px;
+  cursor: pointer; transition: all 0.2s; font-family: inherit;
+}
+.chat-suggestion:hover { border-color: var(--accent); color: var(--text); }
+
+/* Chat input bar */
+.chat-input-bar {
+  display: flex; gap: 8px; padding-top: 16px; border-top: 1px solid var(--border);
+  flex-shrink: 0; align-items: flex-end;
+}
+.chat-input {
+  flex: 1; padding: 12px 16px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--text); font-size: 14px; font-family: inherit;
+  outline: none; resize: none; min-height: 44px; max-height: 120px;
+  transition: border 0.2s;
+}
+.chat-input:focus { border-color: var(--accent); }
+.chat-input::placeholder { color: var(--text-muted); }
+.chat-send {
+  padding: 12px 20px; border-radius: var(--radius); border: none;
+  background: var(--purple); color: white; font-size: 14px;
+  cursor: pointer; font-family: inherit; font-weight: 600;
+  transition: opacity 0.2s; height: 44px;
+}
+.chat-send:hover { opacity: 0.9; }
+.chat-send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* LLM progress bar (in chat) */
+.chat-llm-progress {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px 16px; margin-bottom: 12px;
+  display: none; flex-shrink: 0;
+}
+.chat-llm-progress.visible { display: block; }
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
   .layout { grid-template-columns: 1fr; }
@@ -244,6 +464,8 @@ header {
   .main { padding: 20px 16px; }
   .search-meta { flex-wrap: wrap; }
   .filter-pills { margin-left: 0; }
+  .chat-bubble { max-width: 95%; }
+  .settings-dropdown { width: 280px; right: -60px; }
 }
 </style>
 </head>
@@ -286,6 +508,16 @@ header {
   </aside>
 
   <div class="main">
+    <!-- Mode pills (shared between search and chat) -->
+    <div class="search-meta" id="modePillsBar">
+      <div class="mode-pills">
+        <button class="mode-pill active" data-mode="keyword">Keyword</button>
+        <button class="mode-pill" data-mode="semantic">Semantic</button>
+        <button class="mode-pill" data-mode="hybrid">Hybrid</button>
+        <button class="mode-pill" data-mode="chat">💬 Chat</button>
+      </div>
+    </div>
+
     <!-- Search page -->
     <div id="searchPage">
       <div class="search-container">
@@ -294,11 +526,6 @@ header {
       </div>
 
       <div class="search-meta">
-        <div class="mode-pills">
-          <button class="mode-pill active" data-mode="keyword">Keyword</button>
-          <button class="mode-pill" data-mode="semantic">Semantic</button>
-          <button class="mode-pill" data-mode="hybrid">Hybrid</button>
-        </div>
         <div class="filter-pills">
           <button class="filter-pill active" data-filter="all">All</button>
           <button class="filter-pill" data-filter="guide">Guides</button>
@@ -329,6 +556,78 @@ header {
       </div>
     </div>
 
+    <!-- Chat page -->
+    <div class="chat-container" id="chatPage">
+      <div class="chat-header">
+        <div class="chat-header-left">
+          <span class="chat-header-title">Chat with Docs</span>
+          <span class="chat-backend-badge" id="chatBackendBadge">
+            <span class="bdot bdot-off" id="chatBdot"></span>
+            <span id="chatBackendLabel">No backend</span>
+          </span>
+        </div>
+        <div class="chat-actions">
+          <button class="chat-btn" onclick="clearChat()">New Chat</button>
+          <div class="settings-wrapper">
+            <button class="chat-btn" id="settingsBtn">⚙ Settings</button>
+            <div class="settings-dropdown" id="settingsDropdown">
+              <div class="settings-label">Inference Backend</div>
+              <div class="settings-radio-group">
+                <label class="settings-radio selected" id="radioWebllm" onclick="selectBackend('webllm')">
+                  <input type="radio" name="backend" value="webllm" checked>
+                  <div class="settings-radio-dot"></div>
+                  <div class="settings-radio-info">
+                    <div class="settings-radio-name">🖥 WebLLM (Offline)</div>
+                    <div class="settings-radio-desc">Runs Phi-3.5-mini in your browser via WebGPU. ~1.4GB download, cached for future visits. No API key needed.</div>
+                  </div>
+                </label>
+                <label class="settings-radio" id="radioOpenai" onclick="selectBackend('openai')">
+                  <input type="radio" name="backend" value="openai">
+                  <div class="settings-radio-dot"></div>
+                  <div class="settings-radio-info">
+                    <div class="settings-radio-name">🔑 OpenAI API</div>
+                    <div class="settings-radio-desc">Uses gpt-4o-mini via your own API key. Key stays in your browser, never sent to our servers.</div>
+                  </div>
+                </label>
+              </div>
+              <div class="settings-apikey-row" id="apikeyRow">
+                <div class="settings-label">OpenAI API Key</div>
+                <input type="password" class="settings-apikey-input" id="apikeyInput" placeholder="sk-…">
+                <div class="settings-hint">Stored in localStorage. Never leaves your browser.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="chatLlmProgress" class="chat-llm-progress">
+        <span id="chatProgDetail" style="font-size:13px;">Loading LLM…</span>
+        <div class="prog-bar"><div class="prog-fill" id="chatProgFill"></div></div>
+        <div class="prog-text"><span id="chatProgPct">0%</span></div>
+      </div>
+
+      <div class="chat-messages" id="chatMessages">
+        <div class="chat-welcome" id="chatWelcome">
+          <div class="chat-welcome-title">Ask anything about Context Harness</div>
+          <div class="chat-welcome-sub">
+            I'll search the documentation, find the relevant sections, and explain them to you.
+            Choose a backend in Settings — WebLLM runs fully offline, or paste an OpenAI key for faster responses.
+          </div>
+          <div class="chat-suggestions" id="chatSuggestions">
+            <button class="chat-suggestion" onclick="askSuggestion(this)">How do I set up the Git connector?</button>
+            <button class="chat-suggestion" onclick="askSuggestion(this)">What is hybrid search?</button>
+            <button class="chat-suggestion" onclick="askSuggestion(this)">How do embeddings work?</button>
+            <button class="chat-suggestion" onclick="askSuggestion(this)">Explain the MCP server endpoints</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="chat-input-bar">
+        <textarea class="chat-input" id="chatInput" placeholder="Ask a question about the docs…" rows="1"></textarea>
+        <button class="chat-send" id="chatSend" onclick="sendChatMessage()">Send</button>
+      </div>
+    </div>
+
     <!-- Document view -->
     <div id="docView" class="doc-view">
       <a class="doc-back" onclick="showSearch()">← Back to results</a>
@@ -341,8 +640,9 @@ header {
 
 <script>
 /* ====================================================================
-   Context Harness Documentation — Client-Side Search
-   Uses BM25 for keyword search and Transformers.js for semantic search.
+   Context Harness Documentation — Client-Side Search + Chat
+   Uses BM25 for keyword search, Transformers.js for semantic search,
+   and WebLLM/OpenAI for RAG-powered chat.
    Data is pre-indexed in CI via the Git connector.
    ==================================================================== */
 
@@ -357,7 +657,7 @@ let modelLoading = false;
 let chunkEmbeddings = [];
 let _modelPromise = null;
 
-// ── Data Loading ── */
+// ── Data Loading ──
 async function init() {
   try {
     const resp = await fetch('data.json');
@@ -379,9 +679,12 @@ async function init() {
     modelReady = true;
     _modelPromise = loadModel().catch(e => console.warn('Background model load:', e));
   }
+
+  // Restore chat settings
+  initChatSettings();
 }
 
-// ── Sidebar ── */
+// ── Sidebar ──
 function classifyDoc(sourceId) {
   if (sourceId.startsWith('docs/')) return 'guide';
   if (sourceId.startsWith('src/')) return 'api';
@@ -411,7 +714,7 @@ function buildSidebar() {
   renderList(modules, document.getElementById('sidebarModules'));
 }
 
-// ── BM25 Index ── */
+// ── BM25 Index ──
 let bm25Index = {};
 let avgDl = 0;
 const BM25_K1 = 1.2, BM25_B = 0.75;
@@ -468,10 +771,6 @@ function bm25Search(query) {
 function chunkToResult(chunkIdx, rawScore) {
   const chunk = DATA.chunks[chunkIdx];
   const doc = DATA.documents.find(d => d.id === chunk.document_id);
-  const maxScore = Math.max(...DATA.chunks.map((_, i) => {
-    // Approximate max — just use the raw score
-    return rawScore;
-  }));
 
   return {
     id: doc?.id || '',
@@ -480,13 +779,14 @@ function chunkToResult(chunkIdx, rawScore) {
     source_id: doc?.source_id || '',
     source_url: doc?.source_url || '',
     updated_at: doc?.updated_at || 0,
-    score: Math.min(rawScore / (rawScore + 2), 1), // sigmoid-ish normalization
+    score: Math.min(rawScore / (rawScore + 2), 1),
     snippet: chunk.text.substring(0, 300),
     chunk_index: chunk.chunk_index,
+    text: chunk.text,
   };
 }
 
-// ── Semantic Search ── */
+// ── Semantic Search ──
 function loadCachedEmbeddings() {
   try {
     const hash = DATA.chunks.map(c => c.id).join(',');
@@ -588,9 +888,9 @@ async function semanticSearch(query) {
   return scores.slice(0, 20).map(s => chunkToResult(s.idx, s.score));
 }
 
-async function hybridSearch(query) {
+async function hybridSearch(query, topK = 20) {
   const kw = bm25Search(query);
-  const sem = await semanticSearch(query);
+  const sem = modelReady ? await semanticSearch(query) : [];
 
   const normalize = (arr) => {
     if (arr.length === 0) return [];
@@ -600,7 +900,7 @@ async function hybridSearch(query) {
     return arr.map(r => ({ ...r, score: (r.score - min) / range }));
   };
 
-  const alpha = 0.6;
+  const alpha = sem.length > 0 ? 0.6 : 0;
   const kwNorm = normalize(kw);
   const semNorm = normalize(sem);
   const merged = {};
@@ -615,10 +915,10 @@ async function hybridSearch(query) {
     else merged[key] = { ...r, score: alpha * r.score };
   });
 
-  return Object.values(merged).sort((a, b) => b.score - a.score).slice(0, 20);
+  return Object.values(merged).sort((a, b) => b.score - a.score).slice(0, topK);
 }
 
-// ── Search Execution ── */
+// ── Search Execution ──
 let debounceTimer;
 const searchInput = document.getElementById('searchInput');
 
@@ -694,7 +994,6 @@ function renderResult(r, query) {
     else if (typeof r.updated_at === 'number') date = new Date(r.updated_at * 1000).toISOString().split('T')[0];
   }
 
-  // Highlight query terms in snippet
   let snippet = escapeHtml(r.snippet);
   if (query) {
     const terms = query.toLowerCase().split(/\s+/).filter(t => t.length > 1);
@@ -726,12 +1025,13 @@ function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// ── Document View ── */
+// ── Document View ──
 function viewDocument(id) {
   const doc = DATA.documents.find(d => d.id === id);
   if (!doc) return;
 
   document.getElementById('searchPage').style.display = 'none';
+  document.getElementById('chatPage').classList.remove('active');
   document.getElementById('docView').classList.add('active');
 
   document.getElementById('docTitle').textContent = doc.title || doc.source_id;
@@ -751,24 +1051,40 @@ function viewDocument(id) {
   `;
 
   document.getElementById('docBody').textContent = doc.body;
-
-  // Highlight sidebar
   document.querySelectorAll('.sidebar-link').forEach(el => el.classList.remove('active'));
 }
 
 function showSearch() {
   document.getElementById('docView').classList.remove('active');
-  document.getElementById('searchPage').style.display = 'block';
-  searchInput.focus();
+  if (currentMode === 'chat') {
+    document.getElementById('chatPage').classList.add('active');
+    document.getElementById('searchPage').style.display = 'none';
+  } else {
+    document.getElementById('searchPage').style.display = 'block';
+    document.getElementById('chatPage').classList.remove('active');
+    searchInput.focus();
+  }
 }
 
-// ── Mode & Filter Pills ── */
+// ── Mode & Filter Pills ──
 document.querySelectorAll('.mode-pill').forEach(pill => {
   pill.addEventListener('click', () => {
     document.querySelectorAll('.mode-pill').forEach(p => p.classList.remove('active'));
     pill.classList.add('active');
     currentMode = pill.dataset.mode;
-    doSearch();
+
+    document.getElementById('docView').classList.remove('active');
+
+    if (currentMode === 'chat') {
+      document.getElementById('searchPage').style.display = 'none';
+      document.getElementById('chatPage').classList.add('active');
+      document.getElementById('chatInput').focus();
+    } else {
+      document.getElementById('chatPage').classList.remove('active');
+      document.getElementById('searchPage').style.display = 'block';
+      searchInput.focus();
+      doSearch();
+    }
   });
 });
 
@@ -781,20 +1097,502 @@ document.querySelectorAll('.filter-pill').forEach(pill => {
   });
 });
 
-// ── Keyboard Shortcut ── */
+// ── Keyboard Shortcut ──
 document.addEventListener('keydown', (e) => {
-  if (e.key === '/' && document.activeElement !== searchInput) {
+  if (e.key === '/' && document.activeElement !== searchInput && document.activeElement !== document.getElementById('chatInput')) {
     e.preventDefault();
-    searchInput.focus();
+    if (currentMode === 'chat') document.getElementById('chatInput').focus();
+    else searchInput.focus();
   }
   if (e.key === 'Escape') {
     if (document.getElementById('docView').classList.contains('active')) showSearch();
+    const dd = document.getElementById('settingsDropdown');
+    if (dd.classList.contains('open')) dd.classList.remove('open');
   }
 });
 
-// ── Init ── */
+/* ====================================================================
+   CHAT SYSTEM
+   ==================================================================== */
+
+let chatHistory = []; // { role: 'user'|'assistant', content: string, sources?: [] }
+let chatBackend = 'webllm'; // 'webllm' | 'openai'
+let webllmEngine = null;
+let webllmReady = false;
+let webllmLoading = false;
+let _webllmPromise = null;
+let chatGenerating = false;
+
+// ── Chat Settings ──
+function initChatSettings() {
+  // Restore backend choice
+  const saved = localStorage.getItem('ctx_chat_backend');
+  if (saved === 'openai' || saved === 'webllm') {
+    chatBackend = saved;
+  }
+
+  // Restore API key
+  const key = localStorage.getItem('ctx_chat_apikey');
+  if (key) document.getElementById('apikeyInput').value = key;
+
+  updateBackendUI();
+
+  // Settings toggle
+  document.getElementById('settingsBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('settingsDropdown').classList.toggle('open');
+  });
+
+  document.addEventListener('click', (e) => {
+    const dd = document.getElementById('settingsDropdown');
+    if (dd.classList.contains('open') && !dd.contains(e.target) && e.target !== document.getElementById('settingsBtn')) {
+      dd.classList.remove('open');
+    }
+  });
+
+  // API key input
+  document.getElementById('apikeyInput').addEventListener('input', (e) => {
+    const key = e.target.value.trim();
+    if (key) localStorage.setItem('ctx_chat_apikey', key);
+    else localStorage.removeItem('ctx_chat_apikey');
+    updateBackendUI();
+  });
+
+  // Chat input auto-resize
+  const chatInput = document.getElementById('chatInput');
+  chatInput.addEventListener('input', () => {
+    chatInput.style.height = 'auto';
+    chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
+  });
+  chatInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendChatMessage();
+    }
+  });
+}
+
+function selectBackend(backend) {
+  chatBackend = backend;
+  localStorage.setItem('ctx_chat_backend', backend);
+
+  document.getElementById('radioWebllm').classList.toggle('selected', backend === 'webllm');
+  document.getElementById('radioOpenai').classList.toggle('selected', backend === 'openai');
+  document.getElementById('apikeyRow').classList.toggle('visible', backend === 'openai');
+
+  updateBackendUI();
+}
+
+function updateBackendUI() {
+  const bdot = document.getElementById('chatBdot');
+  const label = document.getElementById('chatBackendLabel');
+
+  if (chatBackend === 'webllm') {
+    document.getElementById('radioWebllm').classList.add('selected');
+    document.getElementById('radioOpenai').classList.remove('selected');
+    document.getElementById('apikeyRow').classList.remove('visible');
+
+    if (webllmReady) {
+      bdot.className = 'bdot bdot-ready';
+      label.textContent = 'WebLLM ready';
+    } else if (webllmLoading) {
+      bdot.className = 'bdot bdot-loading';
+      label.textContent = 'Loading model…';
+    } else {
+      bdot.className = 'bdot bdot-off';
+      label.textContent = 'WebLLM (click Send to load)';
+      // Check WebGPU support
+      if (!navigator.gpu) {
+        label.textContent = 'WebGPU not supported — use API key';
+        bdot.className = 'bdot bdot-off';
+      }
+    }
+  } else {
+    document.getElementById('radioOpenai').classList.add('selected');
+    document.getElementById('radioWebllm').classList.remove('selected');
+    document.getElementById('apikeyRow').classList.add('visible');
+
+    const key = localStorage.getItem('ctx_chat_apikey');
+    if (key) {
+      bdot.className = 'bdot bdot-ready';
+      label.textContent = 'OpenAI API ready';
+    } else {
+      bdot.className = 'bdot bdot-off';
+      label.textContent = 'Enter API key';
+    }
+  }
+}
+
+// ── WebLLM Backend ──
+async function ensureWebLLM() {
+  if (webllmReady && webllmEngine) return webllmEngine;
+  if (_webllmPromise) return _webllmPromise;
+
+  if (!navigator.gpu) {
+    throw new Error('WebGPU is not supported in this browser. Please use Chrome/Edge 113+ or switch to the OpenAI API backend.');
+  }
+
+  _webllmPromise = (async () => {
+    webllmLoading = true;
+    updateBackendUI();
+
+    const prog = document.getElementById('chatLlmProgress');
+    prog.classList.add('visible');
+
+    try {
+      const webllm = await import('https://esm.run/@mlc-ai/web-llm');
+
+      const modelId = 'Phi-3.5-mini-instruct-q4f16_1-MLC';
+
+      document.getElementById('chatProgDetail').textContent = 'Loading Phi-3.5-mini…';
+      document.getElementById('chatProgFill').style.width = '5%';
+      document.getElementById('chatProgPct').textContent = '5%';
+
+      webllmEngine = await webllm.CreateMLCEngine(modelId, {
+        initProgressCallback: (report) => {
+          const pct = Math.round((report.progress || 0) * 100);
+          document.getElementById('chatProgFill').style.width = pct + '%';
+          document.getElementById('chatProgPct').textContent = pct + '%';
+          document.getElementById('chatProgDetail').textContent = report.text || 'Loading…';
+        }
+      });
+
+      webllmReady = true;
+      webllmLoading = false;
+      updateBackendUI();
+
+      document.getElementById('chatProgFill').style.width = '100%';
+      document.getElementById('chatProgPct').textContent = '100%';
+      document.getElementById('chatProgDetail').textContent = 'Model ready!';
+      setTimeout(() => prog.classList.remove('visible'), 1500);
+
+      return webllmEngine;
+    } catch (e) {
+      webllmLoading = false;
+      _webllmPromise = null;
+      updateBackendUI();
+
+      document.getElementById('chatProgDetail').textContent = `Error: ${e.message}`;
+      document.getElementById('chatProgFill').style.background = 'var(--red)';
+      throw e;
+    }
+  })();
+
+  return _webllmPromise;
+}
+
+// ── RAG Pipeline ──
+async function retrieveContext(query) {
+  // Use hybrid search (BM25 + semantic if available) to find relevant chunks
+  const results = await hybridSearch(query, 5);
+
+  // Deduplicate by document
+  const seen = new Set();
+  const unique = [];
+  for (const r of results) {
+    const key = r.id + ':' + r.chunk_index;
+    if (!seen.has(key)) {
+      seen.add(key);
+      unique.push(r);
+    }
+  }
+
+  return unique.slice(0, 5);
+}
+
+function buildSystemPrompt(contextChunks) {
+  let contextBlock = '';
+  if (contextChunks.length === 0) {
+    contextBlock = '(No relevant documentation found for this question.)';
+  } else {
+    contextBlock = contextChunks.map((c, i) =>
+      `### Source ${i + 1}: ${c.source_id}\n${c.text}`
+    ).join('\n\n');
+  }
+
+  return `You are a documentation assistant for Context Harness, a local-first context indexing and retrieval framework for AI tools written in Rust.
+
+Answer the user's question using ONLY the documentation excerpts provided below. Be concise, accurate, and helpful. Use markdown formatting for code blocks, lists, and emphasis.
+
+If the answer is not in the provided documentation, say "I don't have enough context to answer that fully" and suggest what the user could search for or which documentation section might help.
+
+When referencing information, mention the source filename naturally (e.g. "According to USAGE.md..." or "The search module shows...").
+
+## Documentation Context
+
+${contextBlock}`;
+}
+
+function buildMessages(systemPrompt, history) {
+  const msgs = [{ role: 'system', content: systemPrompt }];
+
+  // Keep last 6 user/assistant exchanges for context
+  const recent = history.slice(-12);
+  for (const msg of recent) {
+    msgs.push({ role: msg.role, content: msg.content });
+  }
+
+  return msgs;
+}
+
+// ── Markdown Renderer ──
+function renderMarkdown(text) {
+  let html = escapeHtml(text);
+
+  // Code blocks: ```lang\ncode\n```
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    return `<pre><code>${code.trim()}</code></pre>`;
+  });
+
+  // Inline code
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+  // Headers
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+
+  // Bold and italic
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+  // Blockquotes
+  html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+
+  // Unordered lists
+  html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+
+  // Ordered lists
+  html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+
+  // Links
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+  // Paragraphs: split on double newlines
+  html = html.replace(/\n\n/g, '</p><p>');
+  html = '<p>' + html + '</p>';
+
+  // Clean up empty paragraphs and fix nesting
+  html = html.replace(/<p>\s*<(h[123]|pre|ul|ol|blockquote)/g, '<$1');
+  html = html.replace(/<\/(h[123]|pre|ul|ol|blockquote)>\s*<\/p>/g, '</$1>');
+  html = html.replace(/<p>\s*<\/p>/g, '');
+
+  return html;
+}
+
+// ── Chat Message Rendering ──
+function appendUserMessage(text) {
+  const welcome = document.getElementById('chatWelcome');
+  if (welcome) welcome.remove();
+
+  const container = document.getElementById('chatMessages');
+  const div = document.createElement('div');
+  div.className = 'chat-msg chat-msg-user';
+  div.innerHTML = `
+    <div class="chat-bubble bubble-user">${escapeHtml(text)}</div>
+    <div class="chat-avatar avatar-user">U</div>
+  `;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+function createAssistantBubble() {
+  const container = document.getElementById('chatMessages');
+  const div = document.createElement('div');
+  div.className = 'chat-msg chat-msg-assistant';
+  div.innerHTML = `
+    <div class="chat-avatar avatar-assistant">⚡</div>
+    <div class="chat-bubble bubble-assistant">
+      <div class="typing-indicator"><span></span><span></span><span></span></div>
+    </div>
+  `;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+
+  return div.querySelector('.bubble-assistant');
+}
+
+function updateAssistantBubble(bubble, text, sources) {
+  bubble.innerHTML = renderMarkdown(text);
+
+  if (sources && sources.length > 0) {
+    const srcDiv = document.createElement('div');
+    srcDiv.className = 'chat-sources';
+    srcDiv.innerHTML = `
+      <div class="chat-sources-title">Sources</div>
+      ${sources.map(s =>
+        `<a class="chat-source-link" onclick="viewDocument('${s.id}')" title="${s.source_id}">${s.source_id}</a>`
+      ).join('')}
+    `;
+    bubble.appendChild(srcDiv);
+  }
+
+  const container = document.getElementById('chatMessages');
+  container.scrollTop = container.scrollHeight;
+}
+
+// ── Send Message ──
+async function sendChatMessage() {
+  const input = document.getElementById('chatInput');
+  const query = input.value.trim();
+  if (!query || chatGenerating) return;
+
+  chatGenerating = true;
+  document.getElementById('chatSend').disabled = true;
+  input.value = '';
+  input.style.height = 'auto';
+
+  // Add user message
+  appendUserMessage(query);
+  chatHistory.push({ role: 'user', content: query });
+
+  // Create assistant bubble with typing indicator
+  const bubble = createAssistantBubble();
+
+  try {
+    // RAG: retrieve relevant context
+    const contextChunks = await retrieveContext(query);
+    const systemPrompt = buildSystemPrompt(contextChunks);
+    const messages = buildMessages(systemPrompt, chatHistory);
+
+    // Stream response from selected backend
+    let fullResponse = '';
+
+    if (chatBackend === 'openai') {
+      fullResponse = await streamOpenAI(messages, bubble);
+    } else {
+      fullResponse = await streamWebLLM(messages, bubble);
+    }
+
+    // Finalize with sources
+    updateAssistantBubble(bubble, fullResponse, contextChunks);
+    chatHistory.push({ role: 'assistant', content: fullResponse, sources: contextChunks });
+
+  } catch (e) {
+    bubble.innerHTML = `<div style="color:var(--red)">Error: ${escapeHtml(e.message)}</div>`;
+    console.error('Chat error:', e);
+  }
+
+  chatGenerating = false;
+  document.getElementById('chatSend').disabled = false;
+  input.focus();
+}
+
+// ── OpenAI Streaming ──
+async function streamOpenAI(messages, bubble) {
+  const apiKey = localStorage.getItem('ctx_chat_apikey');
+  if (!apiKey) throw new Error('No OpenAI API key configured. Open Settings to add one.');
+
+  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages,
+      stream: true,
+      max_tokens: 1024,
+      temperature: 0.3,
+    }),
+  });
+
+  if (!resp.ok) {
+    const err = await resp.text();
+    throw new Error(`OpenAI API error (${resp.status}): ${err}`);
+  }
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let fullText = '';
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed === 'data: [DONE]') continue;
+      if (!trimmed.startsWith('data: ')) continue;
+
+      try {
+        const json = JSON.parse(trimmed.slice(6));
+        const delta = json.choices?.[0]?.delta?.content;
+        if (delta) {
+          fullText += delta;
+          bubble.innerHTML = renderMarkdown(fullText) + '<span style="opacity:0.4">▌</span>';
+          const container = document.getElementById('chatMessages');
+          container.scrollTop = container.scrollHeight;
+        }
+      } catch (e) { /* skip malformed lines */ }
+    }
+  }
+
+  return fullText;
+}
+
+// ── WebLLM Streaming ──
+async function streamWebLLM(messages, bubble) {
+  const engine = await ensureWebLLM();
+
+  let fullText = '';
+
+  const completion = await engine.chat.completions.create({
+    messages,
+    stream: true,
+    max_tokens: 1024,
+    temperature: 0.3,
+  });
+
+  for await (const chunk of completion) {
+    const delta = chunk.choices?.[0]?.delta?.content;
+    if (delta) {
+      fullText += delta;
+      bubble.innerHTML = renderMarkdown(fullText) + '<span style="opacity:0.4">▌</span>';
+      const container = document.getElementById('chatMessages');
+      container.scrollTop = container.scrollHeight;
+    }
+  }
+
+  return fullText;
+}
+
+// ── Chat Utilities ──
+function clearChat() {
+  chatHistory = [];
+  const container = document.getElementById('chatMessages');
+  container.innerHTML = `
+    <div class="chat-welcome" id="chatWelcome">
+      <div class="chat-welcome-title">Ask anything about Context Harness</div>
+      <div class="chat-welcome-sub">
+        I'll search the documentation, find the relevant sections, and explain them to you.
+        Choose a backend in Settings — WebLLM runs fully offline, or paste an OpenAI key for faster responses.
+      </div>
+      <div class="chat-suggestions" id="chatSuggestions">
+        <button class="chat-suggestion" onclick="askSuggestion(this)">How do I set up the Git connector?</button>
+        <button class="chat-suggestion" onclick="askSuggestion(this)">What is hybrid search?</button>
+        <button class="chat-suggestion" onclick="askSuggestion(this)">How do embeddings work?</button>
+        <button class="chat-suggestion" onclick="askSuggestion(this)">Explain the MCP server endpoints</button>
+      </div>
+    </div>
+  `;
+}
+
+function askSuggestion(btn) {
+  const text = btn.textContent;
+  document.getElementById('chatInput').value = text;
+  sendChatMessage();
+}
+
+// ── Init ──
 init();
 </script>
 </body>
 </html>
-
