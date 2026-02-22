@@ -25,29 +25,33 @@ bind = "0.0.0.0:7331"
 
 ### Docker deployment
 
-Build a minimal Docker image:
+Build a minimal Docker image with all your config, connectors, tools, and agents baked in:
 
 ```dockerfile
 # Dockerfile
 FROM rust:1.82-slim AS builder
-WORKDIR /app
-COPY . .
-RUN cargo build --release
+WORKDIR /build
+RUN apt-get update && apt-get install -y git pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+RUN cargo install --git https://github.com/parallax-labs/context-harness
 
 FROM debian:bookworm-slim
 RUN apt-get update && \
-    apt-get install -y git ca-certificates python3 && \
+    apt-get install -y ca-certificates curl git && \
     rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/target/release/ctx /usr/local/bin/ctx
+COPY --from=builder /usr/local/cargo/bin/ctx /usr/local/bin/ctx
 COPY config/ /app/config/
 COPY connectors/ /app/connectors/
 COPY tools/ /app/tools/
+COPY agents/ /app/agents/
 
 WORKDIR /app
+RUN mkdir -p /app/data
 EXPOSE 7331
 
-# Initialize, sync, and serve
+HEALTHCHECK --interval=30s --timeout=5s \
+  CMD curl -f http://localhost:7331/health || exit 1
+
 ENTRYPOINT ["/bin/bash", "-c"]
 CMD ["ctx init --config /app/config/ctx.toml && \
       ctx sync all --full --config /app/config/ctx.toml && \
@@ -66,12 +70,15 @@ $ docker run -d \
     context-harness
 
 $ curl localhost:7331/health
-{"status":"ok"}
+{"status":"ok","version":"0.1.0"}
+
+# Verify agents are loaded
+$ curl -s localhost:7331/agents/list | jq '.agents[] | .name'
 ```
 
 ### Docker Compose
 
-For a more complete setup with persistent storage and auto-restart:
+For a production setup with persistent storage, mounted source repos, and auto-restart:
 
 ```yaml
 # docker-compose.yml
@@ -82,10 +89,17 @@ services:
     ports:
       - "7331:7331"
     volumes:
+      # Persistent database (survives container restarts)
       - ctx-data:/app/data
-      - ./config:/app/config
-      - ./connectors:/app/connectors
-      - ./tools:/app/tools
+      # Config, connectors, tools, agents (live editable)
+      - ./config:/app/config:ro
+      - ./connectors:/app/connectors:ro
+      - ./tools:/app/tools:ro
+      - ./agents:/app/agents:ro
+      # Mount source repos for filesystem connectors (read-only)
+      - ~/dev:/data/repos:ro
+      # Mount notes for Obsidian/markdown indexing
+      - ~/Documents/notes:/data/notes:ro
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - JIRA_API_TOKEN=${JIRA_API_TOKEN}
@@ -103,6 +117,61 @@ volumes:
 ```bash
 $ docker compose up -d
 $ docker compose logs -f context-harness
+
+# Initial sync (run once, takes a while for many repos)
+$ docker compose exec context-harness bash -c \
+    "ctx sync all --full --config /app/config/ctx.toml && \
+     ctx embed pending --config /app/config/ctx.toml"
+
+# Re-sync on a schedule
+$ docker compose exec context-harness bash -c \
+    "ctx sync all --config /app/config/ctx.toml && \
+     ctx embed pending --config /app/config/ctx.toml"
+```
+
+### Docker with agents
+
+When deploying with agents, your directory structure should look like:
+
+```
+project/
+├── config/
+│   └── ctx.toml           # All config: connectors, tools, agents
+├── connectors/
+│   ├── jira.lua            # Lua connectors
+│   └── confluence.lua
+├── tools/
+│   ├── create-ticket.lua   # Lua tools
+│   └── post-slack.lua
+├── agents/
+│   └── incident-responder.lua  # Lua agents
+├── Dockerfile
+├── docker-compose.yml
+└── data/                   # Mounted as volume
+    └── ctx.sqlite
+```
+
+Your `ctx.toml` references agents alongside connectors and tools:
+
+```toml
+# Inline agents (static prompts, no Lua needed)
+[agents.inline.code-reviewer]
+description = "Reviews code against conventions"
+tools = ["search", "get"]
+system_prompt = "You are a senior code reviewer..."
+
+# Lua agents (dynamic, pre-search context)
+[agents.script.incident-responder]
+path = "/app/agents/incident-responder.lua"
+timeout = 30
+```
+
+Verify agents after startup:
+
+```bash
+$ curl -s localhost:7331/agents/list | jq '.agents[] | {name, description, source}'
+{"name": "code-reviewer", "description": "Reviews code against conventions", "source": "toml"}
+{"name": "incident-responder", "description": "Helps triage incidents", "source": "lua"}
 ```
 
 ### Systemd service (Linux)

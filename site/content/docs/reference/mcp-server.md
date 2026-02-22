@@ -4,7 +4,7 @@ description = "HTTP API reference for AI agent integration."
 weight = 2
 +++
 
-The MCP server (`ctx serve mcp`) exposes an HTTP API that AI agents use to search documents, retrieve content, discover tools, and execute custom Lua-defined actions. CORS is enabled by default for browser-based clients.
+The MCP server (`ctx serve mcp`) exposes an HTTP API that AI agents use to search documents, retrieve content, discover tools, execute custom actions, and activate agent personas. CORS is enabled by default for browser-based clients.
 
 ### Starting the server
 
@@ -127,7 +127,7 @@ $ curl -s localhost:7331/tools/sources | jq .
 
 #### `GET /tools/list`
 
-Discover all registered tools (built-in + Lua) with OpenAI-compatible JSON Schema. This is what AI agents use to know what tools are available:
+Discover all registered tools (built-in, Lua, and custom Rust) with OpenAI-compatible JSON Schema. This is what AI agents use to know what tools are available:
 
 ```bash
 $ curl -s localhost:7331/tools/list | jq '.tools[] | {name, description, builtin}'
@@ -217,6 +217,76 @@ $ curl -s -X POST localhost:7331/tools/create_jira_ticket \
 | `404` | Unknown tool name |
 | `408` | Lua script timed out |
 | `500` | Script execution error |
+
+#### `GET /agents/list`
+
+Discover all registered agents with their metadata, tool lists, and argument schemas:
+
+```bash
+$ curl -s localhost:7331/agents/list | jq '.agents[] | {name, description, tools, source}'
+```
+
+**Response:**
+
+```json
+{
+  "agents": [
+    {
+      "name": "code-reviewer",
+      "description": "Reviews code changes against project conventions",
+      "tools": ["search", "get"],
+      "source": "toml",
+      "arguments": []
+    },
+    {
+      "name": "incident-responder",
+      "description": "Helps triage production incidents with relevant runbooks",
+      "tools": ["search", "get", "create_jira_ticket"],
+      "source": "lua",
+      "arguments": [
+        { "name": "service", "description": "The service experiencing the incident", "required": false },
+        { "name": "severity", "description": "Incident severity (P1, P2, P3)", "required": false }
+      ]
+    }
+  ]
+}
+```
+
+#### `POST /agents/{name}/prompt`
+
+Resolve an agent's system prompt. For Lua agents, this executes the script's `agent.resolve()` function with access to the context bridge.
+
+```bash
+$ curl -s localhost:7331/agents/incident-responder/prompt \
+    -H "Content-Type: application/json" \
+    -d '{"service": "payments-api", "severity": "P1"}' | jq .
+```
+
+**Response:**
+
+```json
+{
+  "system": "You are an incident responder for the payments-api service (P1 severity)...",
+  "tools": ["search", "get", "create_jira_ticket"],
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "I'm ready to help with the P1 payments-api incident..."
+    }
+  ]
+}
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| (body) | object | Agent-specific arguments as key-value pairs |
+
+| Status | Meaning |
+|--------|---------|
+| `200` | Success |
+| `404` | Agent not found |
+| `500` | Lua resolve() failed |
+| `408` | Lua resolve() timed out |
 
 #### `GET /health`
 

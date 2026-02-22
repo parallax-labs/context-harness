@@ -257,3 +257,59 @@ Lua tools:
   create_jira_ticket  Create a Jira ticket enriched with context
                 Parameters: title (string, required), priority (enum, optional)
 ```
+
+---
+
+### `ctx agent list`
+
+List all configured agents with descriptions and tool lists.
+
+```bash
+$ ctx agent list
+  code-reviewer        Reviews code changes against project conventions   (tools: search, get)        [toml]
+  architect            Answers architecture questions using indexed docs   (tools: search, get, sources) [toml]
+  incident-responder   Helps triage production incidents with runbooks     (tools: search, get, create_jira_ticket) [lua]
+```
+
+### `ctx agent test <name> [--arg key=value]`
+
+Resolve an agent's prompt with arguments and print the result. Useful for debugging Lua agents.
+
+```bash
+$ ctx agent test incident-responder --arg service=payments-api --arg severity=P1
+
+Agent: incident-responder
+Source: lua (agents/incident-responder.lua)
+Tools: search, get, create_jira_ticket
+
+System prompt (487 chars):
+  You are an incident responder for the payments-api service (P1 severity).
+  ...
+
+Messages (1):
+  [assistant] I'm ready to help with the P1 payments-api incident...
+
+# Test a TOML agent (no dynamic resolution)
+$ ctx agent test code-reviewer
+
+Agent: code-reviewer
+Source: toml
+Tools: search, get
+
+System prompt (245 chars):
+  You are a senior code reviewer for this project...
+```
+
+### `ctx agent init <name>`
+
+Scaffold a new Lua agent script from a template.
+
+```bash
+$ ctx agent init sre-helper
+Created: agents/sre-helper.lua
+Add to config:
+
+  [agents.script.sre-helper]
+  path = "agents/sre-helper.lua"
+  timeout = 30
+```

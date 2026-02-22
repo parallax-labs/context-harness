@@ -76,6 +76,31 @@ timeout = 30
 jira_url = "https://mycompany.atlassian.net"
 jira_project = "ENG"
 jira_token = "${JIRA_API_TOKEN}"
+
+# ── Inline agents (static prompts) ──────────────
+
+[agents.inline.code-reviewer]
+description = "Reviews code changes against project conventions"
+tools = ["search", "get"]
+system_prompt = """
+You are a senior code reviewer. Use search to find coding conventions.
+Be specific — cite which convention a suggestion relates to.
+"""
+
+[agents.inline.architect]
+description = "Answers architecture questions using indexed docs"
+tools = ["search", "get", "sources"]
+system_prompt = """
+You are a software architect. Search for ADRs and design documents.
+When recommending changes, explain tradeoffs and cite sources.
+"""
+
+# ── Lua scripted agents (dynamic prompts) ────────
+
+[agents.script.incident-responder]
+path = "agents/incident-responder.lua"
+timeout = 30
+search_limit = 5
 ```
 
 ### Environment variable expansion
@@ -103,3 +128,5 @@ workspace = "acme"                      # Plain string, no expansion
 | `[connectors.s3.*]` | Named S3 connector instances |
 | `[connectors.script.*]` | Named Lua scripted connector instances |
 | `[tools.script.*]` | Lua scripted tool configs |
+| `[agents.inline.*]` | Inline TOML agents (static system prompt) |
+| `[agents.script.*]` | Lua scripted agents (dynamic prompts) |
