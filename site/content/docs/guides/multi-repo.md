@@ -1,12 +1,7 @@
 +++
 title = "Multi-Repo Context"
 description = "Index multiple repositories and data sources into a single searchable knowledge base."
-weight = 9
-
-[extra]
-sidebar_label = "Multi-Repo Context"
-sidebar_group = "Guides"
-sidebar_order = 8
+weight = 2
 +++
 
 A common pattern is indexing multiple repositories, wikis, and data sources into a single Context Harness instance. This gives your AI agents unified search across your entire engineering organization's knowledge.

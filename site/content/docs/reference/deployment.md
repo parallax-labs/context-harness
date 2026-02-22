@@ -1,12 +1,7 @@
 +++
 title = "Deployment"
 description = "Deploy Context Harness as a persistent MCP server, in Docker, CI/CD, or as a static search index."
-weight = 12
-
-[extra]
-sidebar_label = "Deployment"
-sidebar_group = "Operations"
-sidebar_order = 11
+weight = 5
 +++
 
 ### Running the MCP server

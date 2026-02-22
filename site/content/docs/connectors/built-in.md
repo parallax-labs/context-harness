@@ -1,12 +1,7 @@
 +++
 title = "Built-in Connectors"
 description = "Filesystem, Git, and S3 connectors for ingesting data from any source."
-weight = 4
-
-[extra]
-sidebar_label = "Connectors"
-sidebar_group = "Configuration"
-sidebar_order = 4
+weight = 1
 +++
 
 Connectors fetch data from external sources and normalize it into a consistent Document model. All connectors support incremental sync — only changed content is re-processed on subsequent runs.

@@ -2,11 +2,6 @@
 title = "Quick Start"
 description = "Go from zero to searchable knowledge base in 5 minutes."
 weight = 2
-
-[extra]
-sidebar_label = "Quick Start"
-sidebar_group = "Getting Started"
-sidebar_order = 2
 +++
 
 This guide takes you from installation to having an AI agent searching your codebase in 5 minutes.
@@ -162,10 +157,11 @@ $ ctx search "deploy" --mode hybrid
 
 ### What's next?
 
-- [Configuration](/docs/configuration/) — full reference for `ctx.toml`
-- [Connectors](/docs/connectors/) — filesystem, Git, and S3 setup
-- [Lua Connectors](/docs/lua-connectors/) — index Jira, Slack, Notion, anything
-- [Lua Tools](/docs/lua-tools/) — give AI agents custom actions (create tickets, post to Slack)
-- [Agent Integration](/docs/agent-integration/) — connect to Claude Desktop, Continue.dev, etc.
-- [Multi-Repo Context](/docs/multi-repo/) — unified search across multiple repos
-- [Deployment](/docs/deployment/) — Docker, systemd, CI/CD
+- [Configuration](/docs/reference/configuration/) — full reference for `ctx.toml`
+- [Connectors](/docs/connectors/built-in/) — filesystem, Git, and S3 setup
+- [Lua Connectors](/docs/connectors/lua-connectors/) — index Jira, Slack, Notion, anything
+- [Lua Tools](/docs/connectors/lua-tools/) — give AI agents custom actions
+- [Agent Integration](/docs/guides/agent-integration/) — connect to Cursor, Claude Desktop, Continue.dev
+- [Multi-Repo Context](/docs/guides/multi-repo/) — unified search across multiple repos
+- [Build a RAG Agent](/docs/guides/rag-agent/) — build a Python agent with your knowledge base
+- [Deployment](/docs/reference/deployment/) — Docker, systemd, CI/CD

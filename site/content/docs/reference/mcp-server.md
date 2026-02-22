@@ -1,12 +1,7 @@
 +++
-title = "MCP Server"
+title = "MCP Server API"
 description = "HTTP API reference for AI agent integration."
-weight = 10
-
-[extra]
-sidebar_label = "MCP Server"
-sidebar_group = "Reference"
-sidebar_order = 9
+weight = 2
 +++
 
 The MCP server (`ctx serve mcp`) exposes an HTTP API that AI agents use to search documents, retrieve content, discover tools, and execute custom Lua-defined actions. CORS is enabled by default for browser-based clients.
@@ -234,7 +229,7 @@ $ curl -s localhost:7331/health
 
 ### Connecting to AI agents
 
-See the [Agent Integration](/docs/agent-integration/) guide for step-by-step setup with:
+See the [Agent Integration](/docs/guides/agent-integration/) guide for step-by-step setup with:
 
 - **Cursor** — workspace-level or global MCP config
 - **Claude Desktop** — automatic server launch or external URL

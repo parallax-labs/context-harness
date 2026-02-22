@@ -1,12 +1,7 @@
 +++
 title = "Configuration"
 description = "Complete reference for every setting in ctx.toml."
-weight = 3
-
-[extra]
-sidebar_label = "Configuration"
-sidebar_group = "Configuration"
-sidebar_order = 3
+weight = 1
 +++
 
 Context Harness uses a TOML config file passed via `--config` (defaults to `./config/ctx.toml`). Here's a fully annotated example:

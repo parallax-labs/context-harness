@@ -1,17 +1,273 @@
 {% extends "base.html" %}
-{# Individual doc pages are rendered inline on the docs section page.
-   This template exists only as a Zola requirement. If someone navigates
-   directly to a page URL, redirect them to the docs page with the anchor. #}
 
 {% block title %}{{ page.title }} — Context Harness Docs{% endblock %}
 {% block description %}{{ page.description | default(value="Context Harness documentation") }}{% endblock %}
 
+{% block head_extra %}
+<style>
+    html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+
+    /* Sidebar */
+    .doc-sidebar {
+        position: fixed; top: 56px; left: 0; bottom: 0;
+        width: 260px; background: #0e0e16;
+        border-right: 1px solid #1e1e2e;
+        overflow-y: auto; padding: 16px 0;
+        scrollbar-width: thin;
+        scrollbar-color: #2a2a3a transparent;
+        z-index: 40;
+    }
+    .doc-sidebar::-webkit-scrollbar { width: 4px; }
+    .doc-sidebar::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 4px; }
+
+    .nav-section { margin-bottom: 4px; }
+    .nav-section-title {
+        display: flex; align-items: center; gap: 6px;
+        padding: 7px 16px; cursor: pointer;
+        font-size: 13px; font-weight: 700; color: #8888a0;
+        transition: all 0.15s; user-select: none;
+    }
+    .nav-section-title:hover { color: #e4e4ec; background: rgba(255,255,255,0.02); }
+    .nav-section-title .arrow { font-size: 10px; transition: transform 0.2s; color: #55556a; }
+    .nav-section.open .arrow { transform: rotate(90deg); }
+    .nav-section-title .icon { font-size: 14px; }
+
+    .nav-pages { display: none; padding-bottom: 4px; }
+    .nav-section.open .nav-pages { display: block; }
+
+    .nav-link {
+        display: block; padding: 4px 16px 4px 36px;
+        font-size: 13px; color: #55556a;
+        border-left: 2px solid transparent;
+        transition: all 0.15s;
+    }
+    .nav-link:hover { color: #e4e4ec; background: rgba(255,255,255,0.02); text-decoration: none; }
+    .nav-link.active { color: #4f8fff; border-left-color: #4f8fff; background: rgba(79, 143, 255, 0.06); }
+
+    /* Main content */
+    .doc-content { margin-left: 260px; max-width: 900px; padding: 40px 48px 120px; }
+
+    .doc-content h1 {
+        font-size: 32px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 8px;
+    }
+    .doc-content h2 {
+        font-size: 22px; font-weight: 700; margin-top: 48px; margin-bottom: 12px; color: #e4e4ec;
+    }
+    .doc-content h3 {
+        font-size: 17px; font-weight: 700; margin-top: 32px; margin-bottom: 10px; color: #e4e4ec;
+    }
+    .doc-content h4 {
+        font-size: 14px; font-weight: 700; margin-top: 24px; margin-bottom: 8px;
+        color: #8888a0; text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .doc-content p { margin-bottom: 16px; color: #8888a0; font-size: 15px; line-height: 1.8; }
+    .doc-content ul, .doc-content ol { margin-bottom: 16px; padding-left: 24px; color: #8888a0; font-size: 15px; }
+    .doc-content li { margin-bottom: 6px; line-height: 1.7; }
+    .doc-content strong { color: #e4e4ec; font-weight: 600; }
+    .doc-content em { color: #6ba3ff; font-style: normal; }
+    .doc-content a { color: #4f8fff; }
+    .doc-content a:hover { color: #6ba3ff; text-decoration: underline; }
+    .doc-content hr { border: none; border-top: 1px solid #1e1e2e; margin: 40px 0; }
+
+    .doc-content code {
+        font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+        font-size: 0.88em; background: #12121a; padding: 2px 7px; border-radius: 4px;
+        color: #6ba3ff;
+    }
+    .doc-content pre {
+        background: #12121a; border: 1px solid #1e1e2e;
+        border-radius: 8px; padding: 16px 20px;
+        overflow-x: auto; margin-bottom: 20px;
+        font-size: 13px; line-height: 1.75;
+    }
+    .doc-content pre code { background: none; padding: 0; color: #8888a0; font-size: 13px; }
+
+    .doc-content table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px; }
+    .doc-content th {
+        text-align: left; padding: 10px 14px;
+        background: #12121a; border: 1px solid #1e1e2e;
+        font-weight: 600; color: #e4e4ec; font-size: 13px;
+        text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .doc-content td { padding: 10px 14px; border: 1px solid #1e1e2e; color: #8888a0; }
+    .doc-content td code { font-size: 12px; }
+
+    .doc-content blockquote {
+        padding: 16px 20px; border-radius: 8px; margin-bottom: 20px; font-size: 14px;
+        border-left: 3px solid #4f8fff; background: rgba(79, 143, 255, 0.06);
+    }
+    .doc-content blockquote p { color: #8888a0; margin: 0; }
+
+    .lead { font-size: 17px; color: #8888a0; margin-bottom: 32px; line-height: 1.8; }
+
+    /* Prev/Next nav */
+    .page-nav {
+        display: flex; justify-content: space-between; gap: 16px;
+        margin-top: 64px; padding-top: 32px; border-top: 1px solid #1e1e2e;
+    }
+    .page-nav a {
+        display: flex; flex-direction: column; gap: 4px;
+        padding: 16px 20px; border-radius: 8px;
+        background: #12121a; border: 1px solid #1e1e2e;
+        transition: all 0.2s; text-decoration: none; min-width: 200px;
+    }
+    .page-nav a:hover { border-color: #2a2a3a; background: #1a1a25; text-decoration: none; }
+    .page-nav .label { font-size: 11px; color: #55556a; text-transform: uppercase; letter-spacing: 1px; }
+    .page-nav .title { font-size: 15px; color: #4f8fff; font-weight: 600; }
+    .page-nav .next { text-align: right; margin-left: auto; }
+
+    /* Breadcrumb */
+    .breadcrumb { margin-bottom: 16px; font-size: 13px; color: #55556a; }
+    .breadcrumb a { color: #55556a; }
+    .breadcrumb a:hover { color: #8888a0; text-decoration: none; }
+    .breadcrumb .sep { margin: 0 6px; }
+
+    /* Search trigger */
+    .header-search {
+        display: flex; align-items: center; gap: 6px;
+        padding: 6px 12px; border-radius: 8px; cursor: pointer;
+        background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
+        color: #55556a; font-size: 13px; transition: all 0.15s; font-family: inherit;
+    }
+    .header-search:hover { border-color: rgba(255,255,255,0.2); color: #8888a0; }
+    .header-search kbd {
+        padding: 1px 5px; border-radius: 3px; font-size: 11px;
+        background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .menu-btn { display: none; background: none; border: none; color: #e4e4ec; font-size: 22px; cursor: pointer; padding: 4px; }
+
+    @media (max-width: 900px) {
+        .doc-sidebar { transform: translateX(-100%); transition: transform 0.25s ease; z-index: 90; }
+        .doc-sidebar.open { transform: translateX(0); }
+        .doc-content { margin-left: 0; padding: 32px 20px 80px; }
+        .menu-btn { display: block; }
+        .page-nav { flex-direction: column; }
+        .page-nav .next { text-align: left; margin-left: 0; }
+    }
+</style>
+{% endblock %}
+
 {% block body %}
-<script>window.location.replace('{{ get_url(path="@/docs/_index.md") }}#{{ page.slug }}');</script>
-<noscript>
-    <meta http-equiv="refresh" content="0; url={{ get_url(path='@/docs/_index.md') }}#{{ page.slug }}">
-</noscript>
-<p style="padding: 40px; font-family: sans-serif; color: #888;">
-    Redirecting to <a href="{{ get_url(path='@/docs/_index.md') }}#{{ page.slug }}">documentation</a>…
-</p>
+{# ── Header ── #}
+<header class="fixed top-0 left-0 right-0 z-50 h-14 bg-bg/90 backdrop-blur-xl border-b border-border flex items-center px-6">
+    <div class="w-full max-w-[1400px] mx-auto flex items-center justify-between">
+        <div class="flex items-center gap-4">
+            <button class="menu-btn" onclick="document.querySelector('.doc-sidebar').classList.toggle('open')" aria-label="Menu">☰</button>
+            <a href="{{ get_url(path='/') }}" class="flex items-center gap-2 text-gray-200 font-bold text-base hover:text-gray-200 no-underline">⚡ Context Harness</a>
+            <span class="text-muted text-lg font-light">/</span>
+            <a href="{{ get_url(path='@/docs/_index.md') }}" class="text-dim text-sm font-medium hover:text-gray-200 no-underline">Docs</a>
+        </div>
+        <div class="flex items-center gap-5">
+            <button class="header-search" id="search-trigger">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/></svg>
+                Search
+                <kbd>⌘K</kbd>
+            </button>
+            <a href="{{ get_url(path='/') }}" class="text-dim text-[13px] font-medium hover:text-gray-200 no-underline">Home</a>
+            <a href="/demo/" class="text-dim text-[13px] font-medium hover:text-gray-200 no-underline">Demo</a>
+            <a href="{{ config.extra.github_url }}" class="flex items-center opacity-70 hover:opacity-100" target="_blank" rel="noopener">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+            </a>
+        </div>
+    </div>
+</header>
+
+{# ── Sidebar ── #}
+<nav class="doc-sidebar" id="sidebar">
+    {% set docs = get_section(path="docs/_index.md") %}
+    {% for sub_path in docs.subsections %}
+        {% set sub = get_section(path=sub_path) %}
+        {# Open the subsection that contains the current page #}
+        {% set_global is_current_section = false %}
+        {% for p in sub.pages %}
+            {% if p.permalink == page.permalink %}
+                {% set_global is_current_section = true %}
+            {% endif %}
+        {% endfor %}
+        <div class="nav-section{% if is_current_section %} open{% endif %}">
+            <div class="nav-section-title" onclick="this.parentElement.classList.toggle('open')">
+                <span class="arrow">▶</span>
+                {% if sub.extra.sidebar_icon %}<span class="icon">{{ sub.extra.sidebar_icon }}</span>{% endif %}
+                {{ sub.title }}
+            </div>
+            <div class="nav-pages">
+                {% for p in sub.pages %}
+                <a class="nav-link{% if p.permalink == page.permalink %} active{% endif %}" href="{{ p.permalink }}">{{ p.title }}</a>
+                {% endfor %}
+            </div>
+        </div>
+    {% endfor %}
+</nav>
+
+{# ── Main Content ── #}
+<main class="doc-content" style="margin-top: 56px;">
+    {# Breadcrumb #}
+    {% set parent = get_section(path=page.ancestors | last) %}
+    <div class="breadcrumb">
+        <a href="{{ get_url(path='@/docs/_index.md') }}">Docs</a>
+        <span class="sep">/</span>
+        <a href="{{ parent.permalink }}">{{ parent.title }}</a>
+        <span class="sep">/</span>
+        {{ page.title }}
+    </div>
+
+    <h1>{{ page.title }}</h1>
+    {% if page.description %}
+    <p class="lead">{{ page.description }}</p>
+    {% endif %}
+
+    {{ page.content | safe }}
+
+    {# ── Prev / Next navigation ── #}
+    {% set all_pages = [] %}
+    {% for sub_path in docs.subsections %}
+        {% set sub = get_section(path=sub_path) %}
+        {% for p in sub.pages %}
+            {% set_global all_pages = all_pages | concat(with=p) %}
+        {% endfor %}
+    {% endfor %}
+
+    {% set_global prev_page = false %}
+    {% set_global next_page = false %}
+    {% set_global found_current = false %}
+    {% for p in all_pages %}
+        {% if found_current and not next_page %}
+            {% set_global next_page = p %}
+        {% endif %}
+        {% if p.permalink == page.permalink %}
+            {% set_global found_current = true %}
+        {% endif %}
+        {% if not found_current %}
+            {% set_global prev_page = p %}
+        {% endif %}
+    {% endfor %}
+
+    <div class="page-nav">
+        {% if prev_page %}
+        <a href="{{ prev_page.permalink }}">
+            <span class="label">← Previous</span>
+            <span class="title">{{ prev_page.title }}</span>
+        </a>
+        {% else %}
+        <div></div>
+        {% endif %}
+
+        {% if next_page %}
+        <a class="next" href="{{ next_page.permalink }}">
+            <span class="label">Next →</span>
+            <span class="title">{{ next_page.title }}</span>
+        </a>
+        {% endif %}
+    </div>
+</main>
+
+<script src="{{ get_url(path='ctx-search.js') }}" data-json="{{ get_url(path='docs/data.json') }}" data-trigger="#search-trigger" data-placeholder="Search docs, source code, guides…"></script>
+<script>
+document.querySelector('.doc-sidebar').addEventListener('click', e => {
+    if (e.target.classList.contains('nav-link')) {
+        document.getElementById('sidebar').classList.remove('open');
+    }
+});
+</script>
 {% endblock %}

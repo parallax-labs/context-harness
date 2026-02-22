@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{# Subsection index — redirect to the first page in the subsection #}
+
+{% block title %}{{ section.title }} — Context Harness Docs{% endblock %}
+
+{% block body %}
+{% set first_page = section.pages | first %}
+{% if first_page %}
+<script>window.location.replace('{{ first_page.permalink }}');</script>
+<noscript>
+    <meta http-equiv="refresh" content="0; url={{ first_page.permalink }}">
+</noscript>
+<p style="padding: 40px; font-family: sans-serif; color: #888;">
+    Redirecting to <a href="{{ first_page.permalink }}">{{ first_page.title }}</a>…
+</p>
+{% else %}
+<p style="padding: 40px; font-family: sans-serif; color: #888;">No pages in this section yet.</p>
+{% endif %}
+{% endblock %}
+

@@ -1,12 +1,7 @@
 +++
 title = "CLI Reference"
 description = "Every ctx command, flag, and option with examples."
-weight = 13
-
-[extra]
-sidebar_label = "CLI Reference"
-sidebar_group = "Reference"
-sidebar_order = 12
+weight = 4
 +++
 
 ### Global options
@@ -183,7 +178,7 @@ Loaded 2 Lua tool(s):
 Listening on 127.0.0.1:7331
 ```
 
-The server binds to `[server].bind` from config. See [MCP Server](/docs/mcp-server/) for endpoint documentation.
+The server binds to `[server].bind` from config. See [MCP Server API](/docs/reference/mcp-server/) for endpoint documentation.
 
 ---
 

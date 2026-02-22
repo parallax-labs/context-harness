@@ -12,7 +12,7 @@
         position: fixed; top: 56px; left: 0; bottom: 0;
         width: 260px; background: #0e0e16;
         border-right: 1px solid #1e1e2e;
-        overflow-y: auto; padding: 20px 0;
+        overflow-y: auto; padding: 16px 0;
         scrollbar-width: thin;
         scrollbar-color: #2a2a3a transparent;
         z-index: 40;
@@ -20,42 +20,52 @@
     .doc-sidebar::-webkit-scrollbar { width: 4px; }
     .doc-sidebar::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 4px; }
 
-    .nav-group-title {
-        padding: 0 20px; margin-bottom: 6px; margin-top: 16px;
-        font-size: 11px; font-weight: 700; text-transform: uppercase;
-        letter-spacing: 1.2px; color: #55556a;
+    .nav-section {
+        margin-bottom: 4px;
     }
-    .nav-group-title:first-child { margin-top: 0; }
+    .nav-section-title {
+        display: flex; align-items: center; gap: 6px;
+        padding: 7px 16px; cursor: pointer;
+        font-size: 13px; font-weight: 700; color: #8888a0;
+        transition: all 0.15s; user-select: none;
+    }
+    .nav-section-title:hover { color: #e4e4ec; background: rgba(255,255,255,0.02); }
+    .nav-section-title .arrow {
+        font-size: 10px; transition: transform 0.2s; color: #55556a;
+    }
+    .nav-section.open .arrow { transform: rotate(90deg); }
+    .nav-section-title .icon { font-size: 14px; }
+
+    .nav-pages {
+        display: none; padding-bottom: 4px;
+    }
+    .nav-section.open .nav-pages { display: block; }
 
     .nav-link {
-        display: block; padding: 5px 20px 5px 24px;
-        font-size: 13px; color: #8888a0;
+        display: block; padding: 4px 16px 4px 36px;
+        font-size: 13px; color: #55556a;
         border-left: 2px solid transparent;
         transition: all 0.15s;
     }
     .nav-link:hover { color: #e4e4ec; background: rgba(255,255,255,0.02); text-decoration: none; }
-    .nav-link.active { color: #4f8fff; border-left-color: #4f8fff; background: rgba(79, 143, 255, 0.08); }
+    .nav-link.active { color: #4f8fff; border-left-color: #4f8fff; background: rgba(79, 143, 255, 0.06); }
 
     /* Main content */
-    .doc-content { margin-left: 260px; max-width: 840px; padding: 40px 48px 120px; }
+    .doc-content { margin-left: 260px; max-width: 900px; padding: 40px 48px 120px; }
 
+    .doc-content h1 {
+        font-size: 32px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 8px;
+    }
     .doc-content h2 {
-        font-size: 26px; font-weight: 800; letter-spacing: -0.5px;
-        margin-top: 80px; margin-bottom: 8px; padding-top: 24px;
-        border-top: 1px solid #1e1e2e; color: #e4e4ec;
+        font-size: 22px; font-weight: 700; margin-top: 48px; margin-bottom: 12px; color: #e4e4ec;
     }
-    .doc-content h2:first-of-type { margin-top: 0; border-top: none; padding-top: 0; }
-
     .doc-content h3 {
-        font-size: 18px; font-weight: 700; margin-top: 40px; margin-bottom: 12px;
-        color: #e4e4ec;
+        font-size: 17px; font-weight: 700; margin-top: 32px; margin-bottom: 10px; color: #e4e4ec;
     }
-
     .doc-content h4 {
-        font-size: 14px; font-weight: 700; margin-top: 28px; margin-bottom: 8px;
+        font-size: 14px; font-weight: 700; margin-top: 24px; margin-bottom: 8px;
         color: #8888a0; text-transform: uppercase; letter-spacing: 0.5px;
     }
-
     .doc-content p { margin-bottom: 16px; color: #8888a0; font-size: 15px; line-height: 1.8; }
     .doc-content ul, .doc-content ol { margin-bottom: 16px; padding-left: 24px; color: #8888a0; font-size: 15px; }
     .doc-content li { margin-bottom: 6px; line-height: 1.7; }
@@ -63,55 +73,66 @@
     .doc-content em { color: #6ba3ff; font-style: normal; }
     .doc-content a { color: #4f8fff; }
     .doc-content a:hover { color: #6ba3ff; text-decoration: underline; }
-    .doc-content hr { border: none; border-top: 1px solid #1e1e2e; margin: 48px 0; }
+    .doc-content hr { border: none; border-top: 1px solid #1e1e2e; margin: 40px 0; }
 
     .doc-content code {
         font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
         font-size: 0.88em; background: #12121a; padding: 2px 7px; border-radius: 4px;
         color: #6ba3ff;
     }
-
     .doc-content pre {
         background: #12121a; border: 1px solid #1e1e2e;
         border-radius: 8px; padding: 16px 20px;
         overflow-x: auto; margin-bottom: 20px;
         font-size: 13px; line-height: 1.75;
     }
-    .doc-content pre code {
-        background: none; padding: 0; color: #8888a0; font-size: 13px;
-    }
+    .doc-content pre code { background: none; padding: 0; color: #8888a0; font-size: 13px; }
 
-    .doc-content table {
-        width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px;
-    }
+    .doc-content table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px; }
     .doc-content th {
         text-align: left; padding: 10px 14px;
         background: #12121a; border: 1px solid #1e1e2e;
         font-weight: 600; color: #e4e4ec; font-size: 13px;
         text-transform: uppercase; letter-spacing: 0.5px;
     }
-    .doc-content td {
-        padding: 10px 14px; border: 1px solid #1e1e2e; color: #8888a0;
-    }
+    .doc-content td { padding: 10px 14px; border: 1px solid #1e1e2e; color: #8888a0; }
     .doc-content td code { font-size: 12px; }
 
     .doc-content blockquote {
-        padding: 16px 20px; border-radius: 8px;
-        margin-bottom: 20px; font-size: 14px;
-        border-left: 3px solid #4f8fff;
-        background: rgba(79, 143, 255, 0.06);
+        padding: 16px 20px; border-radius: 8px; margin-bottom: 20px; font-size: 14px;
+        border-left: 3px solid #4f8fff; background: rgba(79, 143, 255, 0.06);
     }
     .doc-content blockquote p { color: #8888a0; margin: 0; }
 
     .lead { font-size: 17px; color: #8888a0; margin-bottom: 32px; line-height: 1.8; }
+
+    /* Section cards on landing */
+    .section-grid {
+        display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-top: 32px;
+    }
+    .section-card {
+        background: #12121a; border: 1px solid #1e1e2e; border-radius: 12px;
+        padding: 24px; transition: all 0.2s; display: block; text-decoration: none;
+    }
+    .section-card:hover {
+        border-color: #2a2a3a; background: #1a1a25; transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.3); text-decoration: none;
+    }
+    .section-card-icon { font-size: 28px; margin-bottom: 12px; }
+    .section-card h3 { font-size: 18px; font-weight: 700; margin-bottom: 6px; color: #e4e4ec; }
+    .section-card p { font-size: 14px; color: #55556a; line-height: 1.6; margin: 0; }
+    .section-card-pages { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px; }
+    .section-card-pages span {
+        padding: 3px 10px; background: #0a0a0f; border: 1px solid #1e1e2e;
+        border-radius: 100px; font-size: 11px; color: #55556a; font-family: 'JetBrains Mono', monospace;
+    }
 
     /* Search trigger */
     .header-search {
         display: flex; align-items: center; gap: 6px;
         padding: 6px 12px; border-radius: 8px; cursor: pointer;
         background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
-        color: #55556a; font-size: 13px; transition: all 0.15s;
-        font-family: inherit;
+        color: #55556a; font-size: 13px; transition: all 0.15s; font-family: inherit;
     }
     .header-search:hover { border-color: rgba(255,255,255,0.2); color: #8888a0; }
     .header-search kbd {
@@ -119,16 +140,14 @@
         background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
     }
 
-    /* Menu button (mobile) */
     .menu-btn { display: none; background: none; border: none; color: #e4e4ec; font-size: 22px; cursor: pointer; padding: 4px; }
 
     @media (max-width: 900px) {
-        .doc-sidebar {
-            transform: translateX(-100%); transition: transform 0.25s ease; z-index: 90;
-        }
+        .doc-sidebar { transform: translateX(-100%); transition: transform 0.25s ease; z-index: 90; }
         .doc-sidebar.open { transform: translateX(0); }
         .doc-content { margin-left: 0; padding: 32px 20px 80px; }
         .menu-btn { display: block; }
+        .section-grid { grid-template-columns: 1fr; }
     }
 </style>
 {% endblock %}
@@ -160,59 +179,55 @@
 
 {# ── Sidebar ── #}
 <nav class="doc-sidebar" id="sidebar">
-    {% set docs_section = get_section(path="docs/_index.md") %}
-    {% set_global prev_group = "" %}
-    {% for p in docs_section.pages | sort(attribute="extra.sidebar_order") %}
-    {% if p.extra.sidebar_label is defined %}
-        {% set group = p.extra.sidebar_group | default(value="") %}
-        {% if group != prev_group and group != "" %}
-            <div class="nav-group-title">{{ group }}</div>
-        {% endif %}
-        <a class="nav-link" href="#{{ p.slug }}">{{ p.extra.sidebar_label }}</a>
-        {% set_global prev_group = group %}
-    {% endif %}
+    {% set docs = get_section(path="docs/_index.md") %}
+    {% for sub_path in docs.subsections %}
+        {% set sub = get_section(path=sub_path) %}
+        <div class="nav-section open">
+            <div class="nav-section-title" onclick="this.parentElement.classList.toggle('open')">
+                <span class="arrow">▶</span>
+                {% if sub.extra.sidebar_icon %}<span class="icon">{{ sub.extra.sidebar_icon }}</span>{% endif %}
+                {{ sub.title }}
+            </div>
+            <div class="nav-pages">
+                {% for page in sub.pages %}
+                <a class="nav-link" href="{{ page.permalink }}">{{ page.title }}</a>
+                {% endfor %}
+            </div>
+        </div>
     {% endfor %}
 </nav>
 
-{# ── Content: All pages rendered as one continuous scroll ── #}
+{# ── Main Content: Docs Landing ── #}
 <main class="doc-content" style="margin-top: 56px;">
-    <h1 class="text-3xl font-extrabold tracking-tight mb-2">{{ section.title }}</h1>
+    <h1>{{ section.title }}</h1>
     <p class="lead">{{ section.description | default(value="") }}</p>
 
     {{ section.content | safe }}
 
-    {% for page in docs_section.pages | sort(attribute="extra.sidebar_order") %}
-    <section id="{{ page.slug }}">
-        <h2>{{ page.title }}</h2>
-        {% if page.description %}
-        <p class="lead" style="margin-bottom: 20px; font-size: 15px;">{{ page.description }}</p>
-        {% endif %}
-        {{ page.content | safe }}
-    </section>
-    {% endfor %}
+    <div class="section-grid">
+        {% for sub_path in docs.subsections %}
+            {% set sub = get_section(path=sub_path) %}
+            {% set first_page = sub.pages | first %}
+            <a class="section-card" href="{% if first_page %}{{ first_page.permalink }}{% else %}{{ sub.permalink }}{% endif %}">
+                {% if sub.extra.sidebar_icon %}<div class="section-card-icon">{{ sub.extra.sidebar_icon }}</div>{% endif %}
+                <h3>{{ sub.title }}</h3>
+                <p>{{ sub.description | default(value="") }}</p>
+                <div class="section-card-pages">
+                    {% for page in sub.pages %}
+                    <span>{{ page.title }}</span>
+                    {% endfor %}
+                </div>
+            </a>
+        {% endfor %}
+    </div>
 </main>
 
 <script src="{{ get_url(path='ctx-search.js') }}" data-json="{{ get_url(path='docs/data.json') }}" data-trigger="#search-trigger" data-placeholder="Search docs, source code, guides…"></script>
 <script>
-// Active sidebar tracking on scroll
-const sections = document.querySelectorAll('.doc-content section[id]');
-const navLinks = document.querySelectorAll('.nav-link');
-const observer = new IntersectionObserver(entries => {
-    entries.forEach(entry => {
-        if (entry.isIntersecting) {
-            navLinks.forEach(l => l.classList.remove('active'));
-            const link = document.querySelector(`.nav-link[href="#${entry.target.id}"]`);
-            if (link) link.classList.add('active');
-        }
-    });
-}, { rootMargin: '-80px 0px -70% 0px' });
-sections.forEach(s => observer.observe(s));
-
-// Mobile sidebar close on click
-navLinks.forEach(link => {
-    link.addEventListener('click', () => {
+document.querySelector('.doc-sidebar').addEventListener('click', e => {
+    if (e.target.classList.contains('nav-link')) {
         document.getElementById('sidebar').classList.remove('open');
-    });
+    }
 });
 </script>
 {% endblock %}

@@ -1,12 +1,7 @@
 +++
-title = "Lua MCP Tool Extensions"
+title = "Lua Tools"
 description = "Define custom MCP tools in Lua that AI agents can discover and call at runtime."
-weight = 6
-
-[extra]
-sidebar_label = "Lua Tools"
-sidebar_group = "Extensibility"
-sidebar_order = 6
+weight = 3
 +++
 
 While **connectors** read data *into* the knowledge base, **tools** let agents *act on* that data. Lua tool extensions define custom MCP tools that AI agents (Cursor, Claude, browser LLMs) can discover via `GET /tools/list` and invoke via `POST /tools/{name}` — without recompiling Rust.

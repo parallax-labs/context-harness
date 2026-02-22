@@ -1,12 +1,7 @@
 +++
 title = "Agent Integration"
 description = "Step-by-step setup for Cursor, Claude Desktop, Continue.dev, OpenClaw, and custom agents."
-weight = 8
-
-[extra]
-sidebar_label = "Agent Integration"
-sidebar_group = "Guides"
-sidebar_order = 7
+weight = 1
 +++
 
 Context Harness exposes an MCP-compatible HTTP server that any AI agent can consume. This guide walks through connecting it to the most popular tools.
@@ -70,7 +65,7 @@ Once connected, Cursor's agent can use your knowledge base naturally:
 
 The agent discovers all available tools (built-in + Lua extensions) automatically via `GET /tools/list`.
 
-**Pro tip:** For multi-repo workspaces in Cursor, run one Context Harness instance that indexes all repos. See the [Multi-Repo Context](@/docs/multi-repo.md) guide.
+**Pro tip:** For multi-repo workspaces in Cursor, run one Context Harness instance that indexes all repos. See the [Multi-Repo Context](@/docs/guides/multi-repo.md) guide.
 
 ---
 

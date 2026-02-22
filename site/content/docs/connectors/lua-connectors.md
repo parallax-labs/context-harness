@@ -1,12 +1,7 @@
 +++
-title = "Lua Scripted Connectors"
+title = "Lua Connectors"
 description = "Write custom data source connectors in Lua — no Rust compilation needed."
-weight = 5
-
-[extra]
-sidebar_label = "Lua Connectors"
-sidebar_group = "Extensibility"
-sidebar_order = 5
+weight = 2
 +++
 
 Lua scripted connectors let you add *any* data source to Context Harness by writing a simple Lua script. The script runs in a sandboxed Lua 5.4 VM with access to HTTP, JSON, filesystem, and other host APIs. No Rust compilation needed — just write a `.lua` file and sync.

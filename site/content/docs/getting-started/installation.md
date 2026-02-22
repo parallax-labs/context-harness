@@ -2,11 +2,6 @@
 title = "Installation"
 description = "Install the ctx binary from source or Docker in under a minute."
 weight = 1
-
-[extra]
-sidebar_label = "Installation"
-sidebar_group = "Getting Started"
-sidebar_order = 1
 +++
 
 ### From source (recommended)

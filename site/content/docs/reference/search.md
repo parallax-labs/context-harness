@@ -1,12 +1,7 @@
 +++
 title = "Search & Retrieval"
 description = "Keyword, semantic, and hybrid search modes, scoring, and tuning."
-weight = 11
-
-[extra]
-sidebar_label = "Search & Retrieval"
-sidebar_group = "Reference"
-sidebar_order = 10
+weight = 3
 +++
 
 Context Harness supports three search modes that can be mixed and tuned for your use case.
