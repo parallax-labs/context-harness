@@ -23,26 +23,31 @@
     .nav-section { margin-bottom: 4px; }
     .nav-section-title {
         display: flex; align-items: center; gap: 6px;
-        padding: 7px 16px; cursor: pointer;
+        padding: 7px 16px;
         font-size: 13px; font-weight: 700; color: #8888a0;
-        transition: all 0.15s; user-select: none;
+        user-select: none;
     }
-    .nav-section-title:hover { color: #e4e4ec; background: rgba(255,255,255,0.02); }
-    .nav-section-title .arrow { font-size: 10px; transition: transform 0.2s; color: #55556a; }
-    .nav-section.open .arrow { transform: rotate(90deg); }
     .nav-section-title .icon { font-size: 14px; }
 
-    .nav-pages { display: none; padding-bottom: 4px; }
-    .nav-section.open .nav-pages { display: block; }
+    .nav-pages { padding-bottom: 4px; }
 
     .nav-link {
-        display: block; padding: 4px 16px 4px 36px;
+        display: block; padding: 4px 16px 4px 28px;
         font-size: 13px; color: #55556a;
         border-left: 2px solid transparent;
         transition: all 0.15s;
     }
     .nav-link:hover { color: #e4e4ec; background: rgba(255,255,255,0.02); text-decoration: none; }
     .nav-link.active { color: #4f8fff; border-left-color: #4f8fff; background: rgba(79, 143, 255, 0.06); }
+
+    .nav-heading {
+        display: block; padding: 2px 16px 2px 42px;
+        font-size: 12px; color: #44445a;
+        border-left: 2px solid transparent;
+        transition: all 0.15s;
+    }
+    .nav-heading:hover { color: #8888a0; text-decoration: none; }
+    .nav-heading.active { color: #4f8fff; border-left-color: #4f8fff; }
 
     /* Main content */
     .doc-content { margin-left: 260px; max-width: 900px; padding: 40px 48px 120px; }
@@ -178,22 +183,19 @@
     {% set docs = get_section(path="docs/_index.md") %}
     {% for sub_path in docs.subsections %}
         {% set sub = get_section(path=sub_path) %}
-        {# Open the subsection that contains the current page #}
-        {% set_global is_current_section = false %}
-        {% for p in sub.pages %}
-            {% if p.permalink == page.permalink %}
-                {% set_global is_current_section = true %}
-            {% endif %}
-        {% endfor %}
-        <div class="nav-section{% if is_current_section %} open{% endif %}">
-            <div class="nav-section-title" onclick="this.parentElement.classList.toggle('open')">
-                <span class="arrow">▶</span>
+        <div class="nav-section">
+            <div class="nav-section-title">
                 {% if sub.extra.sidebar_icon %}<span class="icon">{{ sub.extra.sidebar_icon }}</span>{% endif %}
                 {{ sub.title }}
             </div>
             <div class="nav-pages">
                 {% for p in sub.pages %}
                 <a class="nav-link{% if p.permalink == page.permalink %} active{% endif %}" href="{{ p.permalink }}">{{ p.title }}</a>
+                {% if p.permalink == page.permalink %}
+                    {% for h in page.toc %}
+                    <a class="nav-heading" href="{{ p.permalink }}#{{ h.id }}">{{ h.title }}</a>
+                    {% endfor %}
+                {% endif %}
                 {% endfor %}
             </div>
         </div>
@@ -265,9 +267,29 @@
 <script src="{{ get_url(path='ctx-search.js') }}" data-json="{{ get_url(path='docs/data.json') }}" data-trigger="#search-trigger" data-placeholder="Search docs, source code, guides…"></script>
 <script>
 document.querySelector('.doc-sidebar').addEventListener('click', e => {
-    if (e.target.classList.contains('nav-link')) {
+    if (e.target.classList.contains('nav-link') || e.target.classList.contains('nav-heading')) {
         document.getElementById('sidebar').classList.remove('open');
     }
 });
+
+// Scroll-spy: highlight current heading in sidebar
+(function() {
+    const headings = document.querySelectorAll('.doc-content h3[id]');
+    const navHeadings = document.querySelectorAll('.nav-heading');
+    if (!headings.length || !navHeadings.length) return;
+
+    const observer = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                const id = entry.target.id;
+                navHeadings.forEach(a => {
+                    a.classList.toggle('active', a.getAttribute('href').endsWith('#' + id));
+                });
+            }
+        });
+    }, { rootMargin: '-80px 0px -70% 0px', threshold: 0 });
+
+    headings.forEach(h => observer.observe(h));
+})();
 </script>
 {% endblock %}

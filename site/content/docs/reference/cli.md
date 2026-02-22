@@ -177,7 +177,7 @@ Loaded 2 Lua tool(s):
 Listening on 127.0.0.1:7331
 ```
 
-The server binds to `[server].bind` from config. See [MCP Server API](/docs/reference/mcp-server/) for endpoint documentation.
+The server binds to `[server].bind` from config. See [MCP Server API](@/docs/reference/mcp-server.md) for endpoint documentation.
 
 ---
 

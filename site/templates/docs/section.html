@@ -25,24 +25,18 @@
     }
     .nav-section-title {
         display: flex; align-items: center; gap: 6px;
-        padding: 7px 16px; cursor: pointer;
+        padding: 7px 16px;
         font-size: 13px; font-weight: 700; color: #8888a0;
-        transition: all 0.15s; user-select: none;
+        user-select: none;
     }
-    .nav-section-title:hover { color: #e4e4ec; background: rgba(255,255,255,0.02); }
-    .nav-section-title .arrow {
-        font-size: 10px; transition: transform 0.2s; color: #55556a;
-    }
-    .nav-section.open .arrow { transform: rotate(90deg); }
     .nav-section-title .icon { font-size: 14px; }
 
     .nav-pages {
-        display: none; padding-bottom: 4px;
+        padding-bottom: 4px;
     }
-    .nav-section.open .nav-pages { display: block; }
 
     .nav-link {
-        display: block; padding: 4px 16px 4px 36px;
+        display: block; padding: 4px 16px 4px 28px;
         font-size: 13px; color: #55556a;
         border-left: 2px solid transparent;
         transition: all 0.15s;
@@ -182,9 +176,8 @@
     {% set docs = get_section(path="docs/_index.md") %}
     {% for sub_path in docs.subsections %}
         {% set sub = get_section(path=sub_path) %}
-        <div class="nav-section open">
-            <div class="nav-section-title" onclick="this.parentElement.classList.toggle('open')">
-                <span class="arrow">▶</span>
+        <div class="nav-section">
+            <div class="nav-section-title">
                 {% if sub.extra.sidebar_icon %}<span class="icon">{{ sub.extra.sidebar_icon }}</span>{% endif %}
                 {{ sub.title }}
             </div>

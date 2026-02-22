@@ -299,7 +299,7 @@ $ curl -s localhost:7331/health
 
 ### Connecting to AI agents
 
-See the [Agent Integration](/docs/guides/agent-integration/) guide for step-by-step setup with:
+See the [Agent Integration](@/docs/guides/agent-integration.md) guide for step-by-step setup with:
 
 - **Cursor** — workspace-level or global MCP config
 - **Claude Desktop** — automatic server launch or external URL

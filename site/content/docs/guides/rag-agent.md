@@ -287,6 +287,6 @@ response = client.messages.create(
 - Add streaming responses for real-time output
 - Build a web UI with FastAPI or Flask
 - Add authentication for multi-user access
-- Deploy with Docker (see [Deployment](/docs/reference/deployment/))
-- Add custom Lua tools for write operations (see [Lua Tools](/docs/connectors/lua-tools/))
+- Deploy with Docker (see [Deployment](@/docs/reference/deployment.md))
+- Add custom Lua tools for write operations (see [Lua Tools](@/docs/connectors/lua-tools.md))
 

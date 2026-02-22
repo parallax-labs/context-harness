@@ -287,8 +287,8 @@ Zed supports context servers through its extensions system. Use the HTTP API dir
 
 ### What's next?
 
-- [Build a RAG Agent](/docs/guides/rag-agent/) — build a standalone Python agent
-- [Build a Chatbot](/docs/guides/chatbot/) — build a web-based chat interface
-- [Multi-Repo Context](/docs/guides/multi-repo/) — detailed multi-repo configuration
-- [Lua Tools](/docs/connectors/lua-tools/) — give agents custom actions
+- [Build a RAG Agent](@/docs/guides/rag-agent.md) — build a standalone Python agent
+- [Build a Chatbot](@/docs/guides/chatbot.md) — build a web-based chat interface
+- [Multi-Repo Context](@/docs/guides/multi-repo.md) — detailed multi-repo configuration
+- [Lua Tools](@/docs/connectors/lua-tools.md) — give agents custom actions
 

@@ -160,11 +160,11 @@ $ ctx sync all
 
 ### What's next?
 
-- [Configuration](/docs/reference/configuration/) — full reference for `ctx.toml`
-- [Connectors](/docs/connectors/built-in/) — filesystem, Git, and S3 setup
-- [Lua Connectors](/docs/connectors/lua-connectors/) — index Jira, Slack, Notion, anything
-- [Lua Tools](/docs/connectors/lua-tools/) — give AI agents custom actions
-- [Agent Integration](/docs/guides/agent-integration/) — connect to Cursor, Claude Desktop, Continue.dev
-- [Multi-Repo Context](/docs/guides/multi-repo/) — unified search across multiple repos
-- [Build a RAG Agent](/docs/guides/rag-agent/) — build a Python agent with your knowledge base
-- [Deployment](/docs/reference/deployment/) — Docker, systemd, CI/CD
+- [Configuration](@/docs/reference/configuration.md) — full reference for `ctx.toml`
+- [Connectors](@/docs/connectors/built-in.md) — filesystem, Git, and S3 setup
+- [Lua Connectors](@/docs/connectors/lua-connectors.md) — index Jira, Slack, Notion, anything
+- [Lua Tools](@/docs/connectors/lua-tools.md) — give AI agents custom actions
+- [Agent Integration](@/docs/guides/agent-integration.md) — connect to Cursor, Claude Desktop, Continue.dev
+- [Multi-Repo Context](@/docs/guides/multi-repo.md) — unified search across multiple repos
+- [Build a RAG Agent](@/docs/guides/rag-agent.md) — build a Python agent with your knowledge base
+- [Deployment](@/docs/reference/deployment.md) — Docker, systemd, CI/CD

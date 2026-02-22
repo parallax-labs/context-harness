@@ -405,7 +405,7 @@ app.post("/api/save", (req, res) => {
 
 ### What's next?
 
-- Deploy with Docker (see [Deployment](/docs/reference/deployment/))
+- Deploy with Docker (see [Deployment](@/docs/reference/deployment.md))
 - Add Lua tools for write operations — let the chatbot create tickets, post to Slack
 - Build a mobile-responsive version
 - Add file upload for indexing new documents on the fly

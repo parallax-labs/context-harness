@@ -390,9 +390,9 @@ See the [full example](https://github.com/parallax-labs/context-harness/blob/mai
 
 ### What's next?
 
-- [Agent Integration](/docs/guides/agent-integration/) — connect agents to Cursor, Claude, Continue.dev
-- [Lua Tools](/docs/connectors/lua-tools/) — give agents custom actions beyond search
-- [Multi-Repo Context](/docs/guides/multi-repo/) — index multiple repos for cross-project agents
-- [Deployment](/docs/reference/deployment/) — deploy agents in Docker or CI
+- [Agent Integration](@/docs/guides/agent-integration.md) — connect agents to Cursor, Claude, Continue.dev
+- [Lua Tools](@/docs/connectors/lua-tools.md) — give agents custom actions beyond search
+- [Multi-Repo Context](@/docs/guides/multi-repo.md) — index multiple repos for cross-project agents
+- [Deployment](@/docs/reference/deployment.md) — deploy agents in Docker or CI
 
 
