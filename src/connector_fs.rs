@@ -6,7 +6,7 @@
 //! # Configuration
 //!
 //! ```toml
-//! [connectors.filesystem]
+//! [connectors.filesystem.docs]
 //! root = "./docs"
 //! include_globs = ["**/*.md", "**/*.txt"]
 //! exclude_globs = ["**/drafts/**"]
@@ -23,40 +23,100 @@
 //! # Output
 //!
 //! Each file becomes a [`SourceItem`] with:
-//! - `source`: `"filesystem"`
+//! - `source`: `"filesystem:<name>"` (e.g. `"filesystem:docs"`)
 //! - `source_id`: relative path from root (e.g. `"guides/deploy.md"`)
 //! - `source_url`: `file://` URI
 //! - `updated_at`: filesystem modification time
 //! - `body`: file contents as UTF-8
 
 use anyhow::{bail, Result};
+use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use std::path::Path;
 use walkdir::WalkDir;
 
-use crate::config::Config;
+use crate::config::FilesystemConnectorConfig;
 use crate::models::SourceItem;
+use crate::traits::Connector;
+
+// ═══════════════════════════════════════════════════════════════════════
+// Connector trait implementation
+// ═══════════════════════════════════════════════════════════════════════
+
+/// A filesystem connector instance that implements the [`Connector`] trait.
+///
+/// Wraps the [`scan_filesystem`] function, allowing filesystem connectors
+/// to be used through the unified trait-based dispatch.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use context_harness::connector_fs::FilesystemConnector;
+/// use context_harness::config::FilesystemConnectorConfig;
+/// use context_harness::traits::Connector;
+///
+/// let config: FilesystemConnectorConfig = toml::from_str(r#"
+///     root = "./docs"
+///     include_globs = ["**/*.md"]
+/// "#).unwrap();
+/// let connector = FilesystemConnector::new("docs".into(), config);
+/// assert_eq!(connector.source_label(), "filesystem:docs");
+/// ```
+pub struct FilesystemConnector {
+    /// Instance name (e.g. `"docs"`).
+    name: String,
+    /// Configuration for this filesystem connector instance.
+    config: FilesystemConnectorConfig,
+}
+
+impl FilesystemConnector {
+    /// Create a new filesystem connector instance.
+    pub fn new(name: String, config: FilesystemConnectorConfig) -> Self {
+        Self { name, config }
+    }
+}
+
+#[async_trait]
+impl Connector for FilesystemConnector {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn description(&self) -> &str {
+        "Walk local directories with glob patterns"
+    }
+
+    fn connector_type(&self) -> &str {
+        "filesystem"
+    }
+
+    async fn scan(&self) -> Result<Vec<SourceItem>> {
+        scan_filesystem(&self.name, &self.config)
+    }
+}
 
 /// Scan a local directory and produce [`SourceItem`]s.
 ///
 /// Walks the configured `root` directory, applies include/exclude globs,
 /// reads each matching file, and returns a sorted list of `SourceItem`s.
 ///
+/// # Arguments
+///
+/// - `name` — the instance name (e.g. `"docs"`). Used as part of the source
+///   identifier: `"filesystem:<name>"`.
+/// - `fs_config` — the filesystem connector configuration for this instance.
+///
 /// # Errors
 ///
 /// Returns an error if:
-/// - The filesystem connector is not configured
 /// - The root directory does not exist
 /// - A glob pattern is invalid
 /// - A directory entry cannot be read
-pub fn scan_filesystem(config: &Config) -> Result<Vec<SourceItem>> {
-    let fs_config = config
-        .connectors
-        .filesystem
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("Filesystem connector not configured"))?;
-
+pub fn scan_filesystem(
+    name: &str,
+    fs_config: &FilesystemConnectorConfig,
+) -> Result<Vec<SourceItem>> {
     let root = &fs_config.root;
     if !root.exists() {
         bail!(
@@ -98,7 +158,8 @@ pub fn scan_filesystem(config: &Config) -> Result<Vec<SourceItem>> {
             continue;
         }
 
-        let item = file_to_source_item(path, &rel_str)?;
+        let source_label = format!("filesystem:{}", name);
+        let item = file_to_source_item(path, &rel_str, &source_label)?;
         items.push(item);
     }
 
@@ -111,8 +172,8 @@ pub fn scan_filesystem(config: &Config) -> Result<Vec<SourceItem>> {
 /// Convert a single file to a [`SourceItem`].
 ///
 /// Reads file content, extracts filesystem metadata, and constructs
-/// a `SourceItem` with `source = "filesystem"`.
-fn file_to_source_item(path: &Path, relative_path: &str) -> Result<SourceItem> {
+/// a `SourceItem` with the given source label (e.g. `"filesystem:docs"`).
+fn file_to_source_item(path: &Path, relative_path: &str, source: &str) -> Result<SourceItem> {
     let metadata = std::fs::metadata(path)?;
     let modified = metadata
         .modified()
@@ -130,7 +191,7 @@ fn file_to_source_item(path: &Path, relative_path: &str) -> Result<SourceItem> {
         .unwrap_or_default();
 
     Ok(SourceItem {
-        source: "filesystem".to_string(),
+        source: source.to_string(),
         source_id: relative_path.to_string(),
         source_url: Some(format!("file://{}", path.display())),
         title: Some(title),

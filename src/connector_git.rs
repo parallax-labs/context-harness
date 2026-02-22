@@ -8,7 +8,7 @@
 //! # Configuration
 //!
 //! ```toml
-//! [connectors.git]
+//! [connectors.git.platform]
 //! url = "https://github.com/acme/platform.git"
 //! branch = "main"
 //! root = "docs/"
@@ -42,15 +42,64 @@
 //! | Other | `git://<url>/<path>` |
 
 use anyhow::{bail, Context, Result};
+use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use sha2::{Digest, Sha256};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use walkdir::WalkDir;
 
-use crate::config::Config;
+use crate::config::GitConnectorConfig;
 use crate::models::SourceItem;
+use crate::traits::Connector;
+
+// ═══════════════════════════════════════════════════════════════════════
+// Connector trait implementation
+// ═══════════════════════════════════════════════════════════════════════
+
+/// A Git connector instance that implements the [`Connector`] trait.
+///
+/// Wraps the [`scan_git`] function, allowing Git connectors to be used
+/// through the unified trait-based dispatch.
+pub struct GitConnector {
+    /// Instance name (e.g. `"platform"`).
+    name: String,
+    /// Configuration for this Git connector instance.
+    config: GitConnectorConfig,
+    /// Path to the SQLite database, used to derive the default cache directory.
+    db_path: PathBuf,
+}
+
+impl GitConnector {
+    /// Create a new Git connector instance.
+    pub fn new(name: String, config: GitConnectorConfig, db_path: PathBuf) -> Self {
+        Self {
+            name,
+            config,
+            db_path,
+        }
+    }
+}
+
+#[async_trait]
+impl Connector for GitConnector {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn description(&self) -> &str {
+        "Clone/pull Git repos and walk files"
+    }
+
+    fn connector_type(&self) -> &str {
+        "git"
+    }
+
+    async fn scan(&self) -> Result<Vec<SourceItem>> {
+        scan_git(&self.name, &self.config, &self.db_path)
+    }
+}
 
 /// Scan a Git repository and produce [`SourceItem`]s.
 ///
@@ -63,26 +112,30 @@ use crate::models::SourceItem;
 /// 5. Extract per-file metadata from `git log`.
 /// 6. Generate web-browsable URLs.
 ///
+/// # Arguments
+///
+/// - `name` — the instance name (e.g. `"platform"`). Used as part of the
+///   source identifier: `"git:<name>"`.
+/// - `git_config` — the Git connector configuration for this instance.
+/// - `db_path` — path to the SQLite database, used to derive the default cache directory.
+///
 /// # Errors
 ///
 /// Returns an error if:
-/// - The Git connector is not configured
 /// - `git` binary is not available
 /// - Clone or pull fails
 /// - The configured `root` subdirectory does not exist in the repo
-pub fn scan_git(config: &Config) -> Result<Vec<SourceItem>> {
-    let git_config = config
-        .connectors
-        .git
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("Git connector not configured"))?;
-
+pub fn scan_git(
+    name: &str,
+    git_config: &GitConnectorConfig,
+    db_path: &Path,
+) -> Result<Vec<SourceItem>> {
     // Determine cache directory
     let cache_dir = match &git_config.cache_dir {
         Some(dir) => dir.clone(),
         None => {
             // Default: sibling to the DB file
-            let db_parent = config.db.path.parent().unwrap_or_else(|| Path::new("."));
+            let db_parent = db_path.parent().unwrap_or_else(|| Path::new("."));
             let url_hash = short_hash(&git_config.url);
             db_parent.join(".git-cache").join(url_hash)
         }
@@ -148,7 +201,15 @@ pub fn scan_git(config: &Config) -> Result<Vec<SourceItem>> {
             continue;
         }
 
-        let item = file_to_source_item(path, &rel_str, &cache_dir, &git_config.url, &head_sha)?;
+        let source_label = format!("git:{}", name);
+        let item = file_to_source_item(
+            path,
+            &rel_str,
+            &cache_dir,
+            &git_config.url,
+            &head_sha,
+            &source_label,
+        )?;
         items.push(item);
     }
 
@@ -280,6 +341,7 @@ fn file_to_source_item(
     repo_dir: &Path,
     repo_url: &str,
     head_sha: &str,
+    source: &str,
 ) -> Result<SourceItem> {
     let body = std::fs::read_to_string(path).unwrap_or_default();
 
@@ -310,7 +372,7 @@ fn file_to_source_item(
     });
 
     Ok(SourceItem {
-        source: "git".to_string(),
+        source: source.to_string(),
         source_id: relative_path.to_string(),
         source_url: Some(source_url),
         title: Some(title),

@@ -50,7 +50,7 @@ EXPOSE 7331
 # Initialize, sync, and serve
 ENTRYPOINT ["/bin/bash", "-c"]
 CMD ["ctx init --config /app/config/ctx.toml && \
-      ctx sync git --full --config /app/config/ctx.toml && \
+      ctx sync all --full --config /app/config/ctx.toml && \
       ctx embed pending --config /app/config/ctx.toml || true && \
       ctx serve mcp --config /app/config/ctx.toml"]
 ```
@@ -121,7 +121,7 @@ Type=simple
 User=ctx
 Group=ctx
 WorkingDirectory=/opt/context-harness
-ExecStartPre=/usr/local/bin/ctx sync git --full --config /opt/context-harness/config/ctx.toml
+ExecStartPre=/usr/local/bin/ctx sync all --full --config /opt/context-harness/config/ctx.toml
 ExecStart=/usr/local/bin/ctx serve mcp --config /opt/context-harness/config/ctx.toml
 Restart=on-failure
 RestartSec=5
@@ -180,8 +180,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           ./target/release/ctx init --config ./config/ctx.toml
-          ./target/release/ctx sync git --full --config ./config/ctx.toml
-          ./target/release/ctx sync filesystem --config ./config/ctx.toml
+          ./target/release/ctx sync all --full --config ./config/ctx.toml
           ./target/release/ctx embed pending --config ./config/ctx.toml
 
       - name: Upload database
@@ -228,7 +227,7 @@ Keep the index fresh with periodic re-syncs:
 ```bash
 # /etc/cron.d/context-harness
 # Re-sync every 6 hours
-0 */6 * * * ctx /usr/local/bin/ctx sync git --config /opt/context-harness/config/ctx.toml && /usr/local/bin/ctx embed pending --config /opt/context-harness/config/ctx.toml
+0 */6 * * * /usr/local/bin/ctx sync all --config /opt/context-harness/config/ctx.toml && /usr/local/bin/ctx embed pending --config /opt/context-harness/config/ctx.toml
 ```
 
 Or use a systemd timer:

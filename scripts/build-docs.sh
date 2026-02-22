@@ -77,7 +77,7 @@ candidate_k_vector = 80
 [server]
 bind = "127.0.0.1:7331"
 
-[connectors.git]
+[connectors.git.repo]
 url = "$GIT_URL"
 branch = "$GIT_BRANCH"
 root = "."
@@ -102,7 +102,7 @@ mkdir -p "$(dirname "$DOCS_DB")"
 rm -f "$DOCS_DB" "${DOCS_DB}-wal" "${DOCS_DB}-shm"
 
 "$CTX" --config "$DOCS_CONFIG" init
-"$CTX" --config "$DOCS_CONFIG" sync git --full
+"$CTX" --config "$DOCS_CONFIG" sync git:repo --full
 
 if [ -n "${OPENAI_API_KEY:-}" ]; then
     "$CTX" --config "$DOCS_CONFIG" embed pending || echo "    Warning: embedding failed (non-fatal)"

@@ -62,15 +62,15 @@ When `embedding.provider != "disabled"`, `model` and `dims` are required.
 ### Connector Config
 
 ```toml
-# Filesystem — scan local directory
-[connectors.filesystem]
+# Filesystem — scan local directory (named instance)
+[connectors.filesystem.docs]
 root = "./docs"
 include_globs = ["**/*.md", "**/*.txt"]
 exclude_globs = []
 follow_symlinks = false
 
-# Git — clone and scan a Git repository
-[connectors.git]
+# Git — clone and scan a Git repository (named instance)
+[connectors.git.platform]
 url = "https://github.com/acme/platform.git"
 branch = "main"
 root = "docs/"
@@ -78,9 +78,9 @@ include_globs = ["**/*.md"]
 shallow = true
 # cache_dir = "./data/.git-cache/platform"  # optional
 
-# S3 — scan an Amazon S3 bucket
+# S3 — scan an Amazon S3 bucket (named instance)
 # Requires: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
-[connectors.s3]
+[connectors.s3.runbooks]
 bucket = "acme-docs"
 prefix = "engineering/runbooks/"
 region = "us-east-1"

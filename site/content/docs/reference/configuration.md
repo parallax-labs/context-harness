@@ -36,21 +36,25 @@ max_chunks_per_doc = 3                 # Max chunks per document in results
 [server]
 bind = "127.0.0.1:7331"               # HTTP server bind address
 
-# ── Connectors ────────────────────────────────────────────
+# ── Connectors (all types are named instances) ───────────
 
-[connectors.filesystem]
+[connectors.filesystem.local]
 root = "./docs"
 include_globs = ["**/*.md", "**/*.rs"]
 exclude_globs = ["**/target/**"]
 
-[connectors.git]
+[connectors.git.platform]
 url = "https://github.com/acme/platform.git"
 branch = "main"
 root = "docs/"
 include_globs = ["**/*.md"]
 shallow = true
 
-[connectors.s3]
+[connectors.git.auth-service]
+url = "https://github.com/acme/auth-service.git"
+branch = "main"
+
+[connectors.s3.runbooks]
 bucket = "acme-docs"
 prefix = "engineering/"
 region = "us-east-1"
@@ -94,6 +98,8 @@ workspace = "acme"                      # Plain string, no expansion
 | `[embedding]` | Embedding provider, model, dimensions |
 | `[retrieval]` | Hybrid alpha, candidate counts, result limits |
 | `[server]` | HTTP bind address |
-| `[connectors.*]` | Built-in connector configs (filesystem, git, s3) |
-| `[connectors.script.*]` | Lua scripted connector configs |
+| `[connectors.filesystem.*]` | Named filesystem connector instances |
+| `[connectors.git.*]` | Named git connector instances |
+| `[connectors.s3.*]` | Named S3 connector instances |
+| `[connectors.script.*]` | Named Lua scripted connector instances |
 | `[tools.script.*]` | Lua scripted tool configs |

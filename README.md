@@ -42,14 +42,14 @@ ctx init --config ./config/ctx.toml
 ### 4. Sync
 
 ```bash
-# Sync from local filesystem
+# Sync all configured connectors (parallel)
+ctx sync all --config ./config/ctx.toml
+
+# Sync all filesystem connectors
 ctx sync filesystem --config ./config/ctx.toml
 
-# Sync from a Git repository (docs directory)
-ctx sync git --config ./config/ctx.toml
-
-# Sync from an S3 bucket
-ctx sync s3 --config ./config/ctx.toml
+# Sync a specific named instance
+ctx sync git:platform --config ./config/ctx.toml
 
 # Sync a Lua script connector
 ctx sync script:jira --config ./config/ctx.toml
@@ -127,7 +127,7 @@ Connectors → Normalization → Chunking → Embedding → SQLite Store → Que
 |---------|-------------|
 | `ctx init` | Initialize database schema |
 | `ctx sources` | List available connectors |
-| `ctx sync <connector>` | Ingest data from a connector |
+| `ctx sync <connector>` | Ingest from a connector (`all`, `git`, `git:name`) |
 | `ctx search "<query>"` | Search indexed documents |
 | `ctx get <id>` | Retrieve a document by ID |
 | `ctx embed pending` | Backfill missing embeddings |
@@ -160,14 +160,19 @@ Errors follow a consistent format:
 
 ## Connector Configuration
 
+All connector types support **named instances** — configure multiple of each:
+
 ### Filesystem Connector
 
 ```toml
-[connectors.filesystem]
+[connectors.filesystem.docs]
 root = "./docs"
 include_globs = ["**/*.md", "**/*.txt"]
 exclude_globs = ["**/drafts/**"]
 follow_symlinks = false
+
+[connectors.filesystem.notes]
+root = "./notes"
 ```
 
 ### Git Connector
@@ -175,12 +180,16 @@ follow_symlinks = false
 Ingest documentation from any Git repository — point it at a repo URL and subdirectory:
 
 ```toml
-[connectors.git]
+[connectors.git.platform]
 url = "https://github.com/acme/platform.git"   # or git@... or local path
 branch = "main"
 root = "docs/"                                  # scan this subdirectory
 include_globs = ["**/*.md", "**/*.rst"]
 shallow = true                                  # --depth 1 clone
+
+[connectors.git.auth-service]
+url = "https://github.com/acme/auth-service.git"
+branch = "main"
 ```
 
 Features:
@@ -195,7 +204,7 @@ Features:
 Ingest documentation from Amazon S3 buckets:
 
 ```toml
-[connectors.s3]
+[connectors.s3.runbooks]
 bucket = "acme-docs"
 prefix = "engineering/runbooks/"
 region = "us-east-1"

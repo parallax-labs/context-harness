@@ -52,7 +52,7 @@ final_limit = 12
 [server]
 bind = "127.0.0.1:7331"
 
-[connectors.filesystem]
+[connectors.filesystem.test]
 root = "{}/files"
 include_globs = ["**/*.md", "**/*.txt"]
 exclude_globs = []
@@ -272,7 +272,11 @@ fn test_sources() {
 
     let (stdout, _, success) = run_ctx(&config_path, &["sources"]);
     assert!(success);
-    assert!(stdout.contains("filesystem"));
+    assert!(
+        stdout.contains("filesystem:test"),
+        "Should list filesystem:test, got: {}",
+        stdout
+    );
     assert!(stdout.contains("OK"));
 }
 
@@ -447,7 +451,7 @@ final_limit = 12
 [server]
 bind = "127.0.0.1:{}"
 
-[connectors.filesystem]
+[connectors.filesystem.test]
 root = "{}/files"
 include_globs = ["**/*.md"]
 exclude_globs = []
@@ -526,16 +530,21 @@ fn test_server_sources() {
     wait_for_server(port);
 
     let url = format!("http://127.0.0.1:{}/tools/sources", port);
-    let resp = reqwest::blocking::get(&url).unwrap();
+    let client = reqwest::blocking::Client::new();
+    let resp = client
+        .post(&url)
+        .json(&serde_json::json!({}))
+        .send()
+        .unwrap();
     assert_eq!(resp.status(), 200);
 
     let body: serde_json::Value = resp.json().unwrap();
-    let sources = body["sources"].as_array().unwrap();
+    let sources = body["result"]["sources"].as_array().unwrap();
     assert!(!sources.is_empty());
 
     // Validate schema shape per SCHEMAS.md
     let fs_source = &sources[0];
-    assert_eq!(fs_source["name"], "filesystem");
+    assert_eq!(fs_source["name"], "filesystem:test");
     assert!(fs_source["configured"].is_boolean());
     assert!(fs_source["healthy"].is_boolean());
 
@@ -569,7 +578,7 @@ fn test_server_search() {
     assert_eq!(resp.status(), 200);
 
     let body: serde_json::Value = resp.json().unwrap();
-    let results = body["results"].as_array().unwrap();
+    let results = body["result"]["results"].as_array().unwrap();
     assert!(!results.is_empty(), "Should have search results");
 
     // Validate schema shape per SCHEMAS.md
@@ -677,19 +686,20 @@ fn test_server_get_document() {
     assert_eq!(resp.status(), 200);
 
     let body: serde_json::Value = resp.json().unwrap();
+    let doc = &body["result"];
 
     // Validate schema shape per SCHEMAS.md
-    assert_eq!(body["id"], doc_id);
-    assert!(body["source"].is_string());
-    assert!(body["source_id"].is_string());
-    assert!(body["created_at"].is_string());
-    assert!(body["updated_at"].is_string());
-    assert!(body["content_type"].is_string());
-    assert!(body["body"].is_string());
-    assert!(body["metadata"].is_object());
-    assert!(body["chunks"].is_array());
+    assert_eq!(doc["id"], doc_id);
+    assert!(doc["source"].is_string());
+    assert!(doc["source_id"].is_string());
+    assert!(doc["created_at"].is_string());
+    assert!(doc["updated_at"].is_string());
+    assert!(doc["content_type"].is_string());
+    assert!(doc["body"].is_string());
+    assert!(doc["metadata"].is_object());
+    assert!(doc["chunks"].is_array());
 
-    let chunks = body["chunks"].as_array().unwrap();
+    let chunks = doc["chunks"].as_array().unwrap();
     assert!(!chunks.is_empty());
     assert!(chunks[0]["index"].is_number());
     assert!(chunks[0]["text"].is_string());
@@ -802,7 +812,7 @@ final_limit = 12
 [server]
 bind = "127.0.0.1:7331"
 
-[connectors.git]
+[connectors.git.test]
 url = "{}"
 branch = "main"
 root = "{}"
@@ -947,8 +957,8 @@ fn test_git_connector_not_configured() {
     let (_, stderr, success) = run_ctx(&config_path, &["sync", "git"]);
     assert!(!success, "git sync should fail when not configured");
     assert!(
-        stderr.contains("not configured"),
-        "Should mention not configured, got: {}",
+        stderr.contains("No git connectors configured"),
+        "Should mention no git connectors, got: {}",
         stderr
     );
 }
@@ -962,7 +972,11 @@ fn test_git_sources_shows_configured() {
 
     let (stdout, _, success) = run_ctx(&config_path, &["sources"]);
     assert!(success);
-    assert!(stdout.contains("git"), "Should list git connector");
+    assert!(
+        stdout.contains("git:test"),
+        "Should list git:test connector, got: {}",
+        stdout
+    );
     assert!(
         stdout.contains("OK"),
         "Git should be OK when configured, got: {}",
@@ -980,8 +994,8 @@ fn test_s3_connector_not_configured() {
     let (_, stderr, success) = run_ctx(&config_path, &["sync", "s3"]);
     assert!(!success, "s3 sync should fail when not configured");
     assert!(
-        stderr.contains("not configured"),
-        "Should mention not configured, got: {}",
+        stderr.contains("No s3 connectors configured"),
+        "Should mention no s3 connectors, got: {}",
         stderr
     );
 }
@@ -992,10 +1006,10 @@ fn test_s3_sources_not_configured() {
 
     let (stdout, _, success) = run_ctx(&config_path, &["sources"]);
     assert!(success);
-    assert!(stdout.contains("s3"), "Should list s3 connector");
+    // S3 not shown when no instances configured — only configured connectors appear
     assert!(
-        stdout.contains("NOT CONFIGURED"),
-        "S3 should be NOT CONFIGURED, got: {}",
+        !stdout.contains("s3:"),
+        "S3 should not appear when no instances configured, got: {}",
         stdout
     );
 }
@@ -1008,7 +1022,10 @@ fn test_unknown_connector_message_includes_available() {
     let (_, stderr, success) = run_ctx(&config_path, &["sync", "nonexistent"]);
     assert!(!success);
     assert!(
-        stderr.contains("filesystem") && stderr.contains("git") && stderr.contains("s3"),
+        stderr.contains("all")
+            && stderr.contains("filesystem")
+            && stderr.contains("git")
+            && stderr.contains("s3"),
         "Error should list available connectors, got: {}",
         stderr
     );
@@ -1036,7 +1053,7 @@ fn test_server_search_with_filters() {
             "mode": "keyword",
             "limit": 5,
             "filters": {
-                "source": "filesystem"
+                "source": "filesystem:test"
             }
         }))
         .send()
@@ -1044,9 +1061,9 @@ fn test_server_search_with_filters() {
 
     assert_eq!(resp.status(), 200);
     let body: serde_json::Value = resp.json().unwrap();
-    let results = body["results"].as_array().unwrap();
+    let results = body["result"]["results"].as_array().unwrap();
     for r in results {
-        assert_eq!(r["source"], "filesystem");
+        assert_eq!(r["source"], "filesystem:test");
     }
 
     server.kill().ok();

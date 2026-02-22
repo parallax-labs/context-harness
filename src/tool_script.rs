@@ -46,9 +46,11 @@
 //! See `docs/LUA_TOOLS.md` for the full specification.
 
 use anyhow::{bail, Context, Result};
+use async_trait::async_trait;
 use mlua::prelude::*;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::config::{Config, ScriptToolConfig};
@@ -58,6 +60,7 @@ use crate::lua_runtime::{
 };
 use crate::search::{search_documents, SearchResultItem};
 use crate::sources::{get_sources, SourceStatus};
+use crate::traits::{Tool, ToolContext};
 
 // ═══════════════════════════════════════════════════════════════════════
 // Types
@@ -97,6 +100,53 @@ pub struct ToolInfo {
     pub builtin: bool,
     /// OpenAI function-calling JSON Schema.
     pub parameters: serde_json::Value,
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Tool trait adapter
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Adapter that wraps a Lua [`ToolDefinition`] as a [`Tool`] trait object.
+///
+/// This allows Lua tools to participate in the unified tool dispatch
+/// alongside built-in and custom Rust tools.
+pub struct LuaToolAdapter {
+    /// The underlying Lua tool definition.
+    definition: ToolDefinition,
+    /// Application config needed for the Lua context bridge.
+    config: Arc<Config>,
+}
+
+impl LuaToolAdapter {
+    /// Create a new adapter wrapping a Lua tool definition.
+    pub fn new(definition: ToolDefinition, config: Arc<Config>) -> Self {
+        Self { definition, config }
+    }
+}
+
+#[async_trait]
+impl Tool for LuaToolAdapter {
+    fn name(&self) -> &str {
+        &self.definition.name
+    }
+
+    fn description(&self) -> &str {
+        &self.definition.description
+    }
+
+    fn parameters_schema(&self) -> serde_json::Value {
+        self.definition.parameters_schema.clone()
+    }
+
+    async fn execute(
+        &self,
+        params: serde_json::Value,
+        _ctx: &ToolContext,
+    ) -> Result<serde_json::Value> {
+        // Delegate to the existing Lua execution path, which has its own
+        // context bridge (search, get, sources) built into the Lua VM.
+        execute_tool(&self.definition, params, &self.config).await
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════

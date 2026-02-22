@@ -183,7 +183,7 @@ max_tokens = 700
 hybrid_alpha = 0.6
 final_limit = 12
 
-[connectors.filesystem]
+[connectors.filesystem.local]
 root = "./my-project"
 include_globs = ["**/*.md"]</code></pre>
             </div>
@@ -289,7 +289,7 @@ path = "./data/ctx.sqlite"
 [chunking]
 max_tokens = 700
 
-[connectors.filesystem]
+[connectors.filesystem.local]
 root = "./my-project"
 include_globs = ["**/*.md", "**/*.rs"]
 EOF</code></pre>

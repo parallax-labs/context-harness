@@ -27,6 +27,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Example GitHub Issues connector (`examples/connectors/github-issues.lua`).
 - Test fixture connector (`tests/fixtures/test_connector.lua`).
 
+- **Rust extension traits** — define custom connectors and tools in compiled Rust via `Connector` and `Tool` traits. Register with `ConnectorRegistry` and `ToolRegistry`, then use `run_server_with_extensions()` and `run_sync_with_extensions()` to integrate them alongside built-in and Lua extensions. Custom connectors sync via `ctx sync custom:<name>`. Custom tools appear in `GET /tools/list` and execute via `POST /tools/{name}`. Includes `ToolContext` bridge for search/get/sources access during tool execution.
+- **`async-trait`** dependency — used for `dyn Trait` async method dispatch in `Connector` and `Tool` traits.
+
+- **Named multi-instance connectors** — all connector types (filesystem, git, s3) now use named instances (`[connectors.git.platform]`, `[connectors.filesystem.docs]`, etc.) matching the existing script connector pattern. Configure multiple of each type. Documents are tagged with `source = "type:name"` (e.g. `"git:platform"`).
+- **`ctx sync all`** — sync every configured connector in parallel via `tokio::task::JoinSet`.
+- **`ctx sync <type>`** — sync all instances of a type (e.g. `ctx sync git` syncs all git connectors).
+- **`ctx sync <type>:<name>`** — sync a specific named instance.
+- **Parallel scanning** — when syncing multiple connectors, all scans run concurrently. SQLite writes remain serial for consistency.
+
 ### Changed
 - **Documentation site rebuilt** — replaced the browser-based search/chat demo with a clean, static documentation site covering getting started, configuration, CLI reference, HTTP API, search & retrieval, Cursor/MCP integration, CI/CD, and deployment. All content is committed as static HTML — no build step needed for docs.
 - **Simplified `build-docs.sh`** — now only generates rustdoc API reference. The docs page is static HTML.

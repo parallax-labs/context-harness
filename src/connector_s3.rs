@@ -12,7 +12,7 @@
 //! # Configuration
 //!
 //! ```toml
-//! [connectors.s3]
+//! [connectors.s3.runbooks]
 //! bucket = "acme-docs"
 //! prefix = "engineering/runbooks/"
 //! region = "us-east-1"
@@ -53,13 +53,56 @@
 //! | Other | `text/plain` |
 
 use anyhow::{bail, Context, Result};
+use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
 
-use crate::config::{Config, S3ConnectorConfig};
+use crate::config::S3ConnectorConfig;
 use crate::models::SourceItem;
+use crate::traits::Connector;
+
+// ═══════════════════════════════════════════════════════════════════════
+// Connector trait implementation
+// ═══════════════════════════════════════════════════════════════════════
+
+/// An S3 connector instance that implements the [`Connector`] trait.
+///
+/// Wraps the [`scan_s3`] function, allowing S3 connectors to be used
+/// through the unified trait-based dispatch.
+pub struct S3Connector {
+    /// Instance name (e.g. `"runbooks"`).
+    name: String,
+    /// Configuration for this S3 connector instance.
+    config: S3ConnectorConfig,
+}
+
+impl S3Connector {
+    /// Create a new S3 connector instance.
+    pub fn new(name: String, config: S3ConnectorConfig) -> Self {
+        Self { name, config }
+    }
+}
+
+#[async_trait]
+impl Connector for S3Connector {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn description(&self) -> &str {
+        "List and download objects from S3 buckets"
+    }
+
+    fn connector_type(&self) -> &str {
+        "s3"
+    }
+
+    async fn scan(&self) -> Result<Vec<SourceItem>> {
+        scan_s3(&self.name, &self.config).await
+    }
+}
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -77,18 +120,19 @@ type HmacSha256 = Hmac<Sha256>;
 ///
 /// # Errors
 ///
+/// # Arguments
+///
+/// - `name` — the instance name (e.g. `"runbooks"`). Used as part of the
+///   source identifier: `"s3:<name>"`.
+/// - `s3_config` — the S3 connector configuration for this instance.
+///
+/// # Errors
+///
 /// Returns an error if:
-/// - The S3 connector is not configured
 /// - AWS credentials are not set in environment
 /// - S3 API requests fail (network or auth errors)
 /// - Object listing or download fails
-pub async fn scan_s3(config: &Config) -> Result<Vec<SourceItem>> {
-    let s3_config = config
-        .connectors
-        .s3
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("S3 connector not configured"))?;
-
+pub async fn scan_s3(name: &str, s3_config: &S3ConnectorConfig) -> Result<Vec<SourceItem>> {
     let creds = AwsCredentials::from_env()?;
 
     // Build glob sets
@@ -146,7 +190,7 @@ pub async fn scan_s3(config: &Config) -> Result<Vec<SourceItem>> {
         });
 
         items.push(SourceItem {
-            source: "s3".to_string(),
+            source: format!("s3:{}", name),
             source_id: obj.key.clone(),
             source_url: Some(source_url),
             title: Some(title),

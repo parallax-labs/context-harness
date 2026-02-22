@@ -8,11 +8,11 @@ A common pattern is indexing multiple repositories, wikis, and data sources into
 
 ### The idea
 
-Instead of one context source, configure multiple Git connectors, filesystem mounts, and Lua scripts — all feeding into the same SQLite database. When an agent searches, it gets results from *all* sources ranked together.
+Configure multiple named Git connectors, filesystem mounts, S3 buckets, and Lua scripts — all feeding into the same SQLite database. When an agent searches, it gets results from *all* sources ranked together.
 
 ```
 ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-│ platform.git │  │  infra.git   │  │  wiki (S3)   │  │ Jira (Lua)   │
+│ git:platform │  │  git:infra   │  │ s3:runbooks  │  │ script:jira  │
 └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘
        │                 │                 │                 │
        └─────────────────┴─────────────────┴─────────────────┘
@@ -59,13 +59,13 @@ bind = "127.0.0.1:7331"
 
 # ── Local project docs ──────────────────────────────────────
 
-[connectors.filesystem]
+[connectors.filesystem.local]
 root = "./docs"
 include_globs = ["**/*.md", "**/*.txt"]
 
 # ── Main platform service ───────────────────────────────────
 
-[connectors.git]
+[connectors.git.platform]
 url = "https://github.com/acme/platform.git"
 branch = "main"
 root = "."
@@ -80,33 +80,30 @@ exclude_globs = ["**/target/**", "**/node_modules/**"]
 shallow = true
 cache_dir = "./data/.git-cache/platform"
 
-# ── You can't have two [connectors.git] sections, so use ───
-# ── Lua scripted connectors for additional Git repos.      ──
+# ── Additional Git repos ────────────────────────────────────
 
-[connectors.script.infra]
-path = "connectors/git-repo.lua"
-timeout = 120
+[connectors.git.infra]
 url = "https://github.com/acme/infrastructure.git"
 branch = "main"
-include_patterns = "docs/,runbooks/,*.md"
+root = "docs/"
+include_globs = ["**/*.md"]
+shallow = true
 
-[connectors.script.auth-service]
-path = "connectors/git-repo.lua"
-timeout = 120
+[connectors.git.auth-service]
 url = "https://github.com/acme/auth-service.git"
 branch = "main"
-include_patterns = "src/,docs/,README.md"
+include_globs = ["src/**/*.rs", "docs/**/*.md", "README.md"]
+shallow = true
 
-[connectors.script.payments]
-path = "connectors/git-repo.lua"
-timeout = 120
+[connectors.git.payments]
 url = "https://github.com/acme/payments.git"
 branch = "main"
-include_patterns = "src/,docs/"
+include_globs = ["src/**/*.rs", "docs/**/*.md"]
+shallow = true
 
 # ── Runbooks from S3 ────────────────────────────────────────
 
-[connectors.s3]
+[connectors.s3.runbooks]
 bucket = "acme-engineering"
 prefix = "runbooks/"
 region = "us-east-1"
@@ -122,134 +119,57 @@ project = "PLATFORM"
 api_token = "${JIRA_API_TOKEN}"
 ```
 
-### Multi-repo Git connector (Lua)
-
-Since `[connectors.git]` can only be defined once, use a reusable Lua connector for additional repos:
-
-```lua
--- connectors/git-repo.lua
--- Generic Git repo connector — reusable for multiple repos via config
-
-connector = {
-    name = "git-repo",
-    version = "0.1.0",
-    description = "Clone and index a Git repository",
-}
-
-function connector.scan(config)
-    local items = {}
-    local tmp_dir = os.tmpname() .. "-repo"
-    os.execute("rm -f " .. tmp_dir)  -- tmpname creates a file
-
-    -- Clone the repo
-    log.info("Cloning " .. config.url .. "...")
-    local clone_cmd = string.format(
-        "git clone --depth 1 --branch %s %s %s 2>&1",
-        config.branch or "main",
-        config.url,
-        tmp_dir
-    )
-    os.execute(clone_cmd)
-
-    -- Parse include patterns
-    local patterns = {}
-    for pat in (config.include_patterns or ""):gmatch("[^,]+") do
-        table.insert(patterns, pat:match("^%s*(.-)%s*$"))  -- trim
-    end
-
-    -- Walk the directory and read matching files
-    local find_cmd = string.format("find %s -type f 2>/dev/null", tmp_dir)
-    local handle = io.popen(find_cmd)
-    if handle then
-        for filepath in handle:lines() do
-            local rel = filepath:sub(#tmp_dir + 2)  -- relative path
-
-            -- Check against include patterns
-            local included = #patterns == 0  -- include all if no patterns
-            for _, pat in ipairs(patterns) do
-                if rel:find(pat, 1, true) then
-                    included = true
-                    break
-                end
-            end
-
-            if included then
-                local f = io.open(filepath, "r")
-                if f then
-                    local content = f:read("*a")
-                    f:close()
-
-                    if #content > 0 and #content < 500000 then
-                        -- Extract repo name for source_url
-                        local repo_name = config.url:match("([^/]+)%.git$")
-                            or config.url:match("([^/]+)$")
-                        local branch = config.branch or "main"
-                        local source_url = config.url:gsub("%.git$", "")
-                            .. "/blob/" .. branch .. "/" .. rel
-
-                        table.insert(items, {
-                            source_id  = rel,
-                            title      = rel,
-                            body       = content,
-                            source_url = source_url,
-                            metadata   = { repo = repo_name },
-                        })
-                    end
-                end
-            end
-        end
-        handle:close()
-    end
-
-    -- Cleanup
-    os.execute("rm -rf " .. tmp_dir)
-
-    log.info("Indexed " .. #items .. " files from " .. config.url)
-    return items
-end
-```
-
 ### Syncing all sources
 
-Sync each source independently:
+Sync everything in one command — connectors run in parallel:
 
 ```bash
-# Built-in connectors
-$ ctx sync filesystem
-$ ctx sync git
-$ ctx sync s3
-
-# Lua scripted repos
-$ ctx sync script:infra
-$ ctx sync script:auth-service
-$ ctx sync script:payments
-$ ctx sync script:jira
-
-# Generate embeddings for everything
-$ ctx embed pending
+$ ctx sync all
+Syncing 7 connector instances (parallel scan)...
+sync filesystem:local
+  fetched: 47 items
+  upserted documents: 47
+  chunks written: 203
+ok
+sync git:auth-service
+  fetched: 24 items
+  upserted documents: 24
+  chunks written: 112
+ok
+sync git:infra
+  fetched: 31 items
+  upserted documents: 31
+  chunks written: 89
+ok
+sync git:payments
+  fetched: 18 items
+  upserted documents: 18
+  chunks written: 67
+ok
+sync git:platform
+  fetched: 89 items
+  upserted documents: 89
+  chunks written: 412
+ok
+sync s3:runbooks
+  fetched: 34 items
+  upserted documents: 34
+  chunks written: 156
+ok
+sync script:jira
+  fetched: 142 items
+  upserted documents: 142
+  chunks written: 284
+ok
 ```
 
-Or create a sync script:
+Or sync specific types or instances:
 
 ```bash
-#!/bin/bash
-# scripts/sync-all.sh — Sync all data sources
-set -euo pipefail
-
-echo "==> Syncing all sources..."
-ctx sync filesystem
-ctx sync git
-ctx sync s3
-ctx sync script:infra
-ctx sync script:auth-service
-ctx sync script:payments
-ctx sync script:jira
-
-echo "==> Generating embeddings..."
-ctx embed pending
-
-echo "==> Done!"
-ctx sources
+$ ctx sync git               # All git connectors (parallel)
+$ ctx sync git:platform      # Just one repo
+$ ctx sync s3                # All S3 connectors
+$ ctx sync script:jira       # One Lua connector
 ```
 
 ### Filtering by source
@@ -258,10 +178,10 @@ When searching, you can filter results to a specific source:
 
 ```bash
 # Search only the platform repo
-$ ctx search "auth middleware" --source git
+$ ctx search "auth middleware" --source git:platform
 
 # Search only Jira issues
-$ ctx search "payment timeout" --source "script:jira"
+$ ctx search "payment timeout" --source script:jira
 
 # Search everything (default)
 $ ctx search "deployment procedure"
@@ -271,7 +191,7 @@ Via the API:
 
 ```bash
 $ curl -s localhost:7331/tools/search \
-    -d '{"query": "error handling", "source": "script:auth-service"}' | jq .
+    -d '{"query": "error handling", "source": "git:auth-service"}' | jq .
 ```
 
 ### Cursor workspace with multi-repo context
@@ -289,7 +209,7 @@ If you work in a Cursor workspace with multiple repos, a single Context Harness 
 ├── data/
 │   └── ctx.sqlite         # Shared database
 ├── connectors/
-│   └── git-repo.lua       # Reusable Git connector
+│   └── jira.lua           # Lua connector for Jira
 └── scripts/
     └── sync-all.sh        # Sync script
 ```
@@ -342,10 +262,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           ctx init --config ./config/ctx.toml
-          ctx sync git --full --config ./config/ctx.toml
-          ctx sync script:infra --config ./config/ctx.toml
-          ctx sync script:auth-service --config ./config/ctx.toml
-          ctx sync script:jira --config ./config/ctx.toml
+          ctx sync all --full --config ./config/ctx.toml
           ctx embed pending --config ./config/ctx.toml
 
       - name: Upload database
@@ -356,4 +273,3 @@ jobs:
 ```
 
 Team members download the latest `ctx.sqlite` and run `ctx serve mcp` locally — instant multi-repo context without needing API keys or waiting for syncs.
-

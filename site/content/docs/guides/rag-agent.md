@@ -46,14 +46,14 @@ hybrid_alpha = 0.6
 [server]
 bind = "127.0.0.1:7331"
 
-[connectors.git]
+[connectors.git.repo]
 url = "https://github.com/your-org/your-repo.git"
 branch = "main"
 include_globs = ["docs/**/*.md", "src/**/*.rs", "README.md"]
 shallow = true
 EOF
 
-$ ctx init && ctx sync git && ctx embed pending
+$ ctx init && ctx sync git:repo && ctx embed pending
 $ ctx serve mcp &
 ```
 

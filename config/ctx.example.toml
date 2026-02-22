@@ -28,14 +28,20 @@ max_chunks_per_doc = 3
 [server]
 bind = "127.0.0.1:7331"
 
-[connectors.filesystem]
+# ── Connectors ──────────────────────────────────────────────
+# All connector types support named instances. You can have
+# multiple of each type. Use `ctx sync all` to sync everything,
+# `ctx sync git` to sync all git connectors, or `ctx sync git:platform`
+# to sync a specific one.
+
+[connectors.filesystem.local]
 root = "./"
 include_globs = ["**/*.md", "**/*.txt", "**/*.rs"]
 exclude_globs = ["**/target/**", "**/.git/**"]
 follow_symlinks = false
 
 # Git connector — ingest docs from a Git repository
-# [connectors.git]
+# [connectors.git.platform]
 # url = "https://github.com/acme/platform.git"   # or local path
 # branch = "main"
 # root = "docs/"                                  # subdirectory within the repo
@@ -44,9 +50,15 @@ follow_symlinks = false
 # shallow = true                                  # --depth 1 to save space
 # cache_dir = "./data/.git-cache/platform"        # optional, defaults to data/.git-cache/<hash>
 
+# You can add more git repos:
+# [connectors.git.auth-service]
+# url = "https://github.com/acme/auth-service.git"
+# branch = "main"
+# include_globs = ["**/*.md"]
+
 # S3 connector — ingest docs from an Amazon S3 bucket
 # Requires: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY env vars
-# [connectors.s3]
+# [connectors.s3.runbooks]
 # bucket = "acme-docs"
 # prefix = "engineering/runbooks/"
 # region = "us-east-1"

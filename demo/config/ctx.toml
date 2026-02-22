@@ -19,7 +19,7 @@ candidate_k_vector = 80
 [server]
 bind = "127.0.0.1:7331"
 
-[connectors.filesystem]
+[connectors.filesystem.knowledge-base]
 root = "./demo/knowledge-base"
 include_globs = ["**/*.md"]
 exclude_globs = []

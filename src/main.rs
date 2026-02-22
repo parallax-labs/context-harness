@@ -63,6 +63,8 @@ mod search;
 mod server;
 mod sources;
 mod tool_script;
+#[allow(dead_code)]
+mod traits;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -115,8 +117,12 @@ enum Commands {
     /// Scans the specified connector, normalizes items into documents,
     /// chunks them, optionally embeds them, and stores everything in SQLite.
     /// Supports incremental sync via checkpoints.
+    ///
+    /// Connector format: `all`, `<type>`, or `<type>:<name>`.
+    /// Examples: `all`, `git`, `git:platform`, `filesystem:docs`, `s3:runbooks`.
     Sync {
-        /// Connector name: `filesystem`, `git`, or `s3`.
+        /// Connector specifier: `all`, a type (`git`, `filesystem`, `s3`, `script`),
+        /// or a specific instance (`git:platform`).
         connector: String,
 
         /// Ignore checkpoint — reingest all items from scratch.
@@ -379,31 +385,7 @@ async fn main() -> anyhow::Result<()> {
             until,
             limit,
         } => {
-            if connector == "script" {
-                // Sync all script connectors
-                if cfg.connectors.script.is_empty() {
-                    eprintln!("No script connectors configured.");
-                    eprintln!("Add [connectors.script.<name>] entries to your config,");
-                    eprintln!("or use 'ctx sync script:<name>' for a specific connector.");
-                } else {
-                    let names: Vec<String> = cfg.connectors.script.keys().cloned().collect();
-                    for name in &names {
-                        let source = format!("script:{}", name);
-                        ingest::run_sync(
-                            &cfg,
-                            &source,
-                            full,
-                            dry_run,
-                            since.clone(),
-                            until.clone(),
-                            limit,
-                        )
-                        .await?;
-                    }
-                }
-            } else {
-                ingest::run_sync(&cfg, &connector, full, dry_run, since, until, limit).await?;
-            }
+            ingest::run_sync(&cfg, &connector, full, dry_run, since, until, limit).await?;
         }
         Commands::Search {
             query,

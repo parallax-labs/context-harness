@@ -40,8 +40,8 @@
 //!
 //! ```bash
 //! ctx init                      # create database
-//! ctx sync filesystem           # ingest local files
-//! ctx sync git                  # ingest from a git repo
+//! ctx sync all                  # ingest all configured sources (parallel)
+//! ctx sync git:platform         # ingest a specific git connector
 //! ctx embed pending             # generate embeddings
 //! ctx search "deployment" --mode hybrid
 //! ctx serve mcp                 # start HTTP server
@@ -76,6 +76,7 @@
 //! | [`connector_script`] | Lua scripted connectors: custom data sources via Lua 5.4 scripts |
 //! | [`lua_runtime`] | Shared Lua 5.4 VM runtime: sandboxing, host APIs, value conversions |
 //! | [`tool_script`] | Lua MCP tool extensions: load, validate, execute Lua tool scripts |
+//! | [`traits`] | Extension traits: `Connector`, `Tool`, `ToolContext`, registries |
 //! | [`chunk`] | Paragraph-boundary text chunker |
 //! | [`embedding`] | Embedding provider trait, OpenAI implementation, vector utilities |
 //! | [`embed_cmd`] | Embedding CLI commands: `pending` and `rebuild` |
@@ -111,3 +112,9 @@ pub mod search;
 pub mod server;
 pub mod sources;
 pub mod tool_script;
+pub mod traits;
+
+pub use models::SourceItem;
+pub use traits::{
+    Connector, ConnectorRegistry, GetTool, SearchTool, SourcesTool, Tool, ToolContext, ToolRegistry,
+};

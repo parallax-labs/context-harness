@@ -25,7 +25,7 @@ hybrid_alpha = 0.6        # blend: 0 = keyword only, 1 = semantic only
 [server]
 bind = "127.0.0.1:7331"
 
-[connectors.filesystem]
+[connectors.filesystem.local]
 root = "./docs"
 include_globs = ["**/*.md", "**/*.rs", "**/*.txt"]
 exclude_globs = ["**/target/**", "**/node_modules/**"]
@@ -39,7 +39,7 @@ $ ctx init
 Database initialized successfully.
 
 $ ctx sync filesystem
-sync filesystem
+sync filesystem:local
   fetched: 47 items
   upserted documents: 47
   chunks written: 203
@@ -78,7 +78,7 @@ $ curl -s localhost:7331/tools/search \
     -d '{"query": "auth"}' | jq '.results[0]'
 {
   "id": "a1b2c3d4-...",
-  "source": "filesystem",
+  "source": "filesystem:local",
   "title": "src/auth.rs",
   "score": 0.94,
   "snippet": "JWT signing key loaded from..."
@@ -135,7 +135,7 @@ Index a GitHub repo alongside your local files:
 
 ```toml
 # Add to config/ctx.toml:
-[connectors.git]
+[connectors.git.platform]
 url = "https://github.com/acme/platform.git"
 branch = "main"
 include_globs = ["docs/**/*.md", "src/**/*.rs"]
@@ -143,16 +143,19 @@ shallow = true
 ```
 
 ```bash
-$ ctx sync git
-sync git
+$ ctx sync git:platform
+sync git:platform
   cloning https://github.com/acme/platform.git...
   fetched: 89 items
   upserted documents: 89
   chunks written: 412
 ok
 
-# Search now returns results from both filesystem and git
+# Search now returns results from both filesystem and git sources
 $ ctx search "deploy" --mode hybrid
+
+# Or sync everything at once:
+$ ctx sync all
 ```
 
 ### What's next?

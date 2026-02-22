@@ -38,6 +38,7 @@
 //! See `docs/LUA_CONNECTORS.md` for the full specification.
 
 use anyhow::{bail, Context, Result};
+use async_trait::async_trait;
 use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
 use mlua::prelude::*;
 use std::path::Path;
@@ -46,6 +47,48 @@ use std::time::{Duration, Instant};
 use crate::config::{Config, ScriptConnectorConfig};
 use crate::lua_runtime::{register_all_host_apis, toml_table_to_lua};
 use crate::models::SourceItem;
+use crate::traits::Connector;
+
+// ═══════════════════════════════════════════════════════════════════════
+// Connector trait implementation
+// ═══════════════════════════════════════════════════════════════════════
+
+/// A Lua scripted connector instance that implements the [`Connector`] trait.
+///
+/// Wraps the [`scan_script`] function, allowing Lua connectors to be used
+/// through the unified trait-based dispatch alongside built-in connectors.
+pub struct ScriptConnector {
+    /// Instance name (e.g. `"jira"`).
+    name: String,
+    /// Configuration for this script connector instance.
+    config: ScriptConnectorConfig,
+}
+
+impl ScriptConnector {
+    /// Create a new script connector instance.
+    pub fn new(name: String, config: ScriptConnectorConfig) -> Self {
+        Self { name, config }
+    }
+}
+
+#[async_trait]
+impl Connector for ScriptConnector {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn description(&self) -> &str {
+        "Execute Lua scripts to ingest custom data sources"
+    }
+
+    fn connector_type(&self) -> &str {
+        "script"
+    }
+
+    async fn scan(&self) -> Result<Vec<SourceItem>> {
+        scan_script(&self.name, &self.config).await
+    }
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 // Public API

@@ -34,41 +34,40 @@ Database initialized successfully.
 
 ---
 
-### `ctx sync <source> [--full]`
+### `ctx sync <connector> [--full]`
 
-Sync a data source. Fetches items, normalizes to documents, splits into chunks. Incremental by default — only changed content is re-processed.
+Sync data sources. Fetches items, normalizes to documents, splits into chunks. Incremental by default — only changed content is re-processed.
+
+Connector format: `all`, `<type>`, or `<type>:<name>`.
 
 ```bash
-# Built-in connectors
-$ ctx sync filesystem
-sync filesystem
+# Sync everything (parallel)
+$ ctx sync all
+Syncing 5 connector instances (parallel scan)...
+sync filesystem:docs
   fetched: 127 items
   upserted documents: 127
   chunks written: 584
 ok
-
-$ ctx sync git
-sync git
-  cloning https://github.com/acme/platform.git (shallow)...
+sync git:platform
   fetched: 89 items
   upserted documents: 89
   chunks written: 412
 ok
 
-$ ctx sync s3
-sync s3
-  listing s3://acme-docs/engineering/...
-  fetched: 34 items
-  upserted documents: 34
-ok
+# Sync all connectors of a type
+$ ctx sync git                    # All git connectors
+$ ctx sync filesystem             # All filesystem connectors
 
-# Lua scripted connectors (name matches [connectors.script.<name>])
+# Sync a specific named instance
+$ ctx sync git:platform
+$ ctx sync filesystem:docs
+$ ctx sync s3:runbooks
 $ ctx sync script:jira
-$ ctx sync script:slack
-$ ctx sync script:notion
 
 # Force full re-sync (ignores checkpoint, re-processes everything)
-$ ctx sync git --full
+$ ctx sync git:platform --full
+$ ctx sync all --full
 ```
 
 ---

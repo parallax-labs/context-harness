@@ -26,17 +26,22 @@
 //! [server]
 //! bind = "127.0.0.1:7331"
 //!
-//! [connectors.filesystem]
+//! [connectors.filesystem.docs]
 //! root = "./docs"
 //! include_globs = ["**/*.md", "**/*.txt"]
+//!
+//! [connectors.git.platform]
+//! url = "https://github.com/acme/platform.git"
+//! branch = "main"
 //! ```
 //!
 //! # Connectors
 //!
-//! Three connector types are supported:
-//! - **Filesystem** (`[connectors.filesystem]`) — scan a local directory
-//! - **Git** (`[connectors.git]`) — clone/pull a Git repository
-//! - **S3** (`[connectors.s3]`) — list and download from an S3 bucket
+//! All connector types are **named** — you can configure multiple instances of each:
+//! - **Filesystem** (`[connectors.filesystem.<name>]`) — scan a local directory
+//! - **Git** (`[connectors.git.<name>]`) — clone/pull a Git repository
+//! - **S3** (`[connectors.s3.<name>]`) — list and download from an S3 bucket
+//! - **Script** (`[connectors.script.<name>]`) — custom Lua-scripted data sources
 //!
 //! # Validation
 //!
@@ -279,16 +284,30 @@ pub struct ServerConfig {
 
 /// Container for all connector configurations.
 ///
-/// Each connector is optional — only configured connectors can be used
-/// with `ctx sync <connector>`.
+/// All connector types use named instances — you can configure multiple
+/// of each type. For example:
+///
+/// ```toml
+/// [connectors.git.platform]
+/// url = "https://github.com/acme/platform.git"
+///
+/// [connectors.git.auth-service]
+/// url = "https://github.com/acme/auth-service.git"
+/// ```
+///
+/// Use `ctx sync git` to sync all git connectors, or `ctx sync git:platform`
+/// for a specific one. `ctx sync all` syncs everything.
 #[derive(Debug, Deserialize, Clone, Default)]
 pub struct ConnectorsConfig {
-    /// Filesystem connector: walk a local directory.
-    pub filesystem: Option<FilesystemConnectorConfig>,
-    /// Git connector: clone and scan a Git repository.
-    pub git: Option<GitConnectorConfig>,
-    /// S3 connector: list and download from an S3 bucket.
-    pub s3: Option<S3ConnectorConfig>,
+    /// Named filesystem connectors: walk local directories.
+    #[serde(default)]
+    pub filesystem: HashMap<String, FilesystemConnectorConfig>,
+    /// Named Git connectors: clone and scan Git repositories.
+    #[serde(default)]
+    pub git: HashMap<String, GitConnectorConfig>,
+    /// Named S3 connectors: list and download from S3 buckets.
+    #[serde(default)]
+    pub s3: HashMap<String, S3ConnectorConfig>,
     /// Named Lua script connectors.
     /// Each key is a connector name, each value contains the script path
     /// and arbitrary config keys passed to the Lua `connector.scan()` function.
@@ -386,7 +405,7 @@ fn default_tool_timeout() -> u64 {
 /// # Example
 ///
 /// ```toml
-/// [connectors.filesystem]
+/// [connectors.filesystem.docs]
 /// root = "./docs"
 /// include_globs = ["**/*.md", "**/*.txt"]
 /// exclude_globs = ["**/drafts/**"]
@@ -416,7 +435,7 @@ pub struct FilesystemConnectorConfig {
 /// # Example
 ///
 /// ```toml
-/// [connectors.git]
+/// [connectors.git.platform]
 /// url = "https://github.com/acme/platform.git"
 /// branch = "main"
 /// root = "docs/"
@@ -462,7 +481,7 @@ pub struct GitConnectorConfig {
 /// # Example
 ///
 /// ```toml
-/// [connectors.s3]
+/// [connectors.s3.runbooks]
 /// bucket = "acme-docs"
 /// prefix = "engineering/runbooks/"
 /// region = "us-east-1"

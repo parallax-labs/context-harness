@@ -116,7 +116,7 @@ hybrid_alpha = 0.6
 [server]
 bind = "127.0.0.1:7331"
 
-[connectors.git]
+[connectors.git.platform]
 url = "https://github.com/your-org/main-platform.git"
 branch = "main"
 include_globs = ["docs/**/*.md", "src/**/*.rs"]
@@ -147,7 +147,7 @@ EOF
 
 ```bash
 $ cd ~/ctx-workspace
-$ ctx init && ctx sync git && ctx sync script:auth && ctx sync script:infra
+$ ctx init && ctx sync all
 $ ctx embed pending
 $ ctx serve mcp
 ```
@@ -173,14 +173,14 @@ Now every Cursor window has access to the full org knowledge base.
 **Manual sync (ad-hoc):**
 
 ```bash
-$ ctx sync git && ctx sync script:auth && ctx embed pending
+$ ctx sync all && ctx embed pending
 ```
 
 **Cron job (automatic):**
 
 ```bash
 # Sync every 2 hours
-0 */2 * * * cd ~/ctx-workspace && ctx sync git && ctx sync script:auth && ctx embed pending
+0 */2 * * * cd ~/ctx-workspace && ctx sync all && ctx embed pending
 ```
 
 **Git hook (on push):**
@@ -188,7 +188,7 @@ $ ctx sync git && ctx sync script:auth && ctx embed pending
 ```bash
 # .git/hooks/post-push
 #!/bin/bash
-cd ~/ctx-workspace && ctx sync git --config ./config/ctx.toml &
+cd ~/ctx-workspace && ctx sync all --config ./config/ctx.toml &
 ```
 
 ### Claude Desktop

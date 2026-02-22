@@ -6,12 +6,39 @@ weight = 1
 
 Connectors fetch data from external sources and normalize it into a consistent Document model. All connectors support incremental sync — only changed content is re-processed on subsequent runs.
 
+**All connector types use named instances** — you can configure multiple of each type:
+
+```toml
+[connectors.filesystem.docs]
+root = "./docs"
+
+[connectors.filesystem.notes]
+root = "./notes"
+
+[connectors.git.platform]
+url = "https://github.com/acme/platform.git"
+
+[connectors.git.auth-service]
+url = "https://github.com/acme/auth-service.git"
+```
+
+Sync commands support the type, `type:name`, or `all` formats:
+
+```bash
+ctx sync all               # Sync every configured connector (parallel)
+ctx sync git               # Sync all git connectors (parallel)
+ctx sync git:platform      # Sync one specific connector
+ctx sync filesystem        # Sync all filesystem connectors
+```
+
+Documents are tagged with `source = "type:name"` (e.g. `"git:platform"`, `"filesystem:docs"`), enabling per-source filtering in search results.
+
 ### Filesystem Connector
 
 Scans a local directory tree. Each file becomes a Document with its content as the body, path as the source ID, and modification time as the timestamp.
 
 ```toml
-[connectors.filesystem]
+[connectors.filesystem.docs]
 root = "./docs"                        # Directory to scan (required)
 include_globs = ["**/*.md", "**/*.rs"] # Glob patterns to include
 exclude_globs = ["**/target/**"]       # Glob patterns to exclude
@@ -19,8 +46,8 @@ follow_symlinks = false                # Follow symbolic links
 ```
 
 ```bash
-$ ctx sync filesystem
-sync filesystem
+$ ctx sync filesystem:docs
+sync filesystem:docs
   fetched: 127 items
   upserted documents: 127
   chunks written: 584
@@ -35,7 +62,7 @@ ok
 **Example — Index an Obsidian vault:**
 
 ```toml
-[connectors.filesystem]
+[connectors.filesystem.vault]
 root = "~/Documents/notes"
 include_globs = ["**/*.md"]
 exclude_globs = ["**/.obsidian/**", "**/templates/**"]
@@ -46,7 +73,7 @@ exclude_globs = ["**/.obsidian/**", "**/templates/**"]
 Clones and indexes any Git repository — local or remote. Extracts per-file commit metadata (author, timestamp, SHA) and auto-generates web URLs for GitHub/GitLab repos.
 
 ```toml
-[connectors.git]
+[connectors.git.platform]
 url = "https://github.com/acme/platform.git"  # Repo URL (required)
 branch = "main"                               # Branch to track
 root = "docs/"                                 # Subdirectory scope
@@ -63,8 +90,8 @@ cache_dir = "./data/.git-cache/platform"        # Reuse clone between syncs
 
 ```bash
 # First sync — clones the repo
-$ ctx sync git
-sync git
+$ ctx sync git:platform
+sync git:platform
   cloning https://github.com/acme/platform.git (shallow)...
   fetched: 89 items
   upserted documents: 89
@@ -72,15 +99,18 @@ sync git
 ok
 
 # Second sync — pulls incrementally
-$ ctx sync git
-sync git
+$ ctx sync git:platform
+sync git:platform
   pulling latest...
   fetched: 3 items (changed)
   upserted documents: 3
 ok
 
 # Force full re-sync
-$ ctx sync git --full
+$ ctx sync git:platform --full
+
+# Or sync all git connectors at once
+$ ctx sync git
 ```
 
 **What it gives you:**
@@ -92,7 +122,7 @@ $ ctx sync git --full
 **Private repos:** Use an SSH URL or a `GITHUB_TOKEN`:
 
 ```toml
-[connectors.git]
+[connectors.git.private]
 url = "git@github.com:acme/private-repo.git"
 # or
 url = "https://x-access-token:${GITHUB_TOKEN}@github.com/acme/private-repo.git"
@@ -101,7 +131,7 @@ url = "https://x-access-token:${GITHUB_TOKEN}@github.com/acme/private-repo.git"
 **Local repos:** Point at a local path instead of a URL:
 
 ```toml
-[connectors.git]
+[connectors.git.my-repo]
 url = "/home/user/projects/my-repo"
 branch = "main"
 ```
@@ -111,7 +141,7 @@ branch = "main"
 Indexes documents from Amazon S3 or S3-compatible services (MinIO, LocalStack, Backblaze B2, Cloudflare R2).
 
 ```toml
-[connectors.s3]
+[connectors.s3.runbooks]
 bucket = "acme-docs"                       # Bucket name (required)
 prefix = "engineering/runbooks/"            # Key prefix filter
 region = "us-east-1"                       # AWS region
@@ -125,8 +155,8 @@ Requires `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` environment variables.
 $ export AWS_ACCESS_KEY_ID="AKIA..."
 $ export AWS_SECRET_ACCESS_KEY="..."
 
-$ ctx sync s3
-sync s3
+$ ctx sync s3:runbooks
+sync s3:runbooks
   listing s3://acme-docs/engineering/runbooks/...
   fetched: 34 items
   upserted documents: 34
@@ -138,13 +168,13 @@ ok
 
 ```toml
 # MinIO (local)
-[connectors.s3]
+[connectors.s3.local]
 bucket = "docs"
 region = "us-east-1"
 endpoint_url = "http://localhost:9000"
 
 # Cloudflare R2
-[connectors.s3]
+[connectors.s3.r2]
 bucket = "my-docs"
 region = "auto"
 endpoint_url = "https://ACCOUNT_ID.r2.cloudflarestorage.com"
@@ -161,19 +191,22 @@ endpoint_url = "https://ACCOUNT_ID.r2.cloudflarestorage.com"
 All connectors feed into the same SQLite database. Documents from different sources are tracked separately and searchable together:
 
 ```bash
-$ ctx sync filesystem    # Local docs
-$ ctx sync git           # Remote repo
-$ ctx sync s3            # S3 bucket
-$ ctx sync script:jira   # Lua connector
+$ ctx sync all              # Sync everything (parallel)
+
+# Or sync by type / specific instance
+$ ctx sync filesystem       # All filesystem connectors
+$ ctx sync git:platform     # One specific git connector
+$ ctx sync s3               # All S3 connectors
+$ ctx sync script:jira      # Lua connector
 
 # Search across everything
 $ ctx search "deployment" --mode hybrid
 
 # Filter to one source
-$ ctx search "deployment" --source git
+$ ctx search "deployment" --source git:platform
 ```
 
-The `source` field in search results tells you where each result came from.
+The `source` field in search results tells you where each result came from (e.g. `"git:platform"`, `"filesystem:docs"`).
 
 ### Embedding configuration
 

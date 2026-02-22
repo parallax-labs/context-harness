@@ -40,87 +40,64 @@ pub struct SourceStatus {
 /// This is the core function used by both the CLI (`ctx sources`) and the
 /// HTTP server (`GET /tools/sources`). It checks each connector's config
 /// and performs a lightweight health probe.
+///
+/// All connector types use named instances (e.g. `filesystem:docs`, `git:platform`).
 pub fn get_sources(config: &Config) -> Vec<SourceStatus> {
     let mut sources = Vec::new();
 
-    // Filesystem connector
-    let fs_status = match &config.connectors.filesystem {
-        Some(fs_config) => {
-            if fs_config.root.exists() {
-                SourceStatus {
-                    name: "filesystem".to_string(),
-                    configured: true,
-                    healthy: true,
-                    notes: None,
-                }
-            } else {
-                SourceStatus {
-                    name: "filesystem".to_string(),
-                    configured: true,
-                    healthy: false,
-                    notes: Some("root directory does not exist".to_string()),
-                }
-            }
+    // Filesystem connectors
+    for (name, fs_config) in &config.connectors.filesystem {
+        if fs_config.root.exists() {
+            sources.push(SourceStatus {
+                name: format!("filesystem:{}", name),
+                configured: true,
+                healthy: true,
+                notes: Some(format!("root: {}", fs_config.root.display())),
+            });
+        } else {
+            sources.push(SourceStatus {
+                name: format!("filesystem:{}", name),
+                configured: true,
+                healthy: false,
+                notes: Some("root directory does not exist".to_string()),
+            });
         }
-        None => SourceStatus {
-            name: "filesystem".to_string(),
-            configured: false,
-            healthy: false,
-            notes: None,
-        },
-    };
-    sources.push(fs_status);
+    }
 
-    // Git connector
-    let git_status = match &config.connectors.git {
-        Some(git_config) => {
-            // Check if git is available
-            let git_available = std::process::Command::new("git")
-                .arg("--version")
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false);
-            if git_available {
-                SourceStatus {
-                    name: "git".to_string(),
-                    configured: true,
-                    healthy: true,
-                    notes: Some(format!("repo: {}", git_config.url)),
-                }
-            } else {
-                SourceStatus {
-                    name: "git".to_string(),
-                    configured: true,
-                    healthy: false,
-                    notes: Some("git binary not found".to_string()),
-                }
-            }
+    // Git connectors
+    let git_available = std::process::Command::new("git")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    for (name, git_config) in &config.connectors.git {
+        if git_available {
+            sources.push(SourceStatus {
+                name: format!("git:{}", name),
+                configured: true,
+                healthy: true,
+                notes: Some(format!("repo: {}", git_config.url)),
+            });
+        } else {
+            sources.push(SourceStatus {
+                name: format!("git:{}", name),
+                configured: true,
+                healthy: false,
+                notes: Some("git binary not found".to_string()),
+            });
         }
-        None => SourceStatus {
-            name: "git".to_string(),
-            configured: false,
-            healthy: false,
-            notes: None,
-        },
-    };
-    sources.push(git_status);
+    }
 
-    // S3 connector
-    let s3_status = match &config.connectors.s3 {
-        Some(s3_config) => SourceStatus {
-            name: "s3".to_string(),
+    // S3 connectors
+    for (name, s3_config) in &config.connectors.s3 {
+        sources.push(SourceStatus {
+            name: format!("s3:{}", name),
             configured: true,
             healthy: true,
             notes: Some(format!("bucket: {}", s3_config.bucket)),
-        },
-        None => SourceStatus {
-            name: "s3".to_string(),
-            configured: false,
-            healthy: false,
-            notes: None,
-        },
-    };
-    sources.push(s3_status);
+        });
+    }
 
     // Script connectors
     for (name, script_config) in &config.connectors.script {
@@ -137,16 +114,6 @@ pub fn get_sources(config: &Config) -> Vec<SourceStatus> {
                     script_config.path.display()
                 ))
             },
-        });
-    }
-
-    // Placeholder connectors (future)
-    for name in &["slack", "jira"] {
-        sources.push(SourceStatus {
-            name: name.to_string(),
-            configured: false,
-            healthy: false,
-            notes: None,
         });
     }
 

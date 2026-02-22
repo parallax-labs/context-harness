@@ -87,10 +87,10 @@ cp config/ctx.example.toml config/ctx.toml
 
 ### 2. Edit Configuration
 
-Point `[connectors.filesystem].root` at your docs directory:
+Point `[connectors.filesystem.<name>].root` at your docs directory:
 
 ```toml
-[connectors.filesystem]
+[connectors.filesystem.docs]
 root = "./my-project/docs"
 include_globs = ["**/*.md", "**/*.txt", "**/*.rs"]
 ```
@@ -380,7 +380,7 @@ final_limit = 8         # Don't overwhelm the context window
 [server]
 bind = "127.0.0.1:7331"
 
-[connectors.filesystem]
+[connectors.filesystem.local]
 root = "./"
 include_globs = ["**/*.md", "**/*.rs", "**/*.ts", "**/*.py"]
 exclude_globs = ["**/target/**", "**/node_modules/**", "**/.git/**"]
@@ -460,9 +460,10 @@ See [`config/ctx.example.toml`](../config/ctx.example.toml) for a complete annot
 | `[embedding]` | Provider, model, dimensions, batching |
 | `[retrieval]` | Hybrid alpha, candidate counts, result limits |
 | `[server]` | HTTP bind address |
-| `[connectors.filesystem]` | Local directory scanning |
-| `[connectors.git]` | Git repository ingestion |
-| `[connectors.s3]` | S3 bucket scanning |
+| `[connectors.filesystem.<name>]` | Named local directory scanning |
+| `[connectors.git.<name>]` | Named Git repository ingestion |
+| `[connectors.s3.<name>]` | Named S3 bucket scanning |
+| `[connectors.script.<name>]` | Named Lua scripted connectors |
 
 ### Hybrid Alpha Tuning
 
@@ -513,7 +514,7 @@ ctx embed pending --config ./config/ctx.toml
 For large Git repositories, use shallow clones to minimize disk usage:
 
 ```toml
-[connectors.git]
+[connectors.git.platform]
 shallow = true        # --depth 1 clone
 root = "docs/"        # only scan a subdirectory
 ```

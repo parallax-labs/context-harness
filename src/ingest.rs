@@ -6,14 +6,17 @@
 //!
 //! # Sync Pipeline
 //!
-//! The `run_sync` function implements the following pipeline:
+//! The [`run_sync`] function implements the following pipeline:
 //!
-//! 1. **Load checkpoint** — determines the last successful sync timestamp
-//!    for the specified connector (skipped with `--full`).
-//! 2. **Scan connector** — dispatches to the appropriate connector
-//!    (`filesystem`, `git`, or `s3`) to fetch [`SourceItem`]s.
+//! 1. **Resolve targets** — expands the connector argument into one or more
+//!    `(source_label, connector_type, instance_name)` tuples. Supports:
+//!    - `"git:platform"` — a single named instance
+//!    - `"git"` — all instances of a type
+//!    - `"all"` — every configured connector
+//! 2. **Scan (parallel)** — dispatches to the appropriate connector for each
+//!    target, running scans concurrently via [`tokio::task::JoinSet`].
 //! 3. **Filter** — applies checkpoint, `--since`, `--until`, and `--limit`
-//!    filters to the collected items.
+//!    filters to each connector's items.
 //! 4. **Upsert documents** — inserts or updates each item in the `documents`
 //!    table, computing a SHA-256 deduplication hash.
 //! 5. **Replace chunks** — deletes old chunks (and their embeddings/FTS entries)
@@ -35,6 +38,13 @@
 //! Checkpoints are stored in the `checkpoints` table as `(source, cursor)`
 //! pairs. The cursor is the maximum `updated_at` timestamp seen during the
 //! sync. On subsequent runs, only items newer than the checkpoint are processed.
+//!
+//! # Multi-Instance Connectors
+//!
+//! All connector types support named instances. Documents are tagged with
+//! `source = "type:name"` (e.g. `"git:platform"`, `"filesystem:docs"`).
+//! When syncing a type (e.g. `ctx sync git`), all instances of that type
+//! are scanned in parallel.
 
 use anyhow::{bail, Result};
 use chrono::NaiveDate;
@@ -44,39 +54,100 @@ use uuid::Uuid;
 
 use crate::chunk::chunk_text;
 use crate::config::Config;
-use crate::connector_fs;
-use crate::connector_git;
-use crate::connector_s3;
-use crate::connector_script;
 use crate::db;
 use crate::embed_cmd;
 use crate::models::SourceItem;
+use crate::traits::{Connector, ConnectorRegistry};
 
-/// Runs the full ingestion pipeline for the specified connector.
+/// Resolve a connector argument into a filtered list of connectors to scan.
 ///
-/// This is the entry point for `ctx sync <connector>`. It orchestrates
-/// scanning, filtering, document upsert, chunking, embedding, and
-/// checkpoint updates.
+/// The `registry` contains all connectors (built-in + custom). This function
+/// filters them based on the user's connector argument.
+///
+/// # Supported Formats
+///
+/// | Input | Meaning |
+/// |-------|---------|
+/// | `"all"` | Every registered connector |
+/// | `"git"` | All connectors of type `"git"` |
+/// | `"filesystem"` | All connectors of type `"filesystem"` |
+/// | `"s3"` | All connectors of type `"s3"` |
+/// | `"script"` | All connectors of type `"script"` |
+/// | `"custom"` | All connectors of type `"custom"` |
+/// | `"git:platform"` | Specific named instance |
+/// | `"custom:myconn"` | Specific named instance |
+fn resolve_connectors<'a>(
+    registry: &'a ConnectorRegistry,
+    connector_arg: &str,
+) -> Result<Vec<&'a dyn Connector>> {
+    match connector_arg {
+        "all" => {
+            let all = registry.connectors();
+            if all.is_empty() {
+                bail!("No connectors configured. Add connector sections to your config.");
+            }
+            Ok(all.iter().map(|c| c.as_ref()).collect())
+        }
+        // Type-level filter: "git", "filesystem", "s3", "script", "custom"
+        conn_type if matches!(conn_type, "filesystem" | "git" | "s3" | "script" | "custom") => {
+            let matched = registry.connectors_by_type(conn_type);
+            if matched.is_empty() {
+                bail!("No {} connectors configured.", conn_type);
+            }
+            Ok(matched)
+        }
+        // Instance-level filter: "git:platform", "custom:mything"
+        other => {
+            if let Some((conn_type, name)) = other.split_once(':') {
+                let conn = registry.find(conn_type, name).ok_or_else(|| {
+                    let available: Vec<String> = registry
+                        .connectors_by_type(conn_type)
+                        .iter()
+                        .map(|c| c.name().to_string())
+                        .collect();
+                    anyhow::anyhow!(
+                        "No {} connector '{}'. Available: {}",
+                        conn_type,
+                        name,
+                        if available.is_empty() {
+                            "(none)".to_string()
+                        } else {
+                            available.join(", ")
+                        }
+                    )
+                })?;
+                Ok(vec![conn])
+            } else {
+                bail!(
+                    "Unknown connector: '{}'. Use: all, filesystem, git, s3, script, custom, or type:name",
+                    other
+                );
+            }
+        }
+    }
+}
+
+/// Runs the full ingestion pipeline for the specified connector(s).
+///
+/// This is the entry point for `ctx sync <connector>`. It builds a
+/// [`ConnectorRegistry`] from the config and runs the pipeline.
 ///
 /// # Arguments
 ///
 /// - `config` — application configuration.
-/// - `connector` — the connector name (`"filesystem"`, `"git"`, or `"s3"`).
-/// - `full` — if `true`, ignores the existing checkpoint and reprocesses all items.
+/// - `connector` — the connector specifier: `"all"`, a type name (`"git"`),
+///   or a specific instance (`"git:platform"`).
+/// - `full` — if `true`, ignores existing checkpoints and reprocesses all items.
 /// - `dry_run` — if `true`, scans and counts items without writing to the database.
 /// - `since` — optional `YYYY-MM-DD` date; only items updated on or after this date are processed.
 /// - `until` — optional `YYYY-MM-DD` date; only items updated on or before this date are processed.
-/// - `limit` — optional maximum number of items to process.
-///
-/// # Returns
-///
-/// A `Result` indicating success or an `anyhow::Error` describing the failure.
+/// - `limit` — optional maximum number of items to process (per connector instance).
 ///
 /// # Errors
 ///
 /// Returns an error if:
-/// - The specified connector is unknown.
-/// - The connector fails to scan (e.g., missing configuration, network error).
+/// - The specified connector is unknown or not configured.
+/// - A connector fails to scan (e.g., network error).
 /// - A database operation fails.
 pub async fn run_sync(
     config: &Config,
@@ -87,117 +158,215 @@ pub async fn run_sync(
     until: Option<String>,
     limit: Option<usize>,
 ) -> Result<()> {
+    let registry = ConnectorRegistry::from_config(config);
+    run_sync_with_registry(
+        config, connector, full, dry_run, since, until, limit, &registry,
+    )
+    .await
+}
+
+/// Runs the ingestion pipeline with additional custom connectors.
+///
+/// Like [`run_sync`], but accepts extra connectors to merge with
+/// the built-in ones from config. This is the entry point for custom
+/// binaries that register `Connector` trait implementations.
+///
+/// The `extra_connectors` are combined with the built-in connectors
+/// resolved from the config file.
+#[allow(clippy::too_many_arguments, dead_code)]
+pub async fn run_sync_with_extensions(
+    config: &Config,
+    connector: &str,
+    full: bool,
+    dry_run: bool,
+    since: Option<String>,
+    until: Option<String>,
+    limit: Option<usize>,
+    extra_connectors: &ConnectorRegistry,
+) -> Result<()> {
+    // Build combined connector list from config + extras
+    let built_in = ConnectorRegistry::from_config(config);
+
+    // Resolve from built-in registry (ignore error if extras might match)
+    let mut resolved: Vec<&dyn Connector> = match resolve_connectors(&built_in, connector) {
+        Ok(r) => r,
+        Err(_) if !extra_connectors.is_empty() => Vec::new(),
+        Err(e) => return Err(e),
+    };
+
+    // Also resolve from extras
+    if let Ok(extras) = resolve_connectors(extra_connectors, connector) {
+        resolved.extend(extras);
+    }
+
+    if resolved.is_empty() {
+        bail!("No connectors matched '{}'.", connector);
+    }
+
+    run_connectors(config, &resolved, full, dry_run, since, until, limit).await
+}
+
+/// Runs the ingestion pipeline with a pre-built [`ConnectorRegistry`].
+///
+/// This is the unified entry point. All connectors in the registry are
+/// trait objects — built-in, Lua, and custom all go through the same path.
+#[allow(clippy::too_many_arguments)]
+pub async fn run_sync_with_registry(
+    config: &Config,
+    connector: &str,
+    full: bool,
+    dry_run: bool,
+    since: Option<String>,
+    until: Option<String>,
+    limit: Option<usize>,
+    registry: &ConnectorRegistry,
+) -> Result<()> {
+    let connectors = resolve_connectors(registry, connector)?;
+    run_connectors(config, &connectors, full, dry_run, since, until, limit).await
+}
+
+/// Core sync engine: scans connectors sequentially, ingests items.
+///
+/// Scans are run sequentially since connectors hold references. Each
+/// connector's items flow through the standard checkpoint → filter → upsert →
+/// chunk → embed pipeline.
+#[allow(clippy::too_many_arguments)]
+async fn run_connectors(
+    config: &Config,
+    connectors: &[&dyn Connector],
+    full: bool,
+    dry_run: bool,
+    since: Option<String>,
+    until: Option<String>,
+    limit: Option<usize>,
+) -> Result<()> {
+    if connectors.len() > 1 {
+        println!("Syncing {} connector instances...", connectors.len());
+    }
+
+    // Scan all connectors and collect results
+    let mut scan_results: Vec<(String, Vec<SourceItem>)> = Vec::new();
+    let mut scan_errors: Vec<String> = Vec::new();
+
+    for conn in connectors {
+        let label = conn.source_label();
+        match conn.scan().await {
+            Ok(items) => {
+                scan_results.push((label, items));
+            }
+            Err(e) => {
+                scan_errors.push(format!("{}: {:#}", label, e));
+            }
+        }
+    }
+
+    // Report scan errors but continue with successful scans
+    for err in &scan_errors {
+        eprintln!("Warning: scan failed: {}", err);
+    }
+
+    if scan_results.is_empty() && !scan_errors.is_empty() {
+        bail!("All connector scans failed:\n{}", scan_errors.join("\n"));
+    }
+
+    // Sort for deterministic output ordering
+    scan_results.sort_by(|a, b| a.0.cmp(&b.0));
+
+    // Ingest each target's items (sequential — SQLite writes are serialized)
     let pool = db::connect(config).await?;
 
-    // Load checkpoint
-    let checkpoint: Option<i64> = if full {
-        None
-    } else {
-        get_checkpoint(&pool, connector).await?
-    };
+    for (source_label, mut items) in scan_results {
+        // Load checkpoint
+        let checkpoint: Option<i64> = if full {
+            None
+        } else {
+            get_checkpoint(&pool, &source_label).await?
+        };
 
-    // Scan the appropriate connector
-    let mut items = match connector {
-        "filesystem" => connector_fs::scan_filesystem(config)?,
-        "git" => connector_git::scan_git(config)?,
-        "s3" => connector_s3::scan_s3(config).await?,
-        c if c.starts_with("script:") => {
-            let name = &c[7..];
-            let script_cfg = config
-                .connectors
-                .script
-                .get(name)
-                .ok_or_else(|| anyhow::anyhow!("No script connector configured: '{}'", name))?;
-            connector_script::scan_script(name, script_cfg).await?
+        // Filter by checkpoint (skip files not modified since checkpoint)
+        if let Some(cp) = checkpoint {
+            items.retain(|item| item.updated_at.timestamp() > cp);
         }
-        _ => bail!(
-            "Unknown connector: '{}'. Available: filesystem, git, s3, script:<name>",
-            connector
-        ),
-    };
 
-    // Filter by checkpoint (skip files not modified since checkpoint)
-    if let Some(cp) = checkpoint {
-        items.retain(|item| item.updated_at.timestamp() > cp);
-    }
-
-    // Apply --since filter
-    if let Some(ref since_str) = since {
-        let since_date = NaiveDate::parse_from_str(since_str, "%Y-%m-%d")?;
-        let since_ts = since_date
-            .and_hms_opt(0, 0, 0)
-            .unwrap()
-            .and_utc()
-            .timestamp();
-        items.retain(|item| item.updated_at.timestamp() >= since_ts);
-    }
-
-    // Apply --until filter
-    if let Some(ref until_str) = until {
-        let until_date = NaiveDate::parse_from_str(until_str, "%Y-%m-%d")?;
-        let until_ts = until_date
-            .and_hms_opt(23, 59, 59)
-            .unwrap()
-            .and_utc()
-            .timestamp();
-        items.retain(|item| item.updated_at.timestamp() <= until_ts);
-    }
-
-    // Apply --limit
-    if let Some(lim) = limit {
-        items.truncate(lim);
-    }
-
-    if dry_run {
-        println!("sync {} (dry-run)", connector);
-        println!("  items found: {}", items.len());
-        let total_chunks: usize = items
-            .iter()
-            .map(|item| chunk_text("tmp", &item.body, config.chunking.max_tokens).len())
-            .sum();
-        println!("  estimated chunks: {}", total_chunks);
-        return Ok(());
-    }
-
-    let mut docs_upserted = 0u64;
-    let mut chunks_written = 0u64;
-    let mut embeddings_written = 0u64;
-    let mut embeddings_pending = 0u64;
-    let mut max_updated: i64 = checkpoint.unwrap_or(0);
-
-    for item in &items {
-        let doc_id = upsert_document(&pool, item).await?;
-        let chunks = chunk_text(&doc_id, &item.body, config.chunking.max_tokens);
-        let chunk_count = chunks.len() as u64;
-        replace_chunks(&pool, &doc_id, &chunks).await?;
-
-        // Inline embedding (non-fatal)
-        let (emb_ok, emb_pending) = embed_cmd::embed_chunks_inline(config, &pool, &chunks).await;
-        embeddings_written += emb_ok;
-        embeddings_pending += emb_pending;
-
-        docs_upserted += 1;
-        chunks_written += chunk_count;
-
-        let ts = item.updated_at.timestamp();
-        if ts > max_updated {
-            max_updated = ts;
+        // Apply --since filter
+        if let Some(ref since_str) = since {
+            let since_date = NaiveDate::parse_from_str(since_str, "%Y-%m-%d")?;
+            let since_ts = since_date
+                .and_hms_opt(0, 0, 0)
+                .unwrap()
+                .and_utc()
+                .timestamp();
+            items.retain(|item| item.updated_at.timestamp() >= since_ts);
         }
-    }
 
-    // Update checkpoint
-    set_checkpoint(&pool, connector, max_updated).await?;
+        // Apply --until filter
+        if let Some(ref until_str) = until {
+            let until_date = NaiveDate::parse_from_str(until_str, "%Y-%m-%d")?;
+            let until_ts = until_date
+                .and_hms_opt(23, 59, 59)
+                .unwrap()
+                .and_utc()
+                .timestamp();
+            items.retain(|item| item.updated_at.timestamp() <= until_ts);
+        }
 
-    println!("sync {}", connector);
-    println!("  fetched: {} items", items.len());
-    println!("  upserted documents: {}", docs_upserted);
-    println!("  chunks written: {}", chunks_written);
-    if config.embedding.is_enabled() {
-        println!("  embeddings written: {}", embeddings_written);
-        println!("  embeddings pending: {}", embeddings_pending);
+        // Apply --limit (per connector instance)
+        if let Some(lim) = limit {
+            items.truncate(lim);
+        }
+
+        if dry_run {
+            println!("sync {} (dry-run)", source_label);
+            println!("  items found: {}", items.len());
+            let total_chunks: usize = items
+                .iter()
+                .map(|item| chunk_text("tmp", &item.body, config.chunking.max_tokens).len())
+                .sum();
+            println!("  estimated chunks: {}", total_chunks);
+            continue;
+        }
+
+        let mut docs_upserted = 0u64;
+        let mut chunks_written = 0u64;
+        let mut embeddings_written = 0u64;
+        let mut embeddings_pending = 0u64;
+        let mut max_updated: i64 = checkpoint.unwrap_or(0);
+
+        for item in &items {
+            let doc_id = upsert_document(&pool, item).await?;
+            let chunks = chunk_text(&doc_id, &item.body, config.chunking.max_tokens);
+            let chunk_count = chunks.len() as u64;
+            replace_chunks(&pool, &doc_id, &chunks).await?;
+
+            // Inline embedding (non-fatal)
+            let (emb_ok, emb_pending) =
+                embed_cmd::embed_chunks_inline(config, &pool, &chunks).await;
+            embeddings_written += emb_ok;
+            embeddings_pending += emb_pending;
+
+            docs_upserted += 1;
+            chunks_written += chunk_count;
+
+            let ts = item.updated_at.timestamp();
+            if ts > max_updated {
+                max_updated = ts;
+            }
+        }
+
+        // Update checkpoint
+        set_checkpoint(&pool, &source_label, max_updated).await?;
+
+        println!("sync {}", source_label);
+        println!("  fetched: {} items", items.len());
+        println!("  upserted documents: {}", docs_upserted);
+        println!("  chunks written: {}", chunks_written);
+        if config.embedding.is_enabled() {
+            println!("  embeddings written: {}", embeddings_written);
+            println!("  embeddings pending: {}", embeddings_pending);
+        }
+        println!("  checkpoint: {}", max_updated);
+        println!("ok");
     }
-    println!("  checkpoint: {}", max_updated);
-    println!("ok");
 
     pool.close().await;
     Ok(())

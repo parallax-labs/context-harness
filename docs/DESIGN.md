@@ -97,6 +97,19 @@ Guarantees:
 
 ---
 
+### extensions/ (src/)
+
+- `traits.rs` — `Connector` and `Tool` traits, `ToolContext`, `ConnectorRegistry`, `ToolRegistry`
+
+Guarantees:
+- `Connector` trait: `name()`, `description()`, `scan()` → `Vec<SourceItem>`
+- `Tool` trait: `name()`, `description()`, `parameters_schema()`, `execute(params, ctx)`
+- `ToolContext`: `search()`, `get()`, `sources()` bridging to core functions
+- `ConnectorRegistry`: registered connectors available via `ctx sync custom:<name>`
+- `ToolRegistry`: registered tools available via `POST /tools/{name}`
+
+---
+
 ### server/ (src/)
 
 - `server.rs` — Axum HTTP server (MCP-compatible)
@@ -181,3 +194,4 @@ The public contract is defined by:
 - HYBRID_SCORING.md
 - LUA_CONNECTORS.md
 - LUA_TOOLS.md
+- RUST_TRAITS.md
