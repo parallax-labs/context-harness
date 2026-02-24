@@ -220,7 +220,7 @@ If you work in a Cursor workspace with multiple repos, a single Context Harness 
 {
   "mcpServers": {
     "org-context": {
-      "url": "http://localhost:7331"
+      "url": "http://127.0.0.1:7331/mcp"
     }
   }
 }

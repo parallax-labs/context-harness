@@ -322,20 +322,25 @@ ctx init --config /path/to/ctx.toml
 ctx sync filesystem --config /path/to/ctx.toml
 ```
 
-3. **Add to Cursor's MCP configuration** (`.cursor/mcp.json` or global settings):
+3. **Start the MCP server:**
+
+```bash
+ctx serve mcp --config /path/to/ctx.toml
+```
+
+4. **Add to Cursor's MCP configuration** (`.cursor/mcp.json` or global settings):
 
 ```json
 {
   "mcpServers": {
     "context-harness": {
-      "command": "ctx",
-      "args": ["--config", "/absolute/path/to/ctx.toml", "serve", "mcp"]
+      "url": "http://127.0.0.1:7331/mcp"
     }
   }
 }
 ```
 
-4. **Verify** — Cursor will start the MCP server automatically and show it in the MCP panel. The agent can now use:
+5. **Verify** — Cursor connects to the `/mcp` Streamable HTTP endpoint and shows it in the MCP panel. The agent can now use:
    - `context.search` — search your indexed documents
    - `context.get` — retrieve full documents by ID
    - `context.sources` — check connector status
@@ -344,16 +349,22 @@ ctx sync filesystem --config /path/to/ctx.toml
 
 You can run multiple Context Harness instances for different projects by creating separate config files with unique database paths and server ports:
 
+```bash
+# Terminal 1: project alpha on port 7331
+ctx serve mcp --config /projects/alpha/ctx.toml
+
+# Terminal 2: project beta on port 7332
+ctx serve mcp --config /projects/beta/ctx.toml
+```
+
 ```json
 {
   "mcpServers": {
     "project-alpha": {
-      "command": "ctx",
-      "args": ["--config", "/projects/alpha/ctx.toml", "serve", "mcp"]
+      "url": "http://127.0.0.1:7331/mcp"
     },
     "project-beta": {
-      "command": "ctx",
-      "args": ["--config", "/projects/beta/ctx.toml", "serve", "mcp"]
+      "url": "http://127.0.0.1:7332/mcp"
     }
   }
 }

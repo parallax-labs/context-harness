@@ -39,7 +39,7 @@ Create `.cursor/mcp.json` in your project root:
 {
   "mcpServers": {
     "context-harness": {
-      "url": "http://localhost:7331"
+      "url": "http://127.0.0.1:7331/mcp"
     }
   }
 }
@@ -51,7 +51,7 @@ Open Cursor Settings → MCP Servers → Add Server:
 
 ```
 Name: context-harness
-URL:  http://localhost:7331
+URL:  http://127.0.0.1:7331/mcp
 ```
 
 **Using it in Cursor:**
@@ -71,7 +71,7 @@ The agent discovers all available tools (built-in + Lua extensions) automaticall
 
 ### Claude Desktop
 
-Claude Desktop supports MCP servers through its configuration file.
+Claude Desktop supports MCP servers through its configuration file. Start the server first (`ctx serve mcp`), then point Claude at the `/mcp` endpoint.
 
 **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
 
@@ -81,20 +81,7 @@ Claude Desktop supports MCP servers through its configuration file.
 {
   "mcpServers": {
     "context-harness": {
-      "command": "ctx",
-      "args": ["serve", "mcp", "--config", "/path/to/config/ctx.toml"]
-    }
-  }
-}
-```
-
-This launches the MCP server automatically when Claude Desktop starts. Alternatively, if you prefer to manage the server yourself:
-
-```json
-{
-  "mcpServers": {
-    "context-harness": {
-      "url": "http://localhost:7331"
+      "url": "http://127.0.0.1:7331/mcp"
     }
   }
 }
@@ -144,7 +131,7 @@ Or use Continue's MCP support directly:
     "mcpServers": [
       {
         "name": "context-harness",
-        "url": "http://localhost:7331"
+        "url": "http://127.0.0.1:7331/mcp"
       }
     ]
   }

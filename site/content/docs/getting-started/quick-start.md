@@ -93,13 +93,13 @@ Create `.cursor/mcp.json` in your project root:
 {
   "mcpServers": {
     "context-harness": {
-      "url": "http://localhost:7331"
+      "url": "http://127.0.0.1:7331/mcp"
     }
   }
 }
 ```
 
-Now ask Cursor's agent: *"Search our docs for the deployment procedure"* — it will call Context Harness automatically.
+Cursor connects to the `/mcp` endpoint, which speaks the MCP Streamable HTTP protocol (JSON-RPC). Now ask Cursor's agent: *"Search our docs for the deployment procedure"* — it will call Context Harness automatically.
 
 ### 6. Enable semantic search (optional)
 

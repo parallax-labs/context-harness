@@ -4,7 +4,7 @@ description = "HTTP API reference for AI agent integration."
 weight = 2
 +++
 
-The MCP server (`ctx serve mcp`) exposes an HTTP API that AI agents use to search documents, retrieve content, discover tools, execute custom actions, and activate agent personas. CORS is enabled by default for browser-based clients.
+The MCP server (`ctx serve mcp`) exposes both a native MCP Streamable HTTP endpoint and a REST API. MCP clients (Cursor, Claude Desktop, etc.) connect to the `/mcp` endpoint using the MCP JSON-RPC protocol. Custom integrations can use the REST endpoints directly. CORS is enabled by default for browser-based clients.
 
 ### Starting the server
 
@@ -13,7 +13,8 @@ $ ctx serve mcp --config ./config/ctx.toml
 Loaded 2 Lua tool(s):
   POST /tools/echo — Echoes back the input message
   POST /tools/create_jira_ticket — Create a Jira ticket enriched with related context
-Listening on 127.0.0.1:7331
+MCP server listening on http://127.0.0.1:7331
+  MCP endpoint: http://127.0.0.1:7331/mcp
 ```
 
 The bind address is configurable:
@@ -24,7 +25,40 @@ bind = "127.0.0.1:7331"    # Local only (default)
 # bind = "0.0.0.0:7331"    # Docker / remote access
 ```
 
-### Endpoint reference
+### MCP Streamable HTTP endpoint
+
+The `/mcp` endpoint speaks the [MCP Streamable HTTP](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http) transport — JSON-RPC over HTTP with server-sent events for streaming. This is what MCP clients like Cursor and Claude Desktop connect to.
+
+**Connect from Cursor** (`.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "context-harness": {
+      "url": "http://127.0.0.1:7331/mcp"
+    }
+  }
+}
+```
+
+**What's exposed via MCP:**
+
+| MCP Method | Description |
+|-----------|-------------|
+| `tools/list` | All registered tools (built-in + Lua + Rust) |
+| `tools/call` | Execute any tool by name |
+| `prompts/list` | All registered agents as MCP prompts |
+| `prompts/get` | Resolve an agent's system prompt |
+
+**Test with curl:**
+
+```bash
+$ curl -X POST http://127.0.0.1:7331/mcp \
+    -H "Content-Type: application/json" \
+    -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"0.1"}}}'
+```
+
+### REST endpoint reference
 
 #### `POST /tools/search`
 
@@ -299,10 +333,12 @@ $ curl -s localhost:7331/health
 
 ### Connecting to AI agents
 
+All MCP clients connect to `http://127.0.0.1:7331/mcp` (the Streamable HTTP endpoint). The REST endpoints above are available for custom integrations that don't speak MCP.
+
 See the [Agent Integration](@/docs/guides/agent-integration.md) guide for step-by-step setup with:
 
-- **Cursor** — workspace-level or global MCP config
-- **Claude Desktop** — automatic server launch or external URL
-- **Continue.dev** — context provider or MCP server
-- **OpenClaw / Open Interpreter** — HTTP tool calling
+- **Cursor** — workspace-level or global MCP config → `http://127.0.0.1:7331/mcp`
+- **Claude Desktop** — MCP server URL → `http://127.0.0.1:7331/mcp`
+- **Continue.dev** — MCP server or REST context provider
+- **OpenClaw / Open Interpreter** — HTTP tool calling (REST API)
 - **Custom agents** — any language, any framework

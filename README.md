@@ -87,19 +87,19 @@ ctx serve mcp --config ./config/ctx.toml
 ```
 
 The server exposes:
-- `POST /tools/search` — context.search
-- `POST /tools/get` — context.get
-- `GET /tools/sources` — context.sources
+- `/mcp` — MCP Streamable HTTP endpoint (JSON-RPC for Cursor, Claude, etc.)
+- `POST /tools/search` — context.search (REST)
+- `POST /tools/get` — context.get (REST)
+- `GET /tools/sources` — context.sources (REST)
 - `GET /health` — health check
 
-**Cursor integration** — add to your MCP config:
+**Cursor integration** — start the server, then add to `.cursor/mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "context-harness": {
-      "command": "ctx",
-      "args": ["--config", "/path/to/ctx.toml", "serve", "mcp"]
+      "url": "http://127.0.0.1:7331/mcp"
     }
   }
 }
@@ -138,13 +138,17 @@ Connectors → Normalization → Chunking → Embedding → SQLite Store → Que
 
 ## HTTP API
 
-All endpoints return JSON matching the schemas in [`docs/SCHEMAS.md`](docs/SCHEMAS.md).
+The server exposes an MCP Streamable HTTP endpoint and REST endpoints. All REST endpoints return JSON matching the schemas in [`docs/SCHEMAS.md`](docs/SCHEMAS.md).
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/tools/search` | Search indexed documents |
-| POST | `/tools/get` | Retrieve a document by ID |
-| GET | `/tools/sources` | List connector status |
+| POST | `/mcp` | MCP Streamable HTTP endpoint (JSON-RPC for Cursor, Claude, etc.) |
+| POST | `/tools/search` | Search indexed documents (REST) |
+| POST | `/tools/get` | Retrieve a document by ID (REST) |
+| GET | `/tools/list` | List all registered tools (REST) |
+| GET | `/tools/sources` | List connector status (REST) |
+| GET | `/agents/list` | List all registered agents (REST) |
+| POST | `/agents/{name}/prompt` | Resolve agent prompt (REST) |
 | GET | `/health` | Health check |
 
 Errors follow a consistent format:

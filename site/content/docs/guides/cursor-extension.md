@@ -25,6 +25,8 @@ Most AI coding assistants only see the files currently open in your editor. Cont
 
 ### Cursor setup
 
+Start the server first: `ctx serve mcp --config ./config/ctx.toml`
+
 #### Option 1: Workspace-level MCP (recommended)
 
 Create `.cursor/mcp.json` in your project root:
@@ -33,7 +35,7 @@ Create `.cursor/mcp.json` in your project root:
 {
   "mcpServers": {
     "context-harness": {
-      "url": "http://localhost:7331"
+      "url": "http://127.0.0.1:7331/mcp"
     }
   }
 }
@@ -48,26 +50,9 @@ Open **Cursor Settings** → **MCP** → **Add Server**:
 | Field | Value |
 |-------|-------|
 | Name | `context-harness` |
-| URL | `http://localhost:7331` |
+| URL | `http://127.0.0.1:7331/mcp` |
 
 This makes Context Harness available in *every* Cursor workspace.
-
-#### Option 3: Auto-launch the server
-
-If you don't want to manage the server manually, use the `command` mode:
-
-```json
-{
-  "mcpServers": {
-    "context-harness": {
-      "command": "ctx",
-      "args": ["serve", "mcp", "--config", "./config/ctx.toml"]
-    }
-  }
-}
-```
-
-Cursor will start the server automatically when you open the workspace.
 
 ### What Cursor can do with Context Harness
 
@@ -160,7 +145,7 @@ In each repo's `.cursor/mcp.json`:
 {
   "mcpServers": {
     "org-context": {
-      "url": "http://localhost:7331"
+      "url": "http://127.0.0.1:7331/mcp"
     }
   }
 }
@@ -193,7 +178,7 @@ cd ~/ctx-workspace && ctx sync all --config ./config/ctx.toml &
 
 ### Claude Desktop
 
-Claude Desktop supports MCP servers through its config file.
+Claude Desktop supports MCP servers through its config file. Start the server first (`ctx serve mcp`), then point Claude at the `/mcp` endpoint.
 
 **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
 
@@ -201,14 +186,11 @@ Claude Desktop supports MCP servers through its config file.
 {
   "mcpServers": {
     "context-harness": {
-      "command": "ctx",
-      "args": ["serve", "mcp", "--config", "/Users/you/ctx-workspace/config/ctx.toml"]
+      "url": "http://127.0.0.1:7331/mcp"
     }
   }
 }
 ```
-
-Claude will launch the server automatically when it starts.
 
 ### Continue.dev (VS Code / JetBrains)
 
@@ -221,14 +203,14 @@ Claude will launch the server automatically when it starts.
     "mcpServers": [
       {
         "name": "context-harness",
-        "url": "http://localhost:7331"
+        "url": "http://127.0.0.1:7331/mcp"
       }
     ]
   }
 }
 ```
 
-Or use Continue's context provider API for tighter integration:
+Or use Continue's context provider API for tighter integration (this uses the REST API, not MCP):
 
 ```json
 {
@@ -254,7 +236,7 @@ For Windsurf (Codeium's IDE), add Context Harness as an MCP server:
 {
   "mcpServers": {
     "context-harness": {
-      "serverUrl": "http://localhost:7331"
+      "serverUrl": "http://127.0.0.1:7331/mcp"
     }
   }
 }
@@ -262,14 +244,14 @@ For Windsurf (Codeium's IDE), add Context Harness as an MCP server:
 
 ### Zed
 
-Zed supports context servers through its extensions system. Use the HTTP API directly:
+Zed supports context servers through its extensions system:
 
 ```json
 // settings.json
 {
   "context_servers": {
     "context-harness": {
-      "url": "http://localhost:7331"
+      "url": "http://127.0.0.1:7331/mcp"
     }
   }
 }

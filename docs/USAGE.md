@@ -245,12 +245,13 @@ ctx serve mcp
 
 Required behavior:
 - Bind to `[server].bind` address
-- Expose endpoints per SCHEMAS.md:
+- Expose MCP Streamable HTTP endpoint at `/mcp` (JSON-RPC for Cursor, Claude, etc.)
+- Expose REST endpoints per SCHEMAS.md:
   - `POST /tools/search` — context.search
   - `POST /tools/get` — context.get
   - `GET /tools/sources` — context.sources
   - `GET /health` — health check
-- All responses must match SCHEMAS.md exactly
+- All REST responses must match SCHEMAS.md exactly
 - All errors must follow error schema
 - CORS enabled for cross-origin requests
 
@@ -260,12 +261,16 @@ Required behavior:
 
 See [SCHEMAS.md](SCHEMAS.md) for complete request/response schemas.
 
-| Method | Path | Tool | Description |
-|--------|------|------|-------------|
-| POST | /tools/search | context.search | Search indexed documents |
-| POST | /tools/get | context.get | Retrieve a document by ID |
-| GET | /tools/sources | context.sources | List connector status |
-| GET | /health | — | Health check |
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | /mcp | MCP Streamable HTTP endpoint (JSON-RPC for Cursor, Claude, etc.) |
+| POST | /tools/search | Search indexed documents (REST) |
+| POST | /tools/get | Retrieve a document by ID (REST) |
+| GET | /tools/sources | List connector status (REST) |
+| GET | /tools/list | List all registered tools (REST) |
+| GET | /agents/list | List all registered agents (REST) |
+| POST | /agents/{name}/prompt | Resolve agent prompt (REST) |
+| GET | /health | Health check |
 
 ---
 
