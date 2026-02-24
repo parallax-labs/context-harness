@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}Tags — Context Harness Blog{% endblock %}
+
+{% block body %}
+<nav class="fixed top-0 left-0 right-0 z-50 h-14 bg-bg/90 backdrop-blur-xl border-b border-border flex items-center px-6">
+    <div class="w-full max-w-[1400px] mx-auto flex items-center justify-between">
+        <div class="flex items-center gap-4">
+            <a href="{{ get_url(path='/') }}" class="flex items-center gap-2 text-gray-200 font-bold text-base hover:text-gray-200 no-underline">⚡ Context Harness</a>
+            <span class="text-muted text-lg font-light">/</span>
+            <a href="{{ get_url(path='@/blog/_index.md') }}" class="text-dim text-sm font-medium hover:text-gray-200 no-underline">Blog</a>
+            <span class="text-muted text-lg font-light">/</span>
+            <span class="text-dim text-sm font-medium">Tags</span>
+        </div>
+        <div class="flex items-center gap-5">
+            <a href="{{ get_url(path='@/docs/_index.md') }}" class="text-dim text-[13px] font-medium hover:text-gray-200 no-underline">Docs</a>
+            <a href="{{ get_url(path='@/blog/_index.md') }}" class="text-dim text-[13px] font-medium hover:text-gray-200 no-underline">Blog</a>
+        </div>
+    </div>
+</nav>
+
+<div style="max-width: 780px; margin: 0 auto; padding: 100px 24px 120px;">
+    <h1 style="font-size: 36px; font-weight: 800; margin-bottom: 32px;">Tags</h1>
+    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+        {% for term in terms %}
+        <a href="{{ term.permalink }}"
+           style="padding: 8px 16px; border-radius: 100px; font-size: 14px;
+                  background: rgba(79, 143, 255, 0.1); color: #4f8fff; border: 1px solid rgba(79, 143, 255, 0.2);
+                  text-decoration: none; font-family: 'JetBrains Mono', monospace; transition: all 0.15s;">
+            {{ term.name }} <span style="color: #55556a; margin-left: 4px;">{{ term.pages | length }}</span>
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

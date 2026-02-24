@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}{{ term.name }} — Context Harness Blog{% endblock %}
+
+{% block head_extra %}
+<style>
+    .blog-card {
+        display: block; padding: 28px 32px;
+        background: #12121a; border: 1px solid #1e1e2e; border-radius: 12px;
+        transition: all 0.2s; text-decoration: none;
+    }
+    .blog-card:hover {
+        border-color: #2a2a3a; background: #1a1a25; transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.3); text-decoration: none;
+    }
+    .blog-card-meta {
+        font-size: 12px; color: #55556a; margin-bottom: 8px;
+    }
+    .blog-card h2 {
+        font-size: 20px; font-weight: 700; color: #e4e4ec; margin-bottom: 6px;
+    }
+    .blog-card p {
+        font-size: 14px; color: #8888a0; line-height: 1.7; margin: 0;
+    }
+</style>
+{% endblock %}
+
+{% block body %}
+<nav class="fixed top-0 left-0 right-0 z-50 h-14 bg-bg/90 backdrop-blur-xl border-b border-border flex items-center px-6">
+    <div class="w-full max-w-[1400px] mx-auto flex items-center justify-between">
+        <div class="flex items-center gap-4">
+            <a href="{{ get_url(path='/') }}" class="flex items-center gap-2 text-gray-200 font-bold text-base hover:text-gray-200 no-underline">⚡ Context Harness</a>
+            <span class="text-muted text-lg font-light">/</span>
+            <a href="{{ get_url(path='@/blog/_index.md') }}" class="text-dim text-sm font-medium hover:text-gray-200 no-underline">Blog</a>
+            <span class="text-muted text-lg font-light">/</span>
+            <span class="text-dim text-sm font-medium">{{ term.name }}</span>
+        </div>
+        <div class="flex items-center gap-5">
+            <a href="{{ get_url(path='@/docs/_index.md') }}" class="text-dim text-[13px] font-medium hover:text-gray-200 no-underline">Docs</a>
+            <a href="{{ get_url(path='@/blog/_index.md') }}" class="text-dim text-[13px] font-medium hover:text-gray-200 no-underline">Blog</a>
+        </div>
+    </div>
+</nav>
+
+<div style="max-width: 780px; margin: 0 auto; padding: 100px 24px 120px;">
+    <h1 style="font-size: 36px; font-weight: 800; margin-bottom: 8px;">{{ term.name }}</h1>
+    <p style="color: #55556a; font-size: 15px; margin-bottom: 32px;">{{ term.pages | length }} post{{ term.pages | length | pluralize }}</p>
+
+    <div style="display: flex; flex-direction: column; gap: 16px;">
+        {% for page in term.pages %}
+        <a class="blog-card" href="{{ page.permalink }}">
+            <div class="blog-card-meta">{{ page.date | date(format="%B %d, %Y") }}</div>
+            <h2>{{ page.title }}</h2>
+            <p>{{ page.description }}</p>
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
