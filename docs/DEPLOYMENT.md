@@ -309,7 +309,9 @@ Context Harness can serve as a context provider for Cursor, Claude, and other MC
 
 ### Setup
 
-1. **Build and install** the `ctx` binary:
+1. **Install** the `ctx` binary:
+
+Download a pre-built binary from [GitHub Releases](https://github.com/parallax-labs/context-harness/releases/latest), or build from source:
 
 ```bash
 cargo install --path .

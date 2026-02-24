@@ -22,6 +22,32 @@ Context Harness is a generalized framework for ingesting external knowledge sour
 
 ### 1. Install
 
+**Pre-built binaries** (recommended):
+
+Download the latest release for your platform from [GitHub Releases](https://github.com/parallax-labs/context-harness/releases/latest):
+
+```bash
+# macOS (Apple Silicon)
+curl -L https://github.com/parallax-labs/context-harness/releases/latest/download/ctx-macos-aarch64.tar.gz | tar xz
+sudo mv ctx /usr/local/bin/
+
+# macOS (Intel)
+curl -L https://github.com/parallax-labs/context-harness/releases/latest/download/ctx-macos-x86_64.tar.gz | tar xz
+sudo mv ctx /usr/local/bin/
+
+# Linux (x86_64)
+curl -L https://github.com/parallax-labs/context-harness/releases/latest/download/ctx-linux-x86_64.tar.gz | tar xz
+sudo mv ctx /usr/local/bin/
+
+# Linux (aarch64)
+curl -L https://github.com/parallax-labs/context-harness/releases/latest/download/ctx-linux-aarch64.tar.gz | tar xz
+sudo mv ctx /usr/local/bin/
+```
+
+Windows: download `ctx-windows-x86_64.zip` from the releases page and add `ctx.exe` to your PATH.
+
+**From source:**
+
 ```bash
 cargo install --path .
 ```

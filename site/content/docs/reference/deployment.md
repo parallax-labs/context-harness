@@ -29,10 +29,11 @@ Build a minimal Docker image with all your config, connectors, tools, and agents
 
 ```dockerfile
 # Dockerfile
-FROM rust:1.82-slim AS builder
+FROM rust:1-slim AS builder
 WORKDIR /build
 RUN apt-get update && apt-get install -y git pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
-RUN cargo install --git https://github.com/parallax-labs/context-harness
+COPY . .
+RUN cargo install --path .
 
 FROM debian:bookworm-slim
 RUN apt-get update && \
