@@ -160,33 +160,31 @@ impl ServerHandler for McpBridge {
         self.find_tool(name).map(Self::to_mcp_tool)
     }
 
-    fn call_tool(
+    async fn call_tool(
         &self,
         request: CallToolRequestParams,
         _context: rmcp::service::RequestContext<rmcp::RoleServer>,
-    ) -> impl std::future::Future<Output = Result<CallToolResult, McpError>> + Send + '_ {
-        async move {
-            let tool = self.find_tool(&request.name).ok_or_else(|| {
-                McpError::new(
-                    ErrorCode::METHOD_NOT_FOUND,
-                    format!("no tool registered with name: {}", request.name),
-                    None,
-                )
-            })?;
+    ) -> Result<CallToolResult, McpError> {
+        let tool = self.find_tool(&request.name).ok_or_else(|| {
+            McpError::new(
+                ErrorCode::METHOD_NOT_FOUND,
+                format!("no tool registered with name: {}", request.name),
+                None,
+            )
+        })?;
 
-            let params = request
-                .arguments
-                .map(serde_json::Value::Object)
-                .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
+        let params = request
+            .arguments
+            .map(serde_json::Value::Object)
+            .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
 
-            let ctx = ToolContext::new(self.config.clone());
-            match tool.execute(params, &ctx).await {
-                Ok(result) => {
-                    let text = serde_json::to_string_pretty(&result).unwrap_or_default();
-                    Ok(CallToolResult::success(vec![Content::text(text)]))
-                }
-                Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+        let ctx = ToolContext::new(self.config.clone());
+        match tool.execute(params, &ctx).await {
+            Ok(result) => {
+                let text = serde_json::to_string_pretty(&result).unwrap_or_default();
+                Ok(CallToolResult::success(vec![Content::text(text)]))
             }
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
         }
     }
 
@@ -209,57 +207,55 @@ impl ServerHandler for McpBridge {
         std::future::ready(Ok(ListPromptsResult::with_all_items(prompts)))
     }
 
-    fn get_prompt(
+    async fn get_prompt(
         &self,
         request: GetPromptRequestParams,
         _context: rmcp::service::RequestContext<rmcp::RoleServer>,
-    ) -> impl std::future::Future<Output = Result<GetPromptResult, McpError>> + Send + '_ {
-        async move {
-            let agent = self.find_agent(&request.name).ok_or_else(|| {
-                McpError::new(
-                    ErrorCode::METHOD_NOT_FOUND,
-                    format!("no agent registered with name: {}", request.name),
-                    None,
-                )
-            })?;
+    ) -> Result<GetPromptResult, McpError> {
+        let agent = self.find_agent(&request.name).ok_or_else(|| {
+            McpError::new(
+                ErrorCode::METHOD_NOT_FOUND,
+                format!("no agent registered with name: {}", request.name),
+                None,
+            )
+        })?;
 
-            let args = request
-                .arguments
-                .map(serde_json::Value::Object)
-                .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
+        let args = request
+            .arguments
+            .map(serde_json::Value::Object)
+            .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
 
-            let ctx = ToolContext::new(self.config.clone());
-            let resolved = agent.resolve(args, &ctx).await.map_err(|e| {
-                McpError::new(
-                    ErrorCode::INTERNAL_ERROR,
-                    format!("agent '{}': {}", request.name, e),
-                    None,
-                )
-            })?;
+        let ctx = ToolContext::new(self.config.clone());
+        let resolved = agent.resolve(args, &ctx).await.map_err(|e| {
+            McpError::new(
+                ErrorCode::INTERNAL_ERROR,
+                format!("agent '{}': {}", request.name, e),
+                None,
+            )
+        })?;
 
-            let mut messages: Vec<PromptMessage> = Vec::new();
+        let mut messages: Vec<PromptMessage> = Vec::new();
 
-            // System prompt as a user-role message (MCP prompts don't have a
-            // system role, so we prepend it as user context).
-            if !resolved.system.is_empty() {
-                messages.push(PromptMessage::new_text(
-                    PromptMessageRole::User,
-                    &resolved.system,
-                ));
-            }
-
-            for msg in &resolved.messages {
-                let role = match msg.role.as_str() {
-                    "assistant" => PromptMessageRole::Assistant,
-                    _ => PromptMessageRole::User,
-                };
-                messages.push(PromptMessage::new_text(role, &msg.content));
-            }
-
-            Ok(GetPromptResult {
-                description: Some(agent.description().to_string()),
-                messages,
-            })
+        // System prompt as a user-role message (MCP prompts don't have a
+        // system role, so we prepend it as user context).
+        if !resolved.system.is_empty() {
+            messages.push(PromptMessage::new_text(
+                PromptMessageRole::User,
+                &resolved.system,
+            ));
         }
+
+        for msg in &resolved.messages {
+            let role = match msg.role.as_str() {
+                "assistant" => PromptMessageRole::Assistant,
+                _ => PromptMessageRole::User,
+            };
+            messages.push(PromptMessage::new_text(role, &msg.content));
+        }
+
+        Ok(GetPromptResult {
+            description: Some(agent.description().to_string()),
+            messages,
+        })
     }
 }
