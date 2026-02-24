@@ -38,14 +38,13 @@
 //!
 //! # Cursor Integration
 //!
-//! Add the following to your Cursor MCP configuration:
+//! Start the server and point Cursor at the `/mcp` endpoint:
 //!
 //! ```json
 //! {
 //!   "mcpServers": {
 //!     "context-harness": {
-//!       "command": "ctx",
-//!       "args": ["--config", "/path/to/ctx.toml", "serve", "mcp"]
+//!       "url": "http://127.0.0.1:7331/mcp"
 //!     }
 //!   }
 //! }
@@ -58,6 +57,9 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use rmcp::transport::streamable_http_server::{
+    session::local::LocalSessionManager, StreamableHttpService,
+};
 use serde::Serialize;
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
@@ -65,6 +67,7 @@ use tower_http::cors::{Any, CorsLayer};
 use crate::agent_script::{load_agent_definitions, LuaAgentAdapter};
 use crate::agents::{AgentInfo, AgentRegistry};
 use crate::config::Config;
+use crate::mcp::McpBridge;
 use crate::tool_script::{load_tool_definitions, validate_params, LuaToolAdapter, ToolInfo};
 use crate::traits::{ToolContext, ToolRegistry};
 
@@ -192,13 +195,34 @@ pub async fn run_server_with_extensions(
         }
     }
 
+    let tools = Arc::new(tool_registry);
+    let agents = Arc::new(agent_registry);
+
     let state = AppState {
-        config,
-        tools: Arc::new(tool_registry),
-        agents: Arc::new(agent_registry),
+        config: config.clone(),
+        tools: tools.clone(),
+        agents: agents.clone(),
     };
 
-    let extra_state = (extra_tools, extra_agents);
+    // MCP Streamable HTTP endpoint at /mcp — clone before moving into extra_state
+    let mcp_tools = tools.clone();
+    let mcp_extra = extra_tools.clone();
+    let mcp_agents = agents.clone();
+    let mcp_extra_agents = extra_agents.clone();
+    let mcp_config = config.clone();
+
+    let extra_state = (extra_tools.clone(), extra_agents);
+    let mcp_service = StreamableHttpService::new(
+        move || Ok(McpBridge::new(
+            mcp_config.clone(),
+            mcp_tools.clone(),
+            mcp_extra.clone(),
+            mcp_agents.clone(),
+            mcp_extra_agents.clone(),
+        )),
+        Arc::new(LocalSessionManager::default()),
+        Default::default(),
+    );
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -211,10 +235,12 @@ pub async fn run_server_with_extensions(
         .route("/agents/list", get(handle_list_agents))
         .route("/agents/{name}/prompt", post(handle_resolve_agent))
         .route("/health", get(handle_health))
-        .layer(cors)
-        .with_state((state, extra_state));
+        .with_state((state, extra_state))
+        .nest_service("/mcp", mcp_service)
+        .layer(cors);
 
     println!("MCP server listening on http://{}", bind_addr);
+    println!("  MCP endpoint: http://{}/mcp", bind_addr);
 
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
     axum::serve(listener, app).await?;

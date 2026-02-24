@@ -110,6 +110,7 @@ pub mod embedding;
 pub mod get;
 pub mod ingest;
 pub mod lua_runtime;
+pub mod mcp;
 pub mod migrate;
 pub mod models;
 pub mod search;

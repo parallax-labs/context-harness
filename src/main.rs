@@ -59,6 +59,7 @@ mod embedding;
 mod get;
 mod ingest;
 mod lua_runtime;
+mod mcp;
 mod migrate;
 mod models;
 mod search;

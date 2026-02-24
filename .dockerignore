@@ -1,0 +1,8 @@
+target/
+data/
+demo/data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+.git/
+site/
