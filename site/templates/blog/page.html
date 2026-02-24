@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page.title }} — Context Harness Blog{% endblock %}
+{% block description %}{{ page.description | default(value="Context Harness blog") }}{% endblock %}
+
+{% block head_extra %}
+<style>
+    html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+
+    .post-header {
+        max-width: 780px; margin: 0 auto; padding: 100px 24px 0;
+    }
+    .post-meta {
+        font-size: 13px; color: #55556a; margin-bottom: 12px;
+        display: flex; align-items: center; gap: 12px;
+    }
+    .post-tag {
+        padding: 2px 8px; border-radius: 100px; font-size: 11px;
+        background: rgba(79, 143, 255, 0.1); color: #4f8fff;
+        font-family: 'JetBrains Mono', monospace;
+    }
+    .post-header h1 {
+        font-size: 36px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 8px;
+    }
+    .post-header .lead {
+        font-size: 17px; color: #8888a0; line-height: 1.8; margin-bottom: 0;
+    }
+
+    .post-content {
+        max-width: 780px; margin: 0 auto; padding: 40px 24px 120px;
+    }
+    .post-content h2 {
+        font-size: 22px; font-weight: 700; margin-top: 48px; margin-bottom: 12px; color: #e4e4ec;
+    }
+    .post-content h3 {
+        font-size: 17px; font-weight: 700; margin-top: 32px; margin-bottom: 10px; color: #e4e4ec;
+    }
+    .post-content p { margin-bottom: 16px; color: #8888a0; font-size: 15px; line-height: 1.8; }
+    .post-content ul, .post-content ol { margin-bottom: 16px; padding-left: 24px; color: #8888a0; font-size: 15px; }
+    .post-content li { margin-bottom: 6px; line-height: 1.7; }
+    .post-content strong { color: #e4e4ec; font-weight: 600; }
+    .post-content em { color: #6ba3ff; font-style: normal; }
+    .post-content a { color: #4f8fff; }
+    .post-content a:hover { color: #6ba3ff; text-decoration: underline; }
+    .post-content hr { border: none; border-top: 1px solid #1e1e2e; margin: 40px 0; }
+
+    .post-content code {
+        font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+        font-size: 0.88em; background: #12121a; padding: 2px 7px; border-radius: 4px;
+        color: #6ba3ff;
+    }
+    .post-content pre {
+        background: #12121a; border: 1px solid #1e1e2e;
+        border-radius: 8px; padding: 16px 20px;
+        overflow-x: auto; margin-bottom: 20px;
+        font-size: 13px; line-height: 1.75;
+    }
+    .post-content pre code { background: none; padding: 0; color: #8888a0; font-size: 13px; }
+
+    .post-content table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px; }
+    .post-content th {
+        text-align: left; padding: 10px 14px;
+        background: #12121a; border: 1px solid #1e1e2e;
+        font-weight: 600; color: #e4e4ec; font-size: 13px;
+    }
+    .post-content td { padding: 10px 14px; border: 1px solid #1e1e2e; color: #8888a0; }
+
+    .post-content blockquote {
+        padding: 16px 20px; border-radius: 8px; margin-bottom: 20px; font-size: 14px;
+        border-left: 3px solid #4f8fff; background: rgba(79, 143, 255, 0.06);
+    }
+    .post-content blockquote p { color: #8888a0; margin: 0; }
+
+    .post-footer {
+        max-width: 780px; margin: 0 auto; padding: 0 24px 80px;
+        border-top: 1px solid #1e1e2e; padding-top: 32px;
+    }
+    .post-footer a {
+        display: inline-flex; align-items: center; gap: 6px;
+        color: #4f8fff; font-size: 14px; font-weight: 600;
+    }
+</style>
+{% endblock %}
+
+{% block body %}
+<nav class="fixed top-0 left-0 right-0 z-50 h-14 bg-bg/90 backdrop-blur-xl border-b border-border flex items-center px-6">
+    <div class="w-full max-w-[1400px] mx-auto flex items-center justify-between">
+        <div class="flex items-center gap-4">
+            <a href="{{ get_url(path='/') }}" class="flex items-center gap-2 text-gray-200 font-bold text-base hover:text-gray-200 no-underline">⚡ Context Harness</a>
+            <span class="text-muted text-lg font-light">/</span>
+            <a href="{{ get_url(path='@/blog/_index.md') }}" class="text-dim text-sm font-medium hover:text-gray-200 no-underline">Blog</a>
+        </div>
+        <div class="flex items-center gap-5">
+            <a href="{{ get_url(path='@/docs/_index.md') }}" class="text-dim text-[13px] font-medium hover:text-gray-200 no-underline">Docs</a>
+            <a href="{{ get_url(path='/') }}" class="text-dim text-[13px] font-medium hover:text-gray-200 no-underline">Home</a>
+            <a href="{{ config.extra.github_url }}" class="flex items-center opacity-70 hover:opacity-100" target="_blank" rel="noopener">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+            </a>
+        </div>
+    </div>
+</nav>
+
+<article>
+    <div class="post-header">
+        <div class="post-meta">
+            <span>{{ page.date | date(format="%B %d, %Y") }}</span>
+            {% if page.taxonomies.tags %}
+                {% for tag in page.taxonomies.tags %}
+                <span class="post-tag">{{ tag }}</span>
+                {% endfor %}
+            {% endif %}
+        </div>
+        <h1>{{ page.title }}</h1>
+        {% if page.description %}
+        <p class="lead">{{ page.description }}</p>
+        {% endif %}
+    </div>
+
+    <div class="post-content">
+        {{ page.content | safe }}
+    </div>
+</article>
+
+<div class="post-footer">
+    <a href="{{ get_url(path='@/blog/_index.md') }}">← All posts</a>
+</div>
+{% endblock %}

@@ -17,6 +17,9 @@ smart_punctuation = true
 github_url = "https://github.com/parallax-labs/context-harness"
 tagline = "Local-First Context Engine for AI Tools"
 
+[[taxonomies]]
+name = "tags"
+
 [slugify]
 paths = "safe"
 
