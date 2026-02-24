@@ -13,7 +13,7 @@ Here's how to set that up in five minutes.
 
 ### The idea
 
-1. A Lua connector parses Dave's WordPress XML export into individual posts (see [Recipe: Index Your WordPress Blog](/blog/index-your-wordpress-blog/))
+1. A Lua connector parses Dave's WordPress XML export into individual posts (see [Recipe: Index Your WordPress Blog](@/blog/index-your-wordpress-blog.md))
 2. An inline agent defines a persona that answers *as Dave* using only his writing
 3. Cursor (or Claude Desktop, or any MCP client) connects to the agent and Dave can chat with his own blog
 
