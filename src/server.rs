@@ -213,13 +213,15 @@ pub async fn run_server_with_extensions(
 
     let extra_state = (extra_tools.clone(), extra_agents);
     let mcp_service = StreamableHttpService::new(
-        move || Ok(McpBridge::new(
-            mcp_config.clone(),
-            mcp_tools.clone(),
-            mcp_extra.clone(),
-            mcp_agents.clone(),
-            mcp_extra_agents.clone(),
-        )),
+        move || {
+            Ok(McpBridge::new(
+                mcp_config.clone(),
+                mcp_tools.clone(),
+                mcp_extra.clone(),
+                mcp_agents.clone(),
+                mcp_extra_agents.clone(),
+            ))
+        },
         Arc::new(LocalSessionManager::default()),
         Default::default(),
     );

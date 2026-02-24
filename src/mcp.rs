@@ -48,11 +48,15 @@ impl McpBridge {
     }
 
     fn find_tool(&self, name: &str) -> Option<&dyn crate::traits::Tool> {
-        self.tools.find(name).or_else(|| self.extra_tools.find(name))
+        self.tools
+            .find(name)
+            .or_else(|| self.extra_tools.find(name))
     }
 
     fn find_agent(&self, name: &str) -> Option<&dyn crate::agents::Agent> {
-        self.agents.find(name).or_else(|| self.extra_agents.find(name))
+        self.agents
+            .find(name)
+            .or_else(|| self.extra_agents.find(name))
     }
 
     /// Convert a context-harness tool into an rmcp `Tool` descriptor.
@@ -140,7 +144,12 @@ impl ServerHandler for McpBridge {
         _request: Option<PaginatedRequestParams>,
         _context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> impl std::future::Future<Output = Result<ListToolsResult, McpError>> + Send + '_ {
-        let mut tools: Vec<Tool> = self.tools.tools().iter().map(|t| Self::to_mcp_tool(t.as_ref())).collect();
+        let mut tools: Vec<Tool> = self
+            .tools
+            .tools()
+            .iter()
+            .map(|t| Self::to_mcp_tool(t.as_ref()))
+            .collect();
         for t in self.extra_tools.tools() {
             tools.push(Self::to_mcp_tool(t.as_ref()));
         }
