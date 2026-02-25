@@ -23,20 +23,17 @@ struct SourceStats {
 pub async fn run_stats(config: &Config) -> Result<()> {
     let pool = db::connect(config).await?;
 
-    let total_docs: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM documents")
-            .fetch_one(&pool)
-            .await?;
+    let total_docs: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM documents")
+        .fetch_one(&pool)
+        .await?;
 
-    let total_chunks: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM chunks")
-            .fetch_one(&pool)
-            .await?;
+    let total_chunks: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM chunks")
+        .fetch_one(&pool)
+        .await?;
 
-    let total_embedded: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM chunk_vectors")
-            .fetch_one(&pool)
-            .await?;
+    let total_embedded: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM chunk_vectors")
+        .fetch_one(&pool)
+        .await?;
 
     let db_size = std::fs::metadata(&config.db.path)
         .map(|m| m.len())
