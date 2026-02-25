@@ -68,6 +68,7 @@ use crate::agent_script::{load_agent_definitions, LuaAgentAdapter};
 use crate::agents::{AgentInfo, AgentRegistry};
 use crate::config::Config;
 use crate::mcp::McpBridge;
+use crate::registry::RegistryManager;
 use crate::tool_script::{load_tool_definitions, validate_params, LuaToolAdapter, ToolInfo};
 use crate::traits::{ToolContext, ToolRegistry};
 
@@ -146,10 +147,35 @@ pub async fn run_server_with_extensions(
     // ── Tools ──
     let mut tool_registry = ToolRegistry::with_builtins();
 
-    // Load and register Lua tools
+    // Load and register Lua tools from config
     let lua_defs = load_tool_definitions(&config)?;
+    let configured_tool_names: Vec<String> = lua_defs.iter().map(|d| d.name.clone()).collect();
     for def in lua_defs {
         tool_registry.register(Box::new(LuaToolAdapter::new(def, config.clone())));
+    }
+
+    // Auto-discover tools from registries (lower precedence than config)
+    let reg_mgr = RegistryManager::from_config(&config);
+    for ext in reg_mgr.list_tools() {
+        if configured_tool_names.iter().any(|n| n == &ext.name) {
+            continue;
+        }
+        if !ext.script_path.exists() {
+            continue;
+        }
+        let tool_cfg = crate::config::ScriptToolConfig {
+            path: ext.script_path.clone(),
+            timeout: 30,
+            extra: toml::Table::new(),
+        };
+        match crate::tool_script::load_single_tool(&ext.name, &tool_cfg) {
+            Ok(def) => {
+                tool_registry.register(Box::new(LuaToolAdapter::new(def, config.clone())));
+            }
+            Err(e) => {
+                eprintln!("Warning: failed to load registry tool '{}': {}", ext.name, e);
+            }
+        }
     }
 
     // Print registered tools
@@ -168,10 +194,37 @@ pub async fn run_server_with_extensions(
     // ── Agents ──
     let mut agent_registry = AgentRegistry::from_config(&config)?;
 
-    // Load and register Lua agents
+    // Load and register Lua agents from config
     let lua_agents = load_agent_definitions(&config)?;
+    let configured_agent_names: Vec<String> = lua_agents.iter().map(|d| d.name.clone()).collect();
     for def in lua_agents {
         agent_registry.register(Box::new(LuaAgentAdapter::new(def, config.clone())));
+    }
+
+    // Auto-discover agents from registries (lower precedence than config)
+    for ext in reg_mgr.list_agents() {
+        if configured_agent_names.iter().any(|n| n == &ext.name) {
+            continue;
+        }
+        if !ext.script_path.exists() {
+            continue;
+        }
+        if ext.script_path.extension().map_or(false, |e| e == "lua") {
+            let agent_cfg = crate::config::ScriptAgentConfig {
+                path: ext.script_path.clone(),
+                timeout: 30,
+                extra: toml::Table::new(),
+            };
+            match crate::agent_script::load_single_agent(&ext.name, &agent_cfg) {
+                Ok(def) => {
+                    agent_registry
+                        .register(Box::new(LuaAgentAdapter::new(def, config.clone())));
+                }
+                Err(e) => {
+                    eprintln!("Warning: failed to load registry agent '{}': {}", ext.name, e);
+                }
+            }
+        }
     }
 
     let agent_count = agent_registry.len() + extra_agents.len();

@@ -62,6 +62,7 @@ mod ingest;
 mod lua_runtime;
 mod mcp;
 mod migrate;
+mod registry;
 mod models;
 mod search;
 mod server;
@@ -242,6 +243,15 @@ enum Commands {
         action: AgentAction,
     },
 
+    /// Manage extension registries (community connectors, tools, agents).
+    ///
+    /// Install, update, search, and scaffold config entries for extensions
+    /// from Git-backed registries.
+    Registry {
+        #[command(subcommand)]
+        action: RegistryAction,
+    },
+
     /// Generate shell completions for bash, zsh, or fish.
     ///
     /// Prints completion script to stdout. Redirect to the appropriate
@@ -371,6 +381,55 @@ enum AgentAction {
     },
 }
 
+/// Registry management subcommands.
+#[derive(Subcommand)]
+enum RegistryAction {
+    /// List configured registries and available extensions.
+    List,
+    /// Install (clone) configured registries.
+    ///
+    /// Clones git-backed registries that aren't yet present on disk.
+    Install {
+        /// Specific registry name, or all if omitted.
+        name: Option<String>,
+    },
+    /// Update (git pull) registries.
+    ///
+    /// Pulls the latest changes for git-backed registries. Skips registries
+    /// with uncommitted changes.
+    Update {
+        /// Specific registry name, or all if omitted.
+        name: Option<String>,
+    },
+    /// Search extensions by name, tag, or description.
+    Search {
+        /// Search query (matches against name, description, and tags).
+        query: String,
+    },
+    /// Show details for a specific extension.
+    Info {
+        /// Extension identifier (e.g. `connectors/jira`, `tools/summarize`).
+        extension: String,
+    },
+    /// Scaffold a config entry for an extension in ctx.toml.
+    ///
+    /// Reads the extension's `config.example.toml` (if present) and appends
+    /// a ready-to-fill section to your config file.
+    Add {
+        /// Extension identifier (e.g. `connectors/jira`, `tools/summarize`).
+        extension: String,
+    },
+    /// Copy an extension to a writable registry for customization.
+    ///
+    /// Creates a local override that takes precedence over the original.
+    Override {
+        /// Extension identifier (e.g. `connectors/jira`).
+        extension: String,
+    },
+    /// Install the community extension registry (first-run setup).
+    Init,
+}
+
 /// Parse a `key=value` pair for `--param` arguments.
 fn parse_key_val(s: &str) -> Result<(String, String), String> {
     let pos = s
@@ -427,6 +486,28 @@ async fn main() -> anyhow::Result<()> {
             agent_script::scaffold_agent(name)?;
             return Ok(());
         }
+        Commands::Registry {
+            action: RegistryAction::Init,
+        } => {
+            registry::cmd_init_community(&cli.config)?;
+            return Ok(());
+        }
+        Commands::Registry {
+            action: RegistryAction::Install { ref name },
+        } => {
+            let cfg =
+                config::load_config(&cli.config).unwrap_or_else(|_| config::Config::minimal());
+            registry::cmd_install(&cfg, name.as_deref())?;
+            return Ok(());
+        }
+        Commands::Registry {
+            action: RegistryAction::Update { ref name },
+        } => {
+            let cfg =
+                config::load_config(&cli.config).unwrap_or_else(|_| config::Config::minimal());
+            registry::cmd_update(&cfg, name.as_deref())?;
+            return Ok(());
+        }
         Commands::Tool {
             action: ToolAction::Test { path, source, .. },
         } if source.is_none() => {
@@ -455,6 +536,20 @@ async fn main() -> anyhow::Result<()> {
         Commands::Init => {
             migrate::run_migrations(&cfg).await?;
             println!("Database initialized successfully.");
+
+            // Offer to install the community registry if not already configured
+            if cfg.registries.is_empty() && atty::is(atty::Stream::Stdin) {
+                eprint!("Would you like to install the community extension registry? [Y/n] ");
+                let mut input = String::new();
+                if std::io::stdin().read_line(&mut input).is_ok() {
+                    let answer = input.trim().to_lowercase();
+                    if answer.is_empty() || answer == "y" || answer == "yes" {
+                        if let Err(e) = registry::cmd_init_community(&cli.config) {
+                            eprintln!("Warning: failed to install community registry: {}", e);
+                        }
+                    }
+                }
+            }
         }
         Commands::Stats => {
             stats::run_stats(&cfg).await?;
@@ -530,6 +625,26 @@ async fn main() -> anyhow::Result<()> {
         Commands::Export { output } => {
             export::run_export(&cfg, output.as_deref()).await?;
         }
+        Commands::Registry { action } => match action {
+            RegistryAction::List => {
+                registry::cmd_list(&cfg);
+            }
+            RegistryAction::Search { query } => {
+                registry::cmd_search(&cfg, &query);
+            }
+            RegistryAction::Info { extension } => {
+                registry::cmd_info(&cfg, &extension)?;
+            }
+            RegistryAction::Add { extension } => {
+                registry::cmd_add(&cfg, &extension, &cli.config)?;
+            }
+            RegistryAction::Override { extension } => {
+                registry::cmd_override(&cfg, &extension)?;
+            }
+            RegistryAction::Install { .. } | RegistryAction::Update { .. } | RegistryAction::Init => {
+                unreachable!()
+            }
+        },
         Commands::Completions { .. } => unreachable!(),
         Commands::Agent { action } => match action {
             AgentAction::List => {

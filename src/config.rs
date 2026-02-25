@@ -84,6 +84,9 @@ pub struct Config {
     /// Agent configurations (all optional).
     #[serde(default)]
     pub agents: AgentsConfig,
+    /// Extension registry configurations (all optional).
+    #[serde(default)]
+    pub registries: HashMap<String, RegistryConfig>,
 }
 
 impl Config {
@@ -114,6 +117,7 @@ impl Config {
             connectors: ConnectorsConfig::default(),
             tools: ToolsConfig::default(),
             agents: AgentsConfig::default(),
+            registries: HashMap::new(),
         }
     }
 }
@@ -489,6 +493,41 @@ pub struct ScriptAgentConfig {
 
 fn default_agent_timeout() -> u64 {
     30
+}
+
+/// Extension registry configuration.
+///
+/// Points to a local directory (optionally backed by a Git repository)
+/// containing Lua connector, tool, and agent scripts described by a
+/// `registry.toml` manifest.
+///
+/// # Example
+///
+/// ```toml
+/// [registries.community]
+/// url = "https://github.com/context-harness/registry.git"
+/// branch = "main"
+/// path = "~/.ctx/registries/community"
+/// readonly = true
+/// auto_update = true
+/// ```
+#[derive(Debug, Deserialize, Clone)]
+pub struct RegistryConfig {
+    /// Git repository URL to clone from. `None` means local-only (no git).
+    pub url: Option<String>,
+    /// Git branch or tag to track. Default: `"main"`.
+    pub branch: Option<String>,
+    /// Local filesystem path where the registry is (or will be) stored.
+    pub path: PathBuf,
+    /// If `true`, extensions on this path cannot be edited in place;
+    /// overrides are copied to a writable registry.
+    #[serde(default)]
+    pub readonly: bool,
+    /// If `true`, `ctx registry update` (and optionally `ctx sync`) will
+    /// `git pull` this registry automatically.
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub auto_update: bool,
 }
 
 /// Filesystem connector configuration.

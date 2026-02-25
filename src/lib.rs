@@ -115,6 +115,7 @@ pub mod ingest;
 pub mod lua_runtime;
 pub mod mcp;
 pub mod migrate;
+pub mod registry;
 pub mod models;
 pub mod search;
 pub mod server;

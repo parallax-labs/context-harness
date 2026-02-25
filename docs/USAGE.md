@@ -322,6 +322,72 @@ Required behavior:
 
 ---
 
+### 13. registry
+
+Manage extension registries — community connectors, tools, and agents hosted in Git repositories.
+
+```bash
+ctx registry list                         # show registries and extensions
+ctx registry install [name]               # clone configured registries
+ctx registry update [name]                # git pull registries
+ctx registry search <query>               # search extensions by name/tag/description
+ctx registry info <type/name>             # show extension details
+ctx registry add <type/name>              # scaffold config entry in ctx.toml
+ctx registry override <type/name>         # copy extension to writable registry
+ctx registry init                         # install the community registry
+```
+
+Required behavior:
+- `list` — load all configured registries, print extensions grouped by type with source registry
+- `install` — shallow clone git-backed registries that aren't yet present on disk
+- `update` — `git pull --ff-only` on git-backed registries; skip dirty working trees
+- `search` — case-insensitive match against extension name, description, and tags
+- `info` — print description, tags, required config, and README if present
+- `add` — append a `[connectors.script.<name>]`, `[tools.script.<name>]`, or `[agents.script.<name>]` section to the config file using `config.example.toml` from the extension directory
+- `override` — copy extension directory from a readonly registry to the first writable registry
+- `init` — clone the community registry and add `[registries.community]` to config
+
+### Registry Configuration
+
+```toml
+[registries.community]
+url = "https://github.com/context-harness/registry.git"
+branch = "main"
+path = "~/.ctx/registries/community"
+readonly = true
+auto_update = true
+
+[registries.company]
+url = "git@github.com:myorg/ctx-extensions.git"
+branch = "main"
+path = "~/.ctx/registries/company"
+readonly = true
+auto_update = true
+
+[registries.personal]
+path = "~/.ctx/extensions"
+readonly = false
+```
+
+Registry fields:
+- `url` — Git repository URL (optional; omit for local-only registries)
+- `branch` — Git branch or tag to track (default: `"main"`)
+- `path` — Local filesystem path where the registry is stored
+- `readonly` — If `true`, extensions cannot be edited in place
+- `auto_update` — If `true`, registries are pulled during updates
+
+### `.ctx/` Project-Local Extensions
+
+A `.ctx/` directory in the current working directory (or any ancestor) is auto-discovered as a project-local registry with the highest precedence. No config entry needed.
+
+### Extension Auto-Discovery
+
+Tools and agents from registries are **auto-discovered** at server startup — they appear in `GET /tools/list` and `GET /agents/list` without explicit config entries.
+
+Connectors from registries require explicit activation via `ctx registry add` because they need credentials.
+
+---
+
 ## HTTP Endpoints
 
 See [SCHEMAS.md](SCHEMAS.md) for complete request/response schemas.
