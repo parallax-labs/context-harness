@@ -42,7 +42,7 @@ path = "connectors/wordpress.lua"
 file = "wordpress-export.xml"
 
 # ── Agent: chat with Dave ────────────────────────────────────
-[agents.dave]
+[agents.inline.dave]
 description = "Chat with Dave — answers based on his published blog posts"
 tools = ["search", "get"]
 system_prompt = """

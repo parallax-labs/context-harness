@@ -52,11 +52,11 @@ A plain system prompt doesn't:
 ```
 ctx.toml / agents/*.lua          HTTP Server / MCP
 ┌────────────────────┐           ┌─────────────────────────────┐
-│ [agents.reviewer]  │           │ GET  /agents/list           │
+│ [agents.inline.*]  │           │ GET  /agents/list           │
 │ system_prompt = .. │──────────▶│ POST /agents/{name}/prompt  │
 │ tools = [search..] │           │ GET  /prompts/list (MCP)    │
 │                    │           │ POST /prompts/get  (MCP)    │
-│ [agents.architect] │           └─────────────────────────────┘
+│ [agents.script.*]  │           └─────────────────────────────┘
 │ path = "agents/..  │                       │
 │ .lua"              │                       ▼
 └────────────────────┘           ┌─────────────────────────────┐
@@ -103,7 +103,7 @@ ctx.toml / agents/*.lua          HTTP Server / MCP
 For agents with fixed system prompts and tool lists:
 
 ```toml
-[agents.code-reviewer]
+[agents.inline.code-reviewer]
 description = "Reviews code changes against project conventions"
 tools = ["search", "get"]
 system_prompt = """
@@ -116,7 +116,7 @@ You are a senior code reviewer for this project. When reviewing code:
 Always ground your feedback in the project's documented standards.
 """
 
-[agents.architect]
+[agents.inline.architect]
 description = "Answers architecture questions using indexed documentation"
 tools = ["search", "get", "sources"]
 system_prompt = """
@@ -403,7 +403,7 @@ impl AgentRegistry {
 
 | Type | Source | Struct |
 |------|--------|--------|
-| TOML inline | `[agents.<name>]` in ctx.toml | `TomlAgent` |
+| TOML inline | `[agents.inline.<name>]` in ctx.toml | `TomlAgent` |
 | Lua script | `[agents.script.<name>]` in ctx.toml | `LuaAgentAdapter` |
 | Custom Rust | `registry.register(Box::new(...))` | User-defined |
 
@@ -756,7 +756,7 @@ api_token = "${JIRA_API_TOKEN}"
 
 # ── Agents (inline) ────────────────────────────
 
-[agents.code-reviewer]
+[agents.inline.code-reviewer]
 description = "Reviews code against project conventions"
 tools = ["search", "get"]
 system_prompt = """
@@ -764,7 +764,7 @@ You are a senior code reviewer. Use search to find coding
 conventions, then review the user's code against them.
 """
 
-[agents.architect]
+[agents.inline.architect]
 description = "Answers architecture questions"
 tools = ["search", "get", "sources"]
 system_prompt = """

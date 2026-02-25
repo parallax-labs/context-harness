@@ -118,7 +118,7 @@ max_pages = 10
 
 # ── Agents ───────────────────────────────────────────────────
 
-[agents.code-reviewer]
+[agents.inline.code-reviewer]
 description = "Reviews code against project conventions and patterns"
 tools = ["search", "get"]
 system_prompt = """
@@ -130,7 +130,7 @@ reviewing code:
    potential issues — not style nitpicks
 """
 
-[agents.oncall]
+[agents.inline.oncall]
 description = "Helps triage production incidents using runbooks and past issues"
 tools = ["search", "get"]
 system_prompt = """
