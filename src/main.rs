@@ -56,6 +56,7 @@ mod connector_script;
 mod db;
 mod embed_cmd;
 mod embedding;
+mod export;
 mod get;
 mod ingest;
 mod lua_runtime;
@@ -65,11 +66,13 @@ mod models;
 mod search;
 mod server;
 mod sources;
+mod stats;
 mod tool_script;
 #[allow(dead_code)]
 mod traits;
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::{generate, Shell};
 use std::path::PathBuf;
 
 /// Context Harness CLI — a local-first context ingestion and retrieval
@@ -107,6 +110,13 @@ enum Commands {
     /// (documents, chunks, checkpoints, chunks_fts, embeddings, chunk_vectors).
     /// This command is idempotent — running it multiple times is safe.
     Init,
+
+    /// Show database statistics.
+    ///
+    /// Displays document, chunk, and embedding counts with a per-source
+    /// breakdown and last sync timestamps. Useful for verifying that
+    /// syncs and embeddings completed successfully.
+    Stats,
 
     /// List available connectors and their status.
     ///
@@ -173,6 +183,10 @@ enum Commands {
         /// Maximum number of results to return.
         #[arg(long)]
         limit: Option<i64>,
+
+        /// Show scoring breakdown per result (keyword, semantic, hybrid scores and alpha).
+        #[arg(long)]
+        explain: bool,
     },
 
     /// Retrieve a document by its UUID.
@@ -226,6 +240,25 @@ enum Commands {
     Agent {
         #[command(subcommand)]
         action: AgentAction,
+    },
+
+    /// Generate shell completions for bash, zsh, or fish.
+    ///
+    /// Prints completion script to stdout. Redirect to the appropriate
+    /// file for your shell.
+    Completions {
+        /// Shell to generate completions for.
+        shell: Shell,
+    },
+
+    /// Export the search index as a JSON file for static site search.
+    ///
+    /// Exports all documents and chunks to a JSON file that can be
+    /// used with `ctx-search.js` for client-side search on static sites.
+    Export {
+        /// Output file path (defaults to stdout).
+        #[arg(short, long)]
+        output: Option<PathBuf>,
     },
 }
 
@@ -362,6 +395,11 @@ async fn main() -> anyhow::Result<()> {
 
     // Commands that don't require config
     match &cli.command {
+        Commands::Completions { shell } => {
+            let mut cmd = Cli::command();
+            generate(*shell, &mut cmd, "ctx", &mut std::io::stdout());
+            return Ok(());
+        }
         Commands::Connector {
             action: ConnectorAction::Init { name },
         } => {
@@ -418,6 +456,9 @@ async fn main() -> anyhow::Result<()> {
             migrate::run_migrations(&cfg).await?;
             println!("Database initialized successfully.");
         }
+        Commands::Stats => {
+            stats::run_stats(&cfg).await?;
+        }
         Commands::Sources => {
             sources::list_sources(&cfg)?;
         }
@@ -437,8 +478,9 @@ async fn main() -> anyhow::Result<()> {
             source,
             since,
             limit,
+            explain,
         } => {
-            search::run_search(&cfg, &query, &mode, source, since, limit).await?;
+            search::run_search(&cfg, &query, &mode, source, since, limit, explain).await?;
         }
         Commands::Get { id } => {
             get::run_get(&cfg, &id).await?;
@@ -485,6 +527,10 @@ async fn main() -> anyhow::Result<()> {
                 unreachable!()
             }
         },
+        Commands::Export { output } => {
+            export::run_export(&cfg, output.as_deref()).await?;
+        }
+        Commands::Completions { .. } => unreachable!(),
         Commands::Agent { action } => match action {
             AgentAction::List => {
                 agent_script::list_agents(&cfg)?;

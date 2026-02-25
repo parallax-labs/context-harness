@@ -1,0 +1,23 @@
+services:
+  context-harness:
+    build: .
+    ports:
+      - "7331:7331"
+    volumes:
+      - ctx-data:/app/data
+      - ./config:/app/config:ro
+      - ./connectors:/app/connectors:ro
+      - ./tools:/app/tools:ro
+      - ./agents:/app/agents:ro
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JIRA_API_TOKEN=${JIRA_API_TOKEN}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7331/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  ctx-data:

@@ -82,6 +82,8 @@
 //! | [`chunk`] | Paragraph-boundary text chunker |
 //! | [`embedding`] | Embedding provider trait, OpenAI implementation, vector utilities |
 //! | [`embed_cmd`] | Embedding CLI commands: `pending` and `rebuild` |
+//! | [`export`] | JSON export for static site search (`ctx export`) |
+//! | [`stats`] | Database statistics: document, chunk, and embedding counts |
 //! | [`ingest`] | Ingestion pipeline: connector → normalize → chunk → embed → store |
 //! | [`search`] | Keyword, semantic, and hybrid search with score normalization |
 //! | [`get`] | Document retrieval by UUID |
@@ -107,6 +109,7 @@ pub mod connector_script;
 pub mod db;
 pub mod embed_cmd;
 pub mod embedding;
+pub mod export;
 pub mod get;
 pub mod ingest;
 pub mod lua_runtime;
@@ -116,6 +119,7 @@ pub mod models;
 pub mod search;
 pub mod server;
 pub mod sources;
+pub mod stats;
 pub mod tool_script;
 pub mod traits;
 

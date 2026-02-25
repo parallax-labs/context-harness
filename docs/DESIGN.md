@@ -140,6 +140,8 @@ Guarantees:
 - `main.rs` — CLI with clap
 - `get.rs` — Document retrieval (reusable `get_document()` + CLI printer)
 - `sources.rs` — Connector listing (reusable `get_sources()` + CLI printer)
+- `stats.rs` — Database statistics (document/chunk/embedding counts, per-source breakdown)
+- `export.rs` — JSON export for static site search (`ctx export`)
 
 ---
 
@@ -164,12 +166,16 @@ Checkpoint updated
 | CLI Command | Module Responsibility |
 |-------------|----------------------|
 | init        | migrate::run_migrations() |
+| stats       | stats::run_stats() |
 | sources     | sources::list_sources() |
 | sync        | ingest::run_sync() |
 | search      | search::run_search() |
+| search --explain | search::run_search() (with explain=true) |
 | get         | get::run_get() |
 | embed pending | embed_cmd::run_embed_pending() |
 | embed rebuild | embed_cmd::run_embed_rebuild() |
+| export      | export::run_export() |
+| completions | clap_complete::generate() |
 | serve mcp   | server::run_server() |
 | connector test | connector_script::test_script() |
 | connector init | connector_script::scaffold_connector() |

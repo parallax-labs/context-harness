@@ -56,6 +56,25 @@ pub struct SearchResultItem {
     pub snippet: String,
     /// Web-browsable URL, if available.
     pub source_url: Option<String>,
+    /// Scoring breakdown (populated when `explain` is true).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub explain: Option<ScoreExplanation>,
+}
+
+/// Scoring breakdown for a search result, showing how the final
+/// hybrid score was derived from keyword and semantic signals.
+#[derive(Debug, Clone, Serialize)]
+pub struct ScoreExplanation {
+    /// Normalized keyword score (0.0 if absent from keyword candidates).
+    pub keyword_score: f64,
+    /// Normalized semantic score (0.0 if absent from vector candidates).
+    pub semantic_score: f64,
+    /// The alpha weight used: `hybrid = (1-α)*keyword + α*semantic`.
+    pub alpha: f64,
+    /// Number of keyword candidates retrieved.
+    pub keyword_candidates: usize,
+    /// Number of vector candidates retrieved.
+    pub vector_candidates: usize,
 }
 
 /// Core search function returning structured results.
@@ -71,6 +90,7 @@ pub struct SearchResultItem {
 /// * `source_filter` — Optional filter: only return results from this connector.
 /// * `since` — Optional filter: only return documents updated after this date (`YYYY-MM-DD`).
 /// * `limit` — Optional result limit (overrides `retrieval.final_limit`).
+/// * `explain` — If true, populate [`ScoreExplanation`] on each result.
 ///
 /// # Errors
 ///
@@ -84,6 +104,7 @@ pub async fn search_documents(
     source_filter: Option<&str>,
     since: Option<&str>,
     limit: Option<i64>,
+    explain: bool,
 ) -> Result<Vec<SearchResultItem>> {
     if query.trim().is_empty() {
         return Ok(Vec::new());
@@ -154,8 +175,13 @@ pub async fn search_documents(
     struct ScoredChunk {
         document_id: String,
         hybrid_score: f64,
+        keyword_score: f64,
+        semantic_score: f64,
         snippet: String,
     }
+
+    let kw_count = keyword_candidates.len();
+    let vec_count = vector_candidates.len();
 
     let mut scored_chunks: Vec<ScoredChunk> = all_chunks
         .iter()
@@ -166,6 +192,8 @@ pub async fn search_documents(
             ScoredChunk {
                 document_id: cand.document_id.clone(),
                 hybrid_score: hybrid,
+                keyword_score: k,
+                semantic_score: v,
                 snippet: cand.snippet.clone(),
             }
         })
@@ -174,6 +202,8 @@ pub async fn search_documents(
     struct DocResult {
         doc_id: String,
         doc_score: f64,
+        keyword_score: f64,
+        semantic_score: f64,
         best_snippet: String,
     }
 
@@ -191,10 +221,14 @@ pub async fn search_documents(
             .or_insert_with(|| DocResult {
                 doc_id: sc.document_id.clone(),
                 doc_score: sc.hybrid_score,
+                keyword_score: sc.keyword_score,
+                semantic_score: sc.semantic_score,
                 best_snippet: sc.snippet.clone(),
             });
         if sc.hybrid_score > entry.doc_score {
             entry.doc_score = sc.hybrid_score;
+            entry.keyword_score = sc.keyword_score;
+            entry.semantic_score = sc.semantic_score;
             entry.best_snippet = sc.snippet.clone();
         }
     }
@@ -234,6 +268,18 @@ pub async fn search_documents(
 
             let updated_at_iso = format_ts_iso(updated_at);
 
+            let explanation = if explain {
+                Some(ScoreExplanation {
+                    keyword_score: doc_result.keyword_score,
+                    semantic_score: doc_result.semantic_score,
+                    alpha: effective_alpha,
+                    keyword_candidates: kw_count,
+                    vector_candidates: vec_count,
+                })
+            } else {
+                None
+            };
+
             results.push(SearchResultItem {
                 id: row.get("id"),
                 score: doc_result.doc_score,
@@ -243,6 +289,7 @@ pub async fn search_documents(
                 updated_at: updated_at_iso,
                 snippet: doc_result.best_snippet.clone(),
                 source_url: row.get("source_url"),
+                explain: explanation,
             });
         }
     }
@@ -270,6 +317,7 @@ pub async fn run_search(
     source_filter: Option<String>,
     since: Option<String>,
     limit: Option<i64>,
+    explain: bool,
 ) -> Result<()> {
     let results = search_documents(
         config,
@@ -278,12 +326,23 @@ pub async fn run_search(
         source_filter.as_deref(),
         since.as_deref(),
         limit,
+        explain,
     )
     .await?;
 
     if results.is_empty() {
         println!("No results.");
         return Ok(());
+    }
+
+    if explain {
+        if let Some(ref ex) = results.first().and_then(|r| r.explain.as_ref()) {
+            println!(
+                "Search: mode={}, alpha={:.2}, candidates: {} keyword + {} vector",
+                mode, ex.alpha, ex.keyword_candidates, ex.vector_candidates
+            );
+            println!();
+        }
     }
 
     for (i, result) in results.iter().enumerate() {
@@ -295,6 +354,12 @@ pub async fn run_search(
             result.source,
             title_display
         );
+        if let Some(ref ex) = result.explain {
+            println!(
+                "    scoring: keyword={:.3}  semantic={:.3}  → hybrid={:.3}",
+                ex.keyword_score, ex.semantic_score, result.score
+            );
+        }
         println!("    updated: {}", result.updated_at);
         println!("    source: {}", result.source);
         if let Some(ref url) = result.source_url {

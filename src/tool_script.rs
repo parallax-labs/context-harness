@@ -560,7 +560,7 @@ fn register_context_bridge(lua: &Lua, config: &Config, tool_config: &toml::Table
             let handle = tokio::runtime::Handle::current();
             let results = handle
                 .block_on(async {
-                    search_documents(&cfg, &query, &mode, source.as_deref(), None, Some(limit))
+                    search_documents(&cfg, &query, &mode, source.as_deref(), None, Some(limit), false)
                         .await
                 })
                 .map_err(mlua::Error::external)?;

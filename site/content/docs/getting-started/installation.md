@@ -60,16 +60,20 @@ A local-first context engine for AI tools
 Usage: ctx [OPTIONS] <COMMAND>
 
 Commands:
-  init       Initialize the database
-  sync       Sync a data source (filesystem, git, s3, script:<name>)
-  search     Search the knowledge base
-  get        Get a document by ID
-  sources    List configured sources and stats
-  embed      Generate or rebuild embeddings
-  serve      Start the HTTP/MCP server
-  connector  Manage Lua connectors (init, test)
-  tool       Manage Lua tools (init, test, list)
-  help       Print help
+  init         Initialize the database
+  stats        Show database statistics
+  sync         Sync a data source (filesystem, git, s3, script:<name>)
+  search       Search the knowledge base
+  get          Get a document by ID
+  sources      List configured sources and stats
+  embed        Generate or rebuild embeddings
+  export       Export index as JSON for static site search
+  serve        Start the HTTP/MCP server
+  connector    Manage Lua connectors (init, test)
+  tool         Manage Lua tools (init, test, list)
+  agent        Manage agents (list, test, init)
+  completions  Generate shell completions
+  help         Print help
 
 Options:
   -c, --config <PATH>  Config file [default: ./config/ctx.toml]

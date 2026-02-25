@@ -19,6 +19,32 @@ All commands respect the `--config` flag. If omitted, Context Harness looks for 
 
 ---
 
+### `ctx stats`
+
+Show database statistics — document, chunk, and embedding counts with a per-source breakdown.
+
+```bash
+$ ctx stats
+Context Harness — Database Stats
+================================
+
+  Database:    ./data/ctx.sqlite
+  Size:        14.2 MB
+
+  Documents:   216
+  Chunks:      1386
+  Embedded:    1386 / 1386 (100%)
+
+  By source:
+  SOURCE                     DOCS   CHUNKS   EMBEDDED   LAST SYNC
+  ----------------------------------------------------------------------------
+  git:platform                 89      412        412   3 hours ago
+  filesystem:docs             127      584        584   1 day ago
+  script:jira                  0        0          0   never
+```
+
+---
+
 ### `ctx init`
 
 Create the SQLite database and run migrations. Safe to run multiple times — it's idempotent.
@@ -97,11 +123,24 @@ $ ctx search "error handling" --source git
 $ ctx search "sprint priorities" --source "script:jira"
 ```
 
+```bash
+# Show scoring breakdown
+$ ctx search "auth middleware" --mode hybrid --explain
+Search: mode=hybrid, alpha=0.60, candidates: 42 keyword + 80 vector
+
+1. [0.87] git:platform / auth-middleware.md
+    scoring: keyword=0.712  semantic=0.981  → hybrid=0.873
+    updated: 2026-02-20T14:32:00Z
+    excerpt: "The auth middleware validates JWT tokens..."
+    id: a1b2c3d4-...
+```
+
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--mode` | `keyword` | `keyword`, `semantic`, or `hybrid` |
 | `--limit` | from config | Max results to return |
 | `--source` | all | Filter to a specific source name |
+| `--explain` | off | Show keyword, semantic, and hybrid score breakdown |
 
 ---
 
@@ -312,4 +351,36 @@ Add to config:
   [agents.script.sre-helper]
   path = "agents/sre-helper.lua"
   timeout = 30
+```
+
+---
+
+### `ctx export [--output <path>]`
+
+Export the search index as JSON for use with `ctx-search.js` on static sites. Replaces the Python export script.
+
+```bash
+# Export to stdout (for piping)
+$ ctx export > data.json
+
+# Export to a file
+$ ctx export --output site/static/docs/data.json
+Exported 216 documents, 1386 chunks to site/static/docs/data.json
+```
+
+---
+
+### `ctx completions <shell>`
+
+Generate shell completion scripts for tab completion of commands, flags, and arguments.
+
+```bash
+# Bash
+$ ctx completions bash > ~/.local/share/bash-completion/completions/ctx
+
+# Zsh
+$ ctx completions zsh > ~/.zfunc/_ctx
+
+# Fish
+$ ctx completions fish > ~/.config/fish/completions/ctx.fish
 ```

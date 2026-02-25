@@ -165,6 +165,7 @@ Required flags:
 - `--source <name>`
 - `--since <date>`
 - `--limit <n>`
+- `--explain` — show scoring breakdown per result
 
 Required behavior:
 - Return ranked results
@@ -235,7 +236,71 @@ Required behavior:
 
 ---
 
-### 8. serve mcp
+### 8. stats
+
+Show database statistics — document, chunk, and embedding counts with per-source breakdown.
+
+```bash
+ctx stats
+```
+
+Required behavior:
+- Show total document, chunk, and embedding counts
+- Show embedding coverage percentage
+- Show per-source breakdown with last sync timestamp
+- Show database file size
+
+---
+
+### 9. search --explain
+
+The `search` command accepts an optional `--explain` flag that shows the scoring breakdown for each result.
+
+```bash
+ctx search "<query>" --explain
+```
+
+Required flags (in addition to existing flags):
+- `--explain` — show keyword_score, semantic_score, hybrid_score, alpha, and candidate pool sizes
+
+---
+
+### 10. export
+
+Export the search index as JSON for static site search with `ctx-search.js`.
+
+```bash
+ctx export
+ctx export --output data.json
+```
+
+Required flags:
+- `--output <path>` — output file path (defaults to stdout)
+
+Required behavior:
+- Export all documents and chunks as JSON
+- Match the schema expected by `ctx-search.js`
+- Print summary to stderr when writing to file
+
+---
+
+### 11. completions
+
+Generate shell completion scripts.
+
+```bash
+ctx completions bash > ~/.local/share/bash-completion/completions/ctx
+ctx completions zsh > ~/.zfunc/_ctx
+ctx completions fish > ~/.config/fish/completions/ctx.fish
+```
+
+Required behavior:
+- Accept shell name: `bash`, `zsh`, `fish`, `elvish`, `powershell`
+- Print completion script to stdout
+
+---
+
+### 12. serve mcp
 
 Start the MCP-compatible HTTP tool server.
 

@@ -152,15 +152,19 @@ Connectors → Normalization → Chunking → Embedding → SQLite Store → Que
 | Command | Description |
 |---------|-------------|
 | `ctx init` | Initialize database schema |
+| `ctx stats` | Show database statistics (docs, chunks, embeddings) |
 | `ctx sources` | List available connectors |
 | `ctx sync <connector>` | Ingest from a connector (`all`, `git`, `git:name`) |
 | `ctx search "<query>"` | Search indexed documents |
+| `ctx search --explain` | Search with scoring breakdown per result |
 | `ctx get <id>` | Retrieve a document by ID |
 | `ctx embed pending` | Backfill missing embeddings |
 | `ctx embed rebuild` | Delete and regenerate all embeddings |
+| `ctx export` | Export index as JSON for static site search |
 | `ctx serve mcp` | Start MCP-compatible HTTP server |
 | `ctx connector init <name>` | Scaffold a new Lua connector |
 | `ctx connector test <path>` | Test a connector without writing to DB |
+| `ctx completions <shell>` | Generate shell completions (bash, zsh, fish) |
 
 ## HTTP API
 

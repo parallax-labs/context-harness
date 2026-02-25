@@ -288,6 +288,7 @@ impl ToolContext {
             opts.source.as_deref(),
             None,
             opts.limit,
+            false,
         )
         .await
     }
@@ -366,7 +367,7 @@ impl Tool for SearchTool {
             .and_then(|s| s.as_str());
 
         let results =
-            search_documents(&ctx.config, query, mode, source, since, Some(limit)).await?;
+            search_documents(&ctx.config, query, mode, source, since, Some(limit), false).await?;
 
         Ok(serde_json::json!({ "results": results }))
     }

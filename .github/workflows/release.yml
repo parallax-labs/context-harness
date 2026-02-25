@@ -119,6 +119,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -134,3 +136,47 @@ jobs:
         with:
           generate_release_notes: true
           files: artifacts/*
+
+  blog-post:
+    name: Generate Release Blog Post
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Generate blog post stub
+        run: |
+          chmod +x scripts/generate-release-blog.sh
+          ./scripts/generate-release-blog.sh "${{ github.ref_name }}"
+
+      - name: Check for new blog post
+        id: check
+        run: |
+          if git diff --quiet site/content/blog/; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create PR with blog post
+        if: steps.check.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ github.ref_name }}"
+          BRANCH="release-blog/${VERSION}"
+          git checkout -b "$BRANCH"
+          git add site/content/blog/
+          git commit -m "blog: add release post stub for ${VERSION}"
+          git push -u origin "$BRANCH"
+          gh pr create \
+            --title "Blog: release notes for ${VERSION}" \
+            --body "Auto-generated blog post stub for the ${VERSION} release. Edit the TODO placeholders, then merge to publish." \
+            --base main \
+            --head "$BRANCH"
