@@ -228,7 +228,7 @@ async fn test_custom_connector_sync_and_search() {
     .unwrap();
 
     // Search should find our documents
-    let results = search_documents(&cfg, "Rust programming", "keyword", None, None, None)
+    let results = search_documents(&cfg, "Rust programming", "keyword", None, None, None, false)
         .await
         .unwrap();
 
@@ -244,9 +244,17 @@ async fn test_custom_connector_sync_and_search() {
     );
 
     // Search for Docker
-    let results = search_documents(&cfg, "Docker Kubernetes", "keyword", None, None, None)
-        .await
-        .unwrap();
+    let results = search_documents(
+        &cfg,
+        "Docker Kubernetes",
+        "keyword",
+        None,
+        None,
+        None,
+        false,
+    )
+    .await
+    .unwrap();
     assert!(!results.is_empty(), "Should find Docker/Kubernetes docs");
 }
 
@@ -276,6 +284,7 @@ async fn test_custom_connector_included_in_sync_all() {
         None,
         None,
         None,
+        false,
     )
     .await
     .unwrap();

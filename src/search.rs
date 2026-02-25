@@ -336,7 +336,7 @@ pub async fn run_search(
     }
 
     if explain {
-        if let Some(ref ex) = results.first().and_then(|r| r.explain.as_ref()) {
+        if let Some(ex) = results.first().and_then(|r| r.explain.as_ref()) {
             println!(
                 "Search: mode={}, alpha={:.2}, candidates: {} keyword + {} vector",
                 mode, ex.alpha, ex.keyword_candidates, ex.vector_candidates

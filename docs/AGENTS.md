@@ -792,3 +792,28 @@ The public contract is defined by:
 Changes to the `Agent` trait or `AgentPrompt` structure constitute
 breaking changes and require a major version bump.
 
+---
+
+## 16. Pre-Commit Checklist
+
+Before committing and pushing changes to this repository, **always** run
+the following checks and fix any issues:
+
+```bash
+# 1. Format — must produce no diffs
+cargo fmt --all -- --check
+
+# 2. Lint — must produce no warnings (warnings are errors in CI)
+cargo clippy -- -D warnings
+
+# 3. Test — all tests must pass
+cargo test
+
+# 4. Build — release build must succeed
+cargo build --release
+```
+
+CI enforces all four checks. A commit that fails any of them will block
+the release pipeline. Run them locally before pushing to avoid
+round-tripping through CI.
+

@@ -105,8 +105,8 @@ pub async fn run_stats(config: &Config) -> Result<()> {
         println!();
         println!("  By source:");
         println!(
-            "  {:<24} {:>6} {:>8} {:>10}   {}",
-            "SOURCE", "DOCS", "CHUNKS", "EMBEDDED", "LAST SYNC"
+            "  {:<24} {:>6} {:>8} {:>10}   LAST SYNC",
+            "SOURCE", "DOCS", "CHUNKS", "EMBEDDED"
         );
         println!("  {}", "-".repeat(76));
 
