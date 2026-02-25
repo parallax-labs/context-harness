@@ -505,7 +505,7 @@ fn default_agent_timeout() -> u64 {
 ///
 /// ```toml
 /// [registries.community]
-/// url = "https://github.com/context-harness/registry.git"
+/// url = "https://github.com/parallax-labs/ctx-registry.git"
 /// branch = "main"
 /// path = "~/.ctx/registries/community"
 /// readonly = true

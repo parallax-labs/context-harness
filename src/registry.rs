@@ -38,7 +38,7 @@ use std::process::Command;
 
 use crate::config::Config;
 
-const COMMUNITY_REGISTRY_URL: &str = "https://github.com/context-harness/registry.git";
+const COMMUNITY_REGISTRY_URL: &str = "https://github.com/parallax-labs/ctx-registry.git";
 const DEFAULT_BRANCH: &str = "main";
 
 // ═══════════════════════════════════════════════════════════════════════

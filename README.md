@@ -321,7 +321,7 @@ Tools and agents from registries are **auto-discovered** at server startup — t
 
 ```toml
 [registries.community]
-url = "https://github.com/context-harness/registry.git"
+url = "https://github.com/parallax-labs/ctx-registry.git"
 path = "~/.ctx/registries/community"
 readonly = true
 auto_update = true

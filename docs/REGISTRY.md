@@ -75,7 +75,7 @@ Add `[registries.<name>]` sections to `ctx.toml`:
 
 ```toml
 [registries.community]
-url = "https://github.com/context-harness/registry.git"
+url = "https://github.com/parallax-labs/ctx-registry.git"
 branch = "main"
 path = "~/.ctx/registries/community"
 readonly = true
@@ -142,7 +142,7 @@ Every registry should have a `registry.toml` manifest at its root:
 [registry]
 name = "community"
 description = "Official Context Harness community extensions"
-url = "https://github.com/context-harness/registry"
+url = "https://github.com/parallax-labs/ctx-registry"
 min_version = "0.3.0"
 
 [connectors.jira]
@@ -278,7 +278,7 @@ Clone git-backed registries that aren't yet present on disk.
 
 ```
 $ ctx registry install
-Cloning registry 'community' from https://github.com/context-harness/registry.git...
+Cloning registry 'community' from https://github.com/parallax-labs/ctx-registry.git...
   Installed: 6 connectors, 3 tools, 2 agents
 ```
 
@@ -451,7 +451,7 @@ auto_update = true
 
 Contributions to the official community registry follow the same
 structure. The community registry will be hosted at
-`https://github.com/context-harness/registry`.
+`https://github.com/parallax-labs/ctx-registry`.
 
 Contribution workflow:
 
