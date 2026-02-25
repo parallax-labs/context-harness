@@ -124,10 +124,7 @@ pub struct ResolvedExtension {
 /// Shallow-clone a Git repository into `target_dir`.
 pub fn clone_registry(url: &str, branch: Option<&str>, target_dir: &Path) -> Result<()> {
     if target_dir.exists() {
-        anyhow::bail!(
-            "Target directory already exists: {}",
-            target_dir.display()
-        );
+        anyhow::bail!("Target directory already exists: {}", target_dir.display());
     }
 
     if let Some(parent) = target_dir.parent() {
@@ -160,10 +157,7 @@ pub fn clone_registry(url: &str, branch: Option<&str>, target_dir: &Path) -> Res
 /// Pull the latest changes for a git-backed registry.
 pub fn pull_registry(registry_dir: &Path) -> Result<()> {
     if !is_git_repo(registry_dir) {
-        anyhow::bail!(
-            "Not a git repository: {}",
-            registry_dir.display()
-        );
+        anyhow::bail!("Not a git repository: {}", registry_dir.display());
     }
 
     if is_dirty(registry_dir)? {
@@ -578,7 +572,11 @@ pub fn cmd_install(config: &Config, name: Option<&str>) -> Result<()> {
 
         let target = expand_tilde(&reg_cfg.path);
         if target.exists() {
-            println!("Registry '{}' already installed at {}", reg_name, target.display());
+            println!(
+                "Registry '{}' already installed at {}",
+                reg_name,
+                target.display()
+            );
             continue;
         }
 
@@ -603,7 +601,9 @@ pub fn cmd_install(config: &Config, name: Option<&str>) -> Result<()> {
     }
 
     if installed == 0 && name.is_none() {
-        println!("No registries to install. Add [registries.<name>] entries with `url` to ctx.toml.");
+        println!(
+            "No registries to install. Add [registries.<name>] entries with `url` to ctx.toml."
+        );
     }
 
     Ok(())
@@ -622,7 +622,11 @@ pub fn cmd_update(config: &Config, name: Option<&str>) -> Result<()> {
 
         let path = expand_tilde(&reg_cfg.path);
         if !path.exists() {
-            eprintln!("Registry '{}' not installed at {}. Run `ctx registry install` first.", reg_name, path.display());
+            eprintln!(
+                "Registry '{}' not installed at {}. Run `ctx registry install` first.",
+                reg_name,
+                path.display()
+            );
             continue;
         }
 
@@ -750,10 +754,7 @@ pub fn cmd_add(config: &Config, extension_id: &str, config_path: &Path) -> Resul
     let section = match ext.kind.as_str() {
         "connector" => {
             if let Some(example) = &example_content {
-                format!(
-                    "\n[connectors.script.{}]\n{}",
-                    ext.name, example
-                )
+                format!("\n[connectors.script.{}]\n{}", ext.name, example)
             } else {
                 let mut section = format!(
                     "\n[connectors.script.{}]\npath = \"{}\"\n",
@@ -768,10 +769,7 @@ pub fn cmd_add(config: &Config, extension_id: &str, config_path: &Path) -> Resul
         }
         "tool" => {
             if let Some(example) = &example_content {
-                format!(
-                    "\n[tools.script.{}]\n{}",
-                    ext.name, example
-                )
+                format!("\n[tools.script.{}]\n{}", ext.name, example)
             } else {
                 format!(
                     "\n[tools.script.{}]\npath = \"{}\"\n",
@@ -782,10 +780,7 @@ pub fn cmd_add(config: &Config, extension_id: &str, config_path: &Path) -> Resul
         }
         "agent" => {
             if let Some(example) = &example_content {
-                format!(
-                    "\n[agents.script.{}]\n{}",
-                    ext.name, example
-                )
+                format!("\n[agents.script.{}]\n{}", ext.name, example)
             } else {
                 format!(
                     "\n[agents.script.{}]\npath = \"{}\"\n",
@@ -832,13 +827,11 @@ pub fn cmd_override(config: &Config, extension_id: &str) -> Result<()> {
         .resolve(extension_id)
         .ok_or_else(|| anyhow::anyhow!("Extension '{}' not found in any registry", extension_id))?;
 
-    let writable_path = mgr
-        .writable_path()
-        .ok_or_else(|| anyhow::anyhow!("No writable registry found. Add a registry with readonly = false."))?;
+    let writable_path = mgr.writable_path().ok_or_else(|| {
+        anyhow::anyhow!("No writable registry found. Add a registry with readonly = false.")
+    })?;
 
-    let dest_dir = writable_path
-        .join(format!("{}s", ext.kind))
-        .join(&ext.name);
+    let dest_dir = writable_path.join(format!("{}s", ext.kind)).join(&ext.name);
 
     if dest_dir.exists() {
         anyhow::bail!(
@@ -874,7 +867,10 @@ pub fn cmd_init_community(config_path: &Path) -> Result<()> {
     let default_path = default_registries_dir().join("community");
 
     if default_path.exists() {
-        println!("Community registry already installed at {}", default_path.display());
+        println!(
+            "Community registry already installed at {}",
+            default_path.display()
+        );
         return Ok(());
     }
 
@@ -910,10 +906,7 @@ pub fn cmd_init_community(config_path: &Path) -> Result<()> {
     std::fs::write(config_path, &content)
         .with_context(|| format!("Failed to write config: {}", config_path.display()))?;
 
-    println!(
-        "Added [registries.community] to {}",
-        config_path.display()
-    );
+    println!("Added [registries.community] to {}", config_path.display());
     println!("Run `ctx registry list` to see available extensions.");
 
     Ok(())
@@ -1019,7 +1012,10 @@ tools = ["search", "get"]
         assert_eq!(jira.required_config, vec!["url", "api_token"]);
 
         assert_eq!(manifest.tools.len(), 1);
-        assert_eq!(manifest.tools["summarize"].description, "Summarize a document");
+        assert_eq!(
+            manifest.tools["summarize"].description,
+            "Summarize a document"
+        );
 
         assert_eq!(manifest.agents.len(), 1);
         assert_eq!(manifest.agents["runbook"].tools, vec!["search", "get"]);

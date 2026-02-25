@@ -173,7 +173,10 @@ pub async fn run_server_with_extensions(
                 tool_registry.register(Box::new(LuaToolAdapter::new(def, config.clone())));
             }
             Err(e) => {
-                eprintln!("Warning: failed to load registry tool '{}': {}", ext.name, e);
+                eprintln!(
+                    "Warning: failed to load registry tool '{}': {}",
+                    ext.name, e
+                );
             }
         }
     }
@@ -217,11 +220,13 @@ pub async fn run_server_with_extensions(
             };
             match crate::agent_script::load_single_agent(&ext.name, &agent_cfg) {
                 Ok(def) => {
-                    agent_registry
-                        .register(Box::new(LuaAgentAdapter::new(def, config.clone())));
+                    agent_registry.register(Box::new(LuaAgentAdapter::new(def, config.clone())));
                 }
                 Err(e) => {
-                    eprintln!("Warning: failed to load registry agent '{}': {}", ext.name, e);
+                    eprintln!(
+                        "Warning: failed to load registry agent '{}': {}",
+                        ext.name, e
+                    );
                 }
             }
         }

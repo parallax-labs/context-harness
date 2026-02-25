@@ -62,8 +62,8 @@ mod ingest;
 mod lua_runtime;
 mod mcp;
 mod migrate;
-mod registry;
 mod models;
+mod registry;
 mod search;
 mod server;
 mod sources;
@@ -641,7 +641,9 @@ async fn main() -> anyhow::Result<()> {
             RegistryAction::Override { extension } => {
                 registry::cmd_override(&cfg, &extension)?;
             }
-            RegistryAction::Install { .. } | RegistryAction::Update { .. } | RegistryAction::Init => {
+            RegistryAction::Install { .. }
+            | RegistryAction::Update { .. }
+            | RegistryAction::Init => {
                 unreachable!()
             }
         },
