@@ -3,6 +3,8 @@
 //! Defines the [`EmbeddingProvider`] trait and concrete implementations:
 //! - **[`DisabledProvider`]** — returns errors; used when embeddings are not configured.
 //! - **[`OpenAIProvider`]** — calls the OpenAI embeddings API with batching, retry, and backoff.
+//! - **[`OllamaProvider`]** — calls a local Ollama instance's `/api/embed` endpoint.
+//! - **[`LocalProvider`]** — runs ONNX models locally via fastembed (no network calls after model download).
 //!
 //! Also provides vector utilities for working with sqlite-vec:
 //! - [`cosine_similarity`] — compute similarity between two embedding vectors
@@ -24,7 +26,7 @@
 //!
 //! # Retry Strategy
 //!
-//! The OpenAI provider uses exponential backoff for transient errors:
+//! The OpenAI and Ollama providers use exponential backoff for transient errors:
 //! - HTTP 429 (rate limited) and 5xx (server error) → retry
 //! - HTTP 4xx (client error, not 429) → fail immediately
 //! - Network errors → retry
@@ -74,6 +76,14 @@ pub async fn embed_texts(
 ) -> Result<Vec<Vec<f32>>> {
     match config.provider.as_str() {
         "openai" => embed_openai(config, texts).await,
+        "ollama" => embed_ollama(config, texts).await,
+        #[cfg(feature = "local-embeddings")]
+        "local" => embed_local(config, texts).await,
+        #[cfg(not(feature = "local-embeddings"))]
+        "local" => bail!(
+            "Local embedding provider requires the 'local-embeddings' feature. \
+             Rebuild with: cargo install --features local-embeddings"
+        ),
         "disabled" => bail!("Embedding provider is disabled"),
         other => bail!("Unknown embedding provider: {}", other),
     }
@@ -272,6 +282,238 @@ fn parse_openai_response(json: &serde_json::Value) -> Result<Vec<Vec<f32>>> {
     Ok(embeddings)
 }
 
+// ============ Ollama Provider ============
+
+/// Embedding provider using a local Ollama instance.
+///
+/// Calls `POST /api/embed` on the configured Ollama URL (default: `http://localhost:11434`).
+/// Requires Ollama to be running with an embedding model pulled (e.g. `ollama pull nomic-embed-text`).
+pub struct OllamaProvider {
+    model: String,
+    dims: usize,
+    #[allow(dead_code)]
+    url: String,
+}
+
+impl OllamaProvider {
+    pub fn new(config: &EmbeddingConfig) -> Result<Self> {
+        let model = config
+            .model
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("embedding.model required for Ollama provider"))?;
+        let dims = config
+            .dims
+            .ok_or_else(|| anyhow::anyhow!("embedding.dims required for Ollama provider"))?;
+        let url = config
+            .url
+            .clone()
+            .unwrap_or_else(|| "http://localhost:11434".to_string());
+
+        Ok(Self { model, dims, url })
+    }
+}
+
+impl EmbeddingProvider for OllamaProvider {
+    fn model_name(&self) -> &str {
+        &self.model
+    }
+    fn dims(&self) -> usize {
+        self.dims
+    }
+}
+
+async fn embed_ollama(config: &EmbeddingConfig, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+    let model = config
+        .model
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("embedding.model required"))?;
+
+    let url = config.url.as_deref().unwrap_or("http://localhost:11434");
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(config.timeout_secs))
+        .build()?;
+
+    let body = serde_json::json!({
+        "model": model,
+        "input": texts,
+    });
+
+    let mut last_err = None;
+
+    for attempt in 0..=config.max_retries {
+        if attempt > 0 {
+            let delay = Duration::from_secs(1 << (attempt - 1).min(5));
+            tokio::time::sleep(delay).await;
+        }
+
+        let resp = client
+            .post(format!("{}/api/embed", url))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await;
+
+        match resp {
+            Ok(response) => {
+                let status = response.status();
+
+                if status.is_success() {
+                    let json: serde_json::Value = response.json().await?;
+                    return parse_ollama_response(&json);
+                }
+
+                if status.as_u16() == 429 || status.is_server_error() {
+                    let body_text = response.text().await.unwrap_or_default();
+                    last_err = Some(anyhow::anyhow!(
+                        "Ollama API error {}: {}",
+                        status,
+                        body_text
+                    ));
+                    continue;
+                }
+
+                let body_text = response.text().await.unwrap_or_default();
+                bail!("Ollama API error {}: {}", status, body_text);
+            }
+            Err(e) => {
+                last_err = Some(anyhow::anyhow!(
+                    "Ollama connection error (is Ollama running at {}?): {}",
+                    url,
+                    e
+                ));
+                continue;
+            }
+        }
+    }
+
+    Err(last_err.unwrap_or_else(|| anyhow::anyhow!("Ollama embedding failed after retries")))
+}
+
+fn parse_ollama_response(json: &serde_json::Value) -> Result<Vec<Vec<f32>>> {
+    let embeddings = json
+        .get("embeddings")
+        .and_then(|e| e.as_array())
+        .ok_or_else(|| anyhow::anyhow!("Invalid Ollama response: missing embeddings array"))?;
+
+    let mut result = Vec::with_capacity(embeddings.len());
+
+    for embedding in embeddings {
+        let vec: Vec<f32> = embedding
+            .as_array()
+            .ok_or_else(|| anyhow::anyhow!("Invalid Ollama response: embedding is not an array"))?
+            .iter()
+            .map(|v| v.as_f64().unwrap_or(0.0) as f32)
+            .collect();
+        result.push(vec);
+    }
+
+    Ok(result)
+}
+
+// ============ Local Provider (fastembed) ============
+
+/// Embedding provider using fastembed for local ONNX inference.
+///
+/// Models are downloaded on first use from Hugging Face and cached
+/// in `~/.cache/huggingface/`. After initial download, no network
+/// calls are needed — embeddings run entirely offline.
+///
+/// Requires the `local-embeddings` cargo feature (enabled by default).
+#[cfg(feature = "local-embeddings")]
+pub struct LocalProvider {
+    model_name: String,
+    dims: usize,
+}
+
+#[cfg(feature = "local-embeddings")]
+impl LocalProvider {
+    pub fn new(config: &EmbeddingConfig) -> Result<Self> {
+        let (model_name, dims) = resolve_local_model(config)?;
+        Ok(Self { model_name, dims })
+    }
+}
+
+#[cfg(feature = "local-embeddings")]
+impl EmbeddingProvider for LocalProvider {
+    fn model_name(&self) -> &str {
+        &self.model_name
+    }
+    fn dims(&self) -> usize {
+        self.dims
+    }
+}
+
+#[cfg(feature = "local-embeddings")]
+fn resolve_local_model(config: &EmbeddingConfig) -> Result<(String, usize)> {
+    let model_name = config
+        .model
+        .clone()
+        .unwrap_or_else(|| "all-minilm-l6-v2".to_string());
+
+    let dims = config.dims.unwrap_or(match model_name.as_str() {
+        "all-minilm-l6-v2" => 384,
+        "bge-small-en-v1.5" => 384,
+        "bge-base-en-v1.5" => 768,
+        "bge-large-en-v1.5" => 1024,
+        "nomic-embed-text-v1" | "nomic-embed-text-v1.5" => 768,
+        "multilingual-e5-small" => 384,
+        "multilingual-e5-base" => 768,
+        "multilingual-e5-large" => 1024,
+        _ => 384,
+    });
+
+    Ok((model_name, dims))
+}
+
+#[cfg(feature = "local-embeddings")]
+fn config_to_fastembed_model(name: &str) -> Result<fastembed::EmbeddingModel> {
+    match name {
+        "all-minilm-l6-v2" => Ok(fastembed::EmbeddingModel::AllMiniLML6V2),
+        "bge-small-en-v1.5" => Ok(fastembed::EmbeddingModel::BGESmallENV15),
+        "bge-base-en-v1.5" => Ok(fastembed::EmbeddingModel::BGEBaseENV15),
+        "bge-large-en-v1.5" => Ok(fastembed::EmbeddingModel::BGELargeENV15),
+        "nomic-embed-text-v1" => Ok(fastembed::EmbeddingModel::NomicEmbedTextV1),
+        "nomic-embed-text-v1.5" => Ok(fastembed::EmbeddingModel::NomicEmbedTextV15),
+        "multilingual-e5-small" => Ok(fastembed::EmbeddingModel::MultilingualE5Small),
+        "multilingual-e5-base" => Ok(fastembed::EmbeddingModel::MultilingualE5Base),
+        "multilingual-e5-large" => Ok(fastembed::EmbeddingModel::MultilingualE5Large),
+        other => bail!(
+            "Unknown local embedding model: '{}'. Supported models: \
+             all-minilm-l6-v2, bge-small-en-v1.5, bge-base-en-v1.5, bge-large-en-v1.5, \
+             nomic-embed-text-v1, nomic-embed-text-v1.5, \
+             multilingual-e5-small, multilingual-e5-base, multilingual-e5-large",
+            other
+        ),
+    }
+}
+
+#[cfg(feature = "local-embeddings")]
+async fn embed_local(config: &EmbeddingConfig, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+    let model_name = config
+        .model
+        .clone()
+        .unwrap_or_else(|| "all-minilm-l6-v2".to_string());
+
+    let fastembed_model = config_to_fastembed_model(&model_name)?;
+    let batch_size = config.batch_size;
+    let texts = texts.to_vec();
+
+    tokio::task::spawn_blocking(move || {
+        let mut model = fastembed::TextEmbedding::try_new(
+            fastembed::InitOptions::new(fastembed_model).with_show_download_progress(true),
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to initialize local embedding model: {}", e))?;
+
+        let embeddings = model
+            .embed(texts, Some(batch_size))
+            .map_err(|e| anyhow::anyhow!("Local embedding failed: {}", e))?;
+
+        Ok(embeddings)
+    })
+    .await?
+}
+
 /// Create the appropriate [`EmbeddingProvider`] based on configuration.
 ///
 /// # Supported Providers
@@ -280,15 +522,25 @@ fn parse_openai_response(json: &serde_json::Value) -> Result<Vec<Vec<f32>>> {
 /// |-------------|----------|
 /// | `"disabled"` | [`DisabledProvider`] |
 /// | `"openai"` | [`OpenAIProvider`] |
+/// | `"ollama"` | [`OllamaProvider`] |
+/// | `"local"` | `LocalProvider` (requires `local-embeddings` feature) |
 ///
 /// # Errors
 ///
-/// Returns an error for unknown provider names or if the OpenAI provider
-/// cannot be initialized (missing config or API key).
+/// Returns an error for unknown provider names or if the provider
+/// cannot be initialized (missing config, API key, or feature flag).
 pub fn create_provider(config: &EmbeddingConfig) -> Result<Box<dyn EmbeddingProvider>> {
     match config.provider.as_str() {
         "disabled" => Ok(Box::new(DisabledProvider)),
         "openai" => Ok(Box::new(OpenAIProvider::new(config)?)),
+        "ollama" => Ok(Box::new(OllamaProvider::new(config)?)),
+        #[cfg(feature = "local-embeddings")]
+        "local" => Ok(Box::new(LocalProvider::new(config)?)),
+        #[cfg(not(feature = "local-embeddings"))]
+        "local" => bail!(
+            "Local embedding provider requires the 'local-embeddings' feature. \
+             Rebuild with: cargo install --features local-embeddings"
+        ),
         other => bail!("Unknown embedding provider: {}", other),
     }
 }

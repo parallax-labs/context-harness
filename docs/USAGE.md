@@ -36,12 +36,13 @@ max_tokens = 700
 overlap_tokens = 80
 
 [embedding]
-provider = "disabled"       # "disabled" | "openai"
+provider = "disabled"       # "disabled" | "openai" | "ollama" | "local"
 # model = "text-embedding-3-small"
 # dims = 1536
 # batch_size = 64
 # max_retries = 5
 # timeout_secs = 30
+# url = "http://localhost:11434"   # Ollama API base URL (ollama only)
 
 [retrieval]
 final_limit = 12
@@ -57,7 +58,8 @@ bind = "127.0.0.1:7331"
 ```
 
 All fields above MUST exist in config schema.
-When `embedding.provider != "disabled"`, `model` and `dims` are required.
+When `embedding.provider` is `openai` or `ollama`, `model` and `dims` are required.
+When `embedding.provider` is `local`, model and dims are optional (defaults to `all-minilm-l6-v2`, 384 dims).
 
 ### Connector Config
 

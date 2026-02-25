@@ -49,8 +49,8 @@
 //! - `chunking.max_tokens > 0`
 //! - `retrieval.final_limit >= 1`
 //! - `retrieval.hybrid_alpha ∈ [0.0, 1.0]`
-//! - When embedding provider ≠ `"disabled"`: `model` and `dims` must be set
-//! - Embedding provider must be one of: `"disabled"`, `"openai"`, `"local"`
+//! - When embedding provider is `openai` or `ollama`: `model` and `dims` must be set
+//! - Embedding provider must be one of: `"disabled"`, `"openai"`, `"ollama"`, `"local"`
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
@@ -230,23 +230,27 @@ fn default_max_chunks_per_doc() -> usize {
 /// |----------|-------------|
 /// | `"disabled"` | No embeddings (default) |
 /// | `"openai"` | OpenAI API (`text-embedding-3-small`, etc.) |
-/// | `"local"` | Reserved for future local model support |
+/// | `"ollama"` | Local Ollama instance (`nomic-embed-text`, etc.) |
+/// | `"local"` | Built-in ONNX models via fastembed (`all-minilm-l6-v2`, etc.) |
 ///
 /// When using `"openai"`, the `OPENAI_API_KEY` environment variable must be set.
+/// When using `"ollama"`, an Ollama instance must be running (default: `http://localhost:11434`).
+/// When using `"local"`, the model is downloaded on first use and cached in `~/.cache/huggingface/`.
 #[derive(Debug, Deserialize, Clone)]
 pub struct EmbeddingConfig {
-    /// Provider name: `"disabled"`, `"openai"`, or `"local"`. Default: `"disabled"`.
+    /// Provider name: `"disabled"`, `"openai"`, `"ollama"`, or `"local"`. Default: `"disabled"`.
     #[serde(default = "default_provider")]
     pub provider: String,
-    /// Embedding model name (e.g. `"text-embedding-3-small"`).
-    /// Required when provider ≠ `"disabled"`.
+    /// Embedding model name (e.g. `"text-embedding-3-small"`, `"nomic-embed-text"`,
+    /// `"all-minilm-l6-v2"`). Required for `openai` and `ollama`; optional for `local`
+    /// (defaults to `"all-minilm-l6-v2"`).
     #[serde(default)]
     pub model: Option<String>,
     /// Embedding vector dimensionality (e.g. `1536` for `text-embedding-3-small`).
-    /// Required when provider ≠ `"disabled"`.
+    /// Required for `openai` and `ollama`; auto-detected for `local`.
     #[serde(default)]
     pub dims: Option<usize>,
-    /// Number of texts to embed per API call. Default: `64`.
+    /// Number of texts to embed per batch. Default: `64`.
     #[serde(default = "default_batch_size")]
     pub batch_size: usize,
     /// Maximum retry attempts for transient API errors. Default: `5`.
@@ -255,6 +259,9 @@ pub struct EmbeddingConfig {
     /// HTTP timeout per request in seconds. Default: `30`.
     #[serde(default = "default_timeout_secs")]
     pub timeout_secs: u64,
+    /// Base URL for Ollama API. Default: `"http://localhost:11434"`.
+    #[serde(default)]
+    pub url: Option<String>,
 }
 
 impl Default for EmbeddingConfig {
@@ -266,6 +273,7 @@ impl Default for EmbeddingConfig {
             batch_size: 64,
             max_retries: 5,
             timeout_secs: 30,
+            url: None,
         }
     }
 }
@@ -705,25 +713,27 @@ pub fn load_config(path: &Path) -> Result<Config> {
     }
 
     // Validate embedding
-    if config.embedding.is_enabled() {
-        if config.embedding.dims.is_none() || config.embedding.dims == Some(0) {
-            anyhow::bail!(
-                "embedding.dims must be > 0 when provider is '{}'",
-                config.embedding.provider
-            );
-        }
-        if config.embedding.model.is_none() {
-            anyhow::bail!(
-                "embedding.model must be specified when provider is '{}'",
-                config.embedding.provider
-            );
-        }
-    }
-
     match config.embedding.provider.as_str() {
-        "disabled" | "openai" | "local" => {}
+        "disabled" => {}
+        "openai" | "ollama" => {
+            if config.embedding.dims.is_none() || config.embedding.dims == Some(0) {
+                anyhow::bail!(
+                    "embedding.dims must be > 0 when provider is '{}'",
+                    config.embedding.provider
+                );
+            }
+            if config.embedding.model.is_none() {
+                anyhow::bail!(
+                    "embedding.model must be specified when provider is '{}'",
+                    config.embedding.provider
+                );
+            }
+        }
+        "local" => {
+            // model and dims are optional for local — defaults applied at runtime
+        }
         other => anyhow::bail!(
-            "Unknown embedding provider: '{}'. Must be disabled, openai, or local.",
+            "Unknown embedding provider: '{}'. Must be disabled, openai, ollama, or local.",
             other
         ),
     }
