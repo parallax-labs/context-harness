@@ -101,6 +101,15 @@ When recommending changes, explain tradeoffs and cite sources.
 path = "agents/incident-responder.lua"
 timeout = 30
 search_limit = 5
+
+# ── Extension registries ─────────────────────────────────
+
+[registries.community]
+url = "https://github.com/parallax-labs/ctx-registry.git"
+branch = "main"
+path = "~/.ctx/registries/community"
+readonly = true                        # Don't write to this registry
+auto_update = true                     # Pull on startup
 ```
 
 ### Environment variable expansion
@@ -130,3 +139,4 @@ workspace = "acme"                      # Plain string, no expansion
 | `[tools.script.*]` | Lua scripted tool configs |
 | `[agents.inline.*]` | Inline TOML agents (static system prompt) |
 | `[agents.script.*]` | Lua scripted agents (dynamic prompts) |
+| `[registries.*]` | Named extension registry instances |
