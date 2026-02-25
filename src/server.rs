@@ -212,7 +212,7 @@ pub async fn run_server_with_extensions(
         if !ext.script_path.exists() {
             continue;
         }
-        if ext.script_path.extension().map_or(false, |e| e == "lua") {
+        if ext.script_path.extension().is_some_and(|e| e == "lua") {
             let agent_cfg = crate::config::ScriptAgentConfig {
                 path: ext.script_path.clone(),
                 timeout: 30,

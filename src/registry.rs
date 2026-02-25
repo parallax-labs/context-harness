@@ -50,6 +50,7 @@ const DEFAULT_BRANCH: &str = "main";
 pub struct RegistryManifest {
     /// Top-level registry metadata.
     #[serde(default)]
+    #[allow(dead_code)]
     pub registry: RegistryMeta,
     /// Connector extensions keyed by name.
     #[serde(default)]
@@ -407,6 +408,7 @@ impl RegistryManager {
     }
 
     /// List all resolved connectors.
+    #[allow(dead_code)]
     pub fn list_connectors(&self) -> Vec<ResolvedExtension> {
         self.list_all()
             .into_iter()
