@@ -7,6 +7,8 @@ description = "A local-first context engine for AI tools — ingest, index, and 
 compile_sass = true
 minify_html = false
 build_search_index = false          # We use ctx-search.js instead
+generate_feeds = true
+feed_filenames = ["atom.xml"]
 
 [markdown]
 highlight_code = true
@@ -16,6 +18,9 @@ smart_punctuation = true
 [extra]
 github_url = "https://github.com/parallax-labs/context-harness"
 tagline = "Local-First Context Engine for AI Tools"
+author = "Parallax Labs"
+og_image = "og-image.jpg"
+twitter_handle = "@parallaboratory"
 
 [[taxonomies]]
 name = "tags"

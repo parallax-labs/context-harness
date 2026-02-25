@@ -4,6 +4,101 @@
 {% block description %}A structured memory layer between your systems and your AI tools. Ingest, index, and retrieve context from any source.{% endblock %}
 {% block body_class %}landing{% endblock %}
 
+{% block og_title %}Context Harness — Local-First Context Engine for AI Tools{% endblock %}
+{% block twitter_title %}Context Harness — Local-First Context Engine for AI Tools{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "name": "Context Harness",
+      "url": "{{ config.base_url | safe }}",
+      "description": "{{ config.description }}",
+      "publisher": {
+        "@type": "Organization",
+        "name": "Parallax Labs",
+        "url": "{{ config.base_url | safe }}"
+      }
+    },
+    {
+      "@type": "SoftwareApplication",
+      "name": "Context Harness",
+      "applicationCategory": "DeveloperApplication",
+      "operatingSystem": "macOS, Linux, Windows",
+      "description": "A local-first context engine for AI tools. Ingest, index, and retrieve context from any source. Expose it to Cursor, Claude, and MCP-compatible agents via hybrid keyword and semantic search.",
+      "url": "{{ config.base_url | safe }}",
+      "downloadUrl": "https://github.com/parallax-labs/context-harness",
+      "softwareVersion": "0.3.0",
+      "license": "https://opensource.org/licenses/MIT",
+      "programmingLanguage": "Rust",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "featureList": [
+        "Local-first SQLite storage with FTS5 and vector embeddings",
+        "Hybrid search combining BM25 keyword and cosine semantic scoring",
+        "MCP server for Cursor, Claude, and AI agent integration",
+        "Connector-driven ingestion from filesystem, Git, S3, and Lua scripts",
+        "Lua extensibility for custom connectors and agent tools",
+        "CLI-first Unix-composable tooling",
+        "Offline-first RAG for web applications"
+      ]
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What is Context Harness?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Context Harness is an open-source, local-first context engine for AI tools. It ingests documents and knowledge from any source (filesystem, Git, S3, or custom Lua scripts), indexes them in a local SQLite database with FTS5 and vector embeddings, and exposes hybrid keyword + semantic search via a CLI and MCP-compatible HTTP server."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How does Context Harness work with Cursor and Claude?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Context Harness includes a built-in MCP (Model Context Protocol) server. Start it with 'ctx serve mcp' and point Cursor, Claude Desktop, or any MCP-compatible AI tool at the endpoint. The agent can then search your indexed knowledge base, retrieve documents, and use custom Lua tools — all running locally."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does Context Harness require a cloud service or API keys?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. Context Harness is fully local-first. All data is stored in a local SQLite database. Keyword search works out of the box with no external dependencies. Semantic search uses local embeddings by default. No cloud services, API keys, or external databases are required."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What data sources can Context Harness ingest?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Context Harness includes built-in connectors for the local filesystem, Git repositories, and S3-compatible storage. You can also write custom connectors in Lua to ingest from any source — GitHub Issues, Confluence, Notion, Slack, WordPress, or any API."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How do I install Context Harness?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Install from source with 'cargo install --git https://github.com/parallax-labs/context-harness', or use Docker with 'docker pull ghcr.io/parallax-labs/context-harness'. Requires Rust 1.75+ for source builds. See the installation guide for details."
+          }
+        }
+      ]
+    }
+  ]
+}
+</script>
+{% endblock %}
+
 {% block body %}
 <nav class="nav">
     <div class="nav-inner">

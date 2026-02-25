@@ -5,7 +5,42 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}{{ config.title }}{% endblock %}</title>
     <meta name="description" content="{% block description %}{{ config.description }}{% endblock %}">
+    {# Derive description for OG/Twitter from page or section front matter #}
+    {% if page.description %}
+        {% set social_description = page.description %}
+    {% elif section.description %}
+        {% set social_description = section.description %}
+    {% else %}
+        {% set social_description = config.description %}
+    {% endif %}
+    <meta name="theme-color" content="#0a0a0f">
+    <meta name="author" content="{{ config.extra.author }}">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+
+    {# Canonical URL #}
+    {% if current_url %}<link rel="canonical" href="{{ current_url }}">{% endif %}
+
+    {# RSS/Atom feed autodiscovery #}
+    <link rel="alternate" type="application/atom+xml" title="{{ config.title }}" href="{{ get_url(path='atom.xml') }}">
+
+    {# Open Graph #}
+    <meta property="og:site_name" content="{{ config.title }}">
+    {% block og_type %}<meta property="og:type" content="website">{% endblock %}
+    <meta property="og:title" content="{% block og_title %}{{ config.title }} — {{ config.extra.tagline }}{% endblock %}">
+    <meta property="og:description" content="{{ social_description }}">
+    {% if current_url %}<meta property="og:url" content="{{ current_url }}">{% endif %}
+    <meta property="og:image" content="{{ get_url(path=config.extra.og_image) }}">
+    <meta property="og:locale" content="en_US">
+
+    {# Twitter / X Card #}
+    <meta name="twitter:card" content="summary_large_image">
+    {% if config.extra.twitter_handle %}<meta name="twitter:site" content="{{ config.extra.twitter_handle }}">{% endif %}
+    <meta name="twitter:title" content="{% block twitter_title %}{{ config.title }} — {{ config.extra.tagline }}{% endblock %}">
+    <meta name="twitter:description" content="{{ social_description }}">
+    <meta name="twitter:image" content="{{ get_url(path=config.extra.og_image) }}">
+
+    {% block structured_data %}{% endblock %}
+
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
     tailwind.config = {

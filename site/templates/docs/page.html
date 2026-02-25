@@ -2,6 +2,29 @@
 
 {% block title %}{{ page.title }} — Context Harness Docs{% endblock %}
 {% block description %}{{ page.description | default(value="Context Harness documentation") }}{% endblock %}
+{% block og_title %}{{ page.title }} — Context Harness Docs{% endblock %}
+{% block twitter_title %}{{ page.title }} — Context Harness Docs{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "{{ page.title }}",
+  "description": "{{ page.description | default(value='Context Harness documentation') }}",
+  "url": "{{ page.permalink | safe }}",
+  "author": {
+    "@type": "Organization",
+    "name": "Parallax Labs"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Parallax Labs",
+    "url": "{{ config.base_url | safe }}"
+  }
+}
+</script>
+{% endblock %}
 
 {% block head_extra %}
 <style>

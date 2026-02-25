@@ -2,6 +2,41 @@
 
 {% block title %}{{ page.title }} — Context Harness Blog{% endblock %}
 {% block description %}{{ page.description | default(value="Context Harness blog") }}{% endblock %}
+{% block og_type %}<meta property="og:type" content="article">{% endblock %}
+{% block og_title %}{{ page.title }}{% endblock %}
+{% block twitter_title %}{{ page.title }}{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "{{ page.title }}",
+  "description": "{{ page.description | default(value='') }}",
+  "url": "{{ page.permalink | safe }}",
+  "datePublished": "{{ page.date | date(format='%Y-%m-%d') }}",
+  {% if page.updated %}"dateModified": "{{ page.updated | date(format='%Y-%m-%d') }}",{% endif %}
+  "author": {
+    "@type": "Organization",
+    "name": "Parallax Labs",
+    "url": "{{ config.base_url | safe }}"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Parallax Labs",
+    "url": "{{ config.base_url | safe }}"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "{{ page.permalink | safe }}"
+  },
+  "image": "{{ get_url(path=config.extra.og_image) }}"
+  {% if page.taxonomies.tags %},
+  "keywords": "{{ page.taxonomies.tags | join(sep=', ') }}"
+  {% endif %}
+}
+</script>
+{% endblock %}
 
 {% block head_extra %}
 <style>
