@@ -6,6 +6,7 @@ Context Harness solves the problem of giving AI agents (Cursor, Claude, custom a
 
 ## Key Capabilities
 
+- **Extension registry**: install community connectors for Jira, Confluence, Slack, RSS, and more from Git-backed registries
 - **Connector-driven ingestion**: filesystem, Git, S3, and custom Lua scripts
 - **Local-first storage**: SQLite with WAL mode, FTS5 full-text search, vector embeddings
 - **Hybrid search**: BM25 keyword scoring + cosine semantic scoring with configurable alpha blending
@@ -32,6 +33,12 @@ Context Harness solves the problem of giving AI agents (Cursor, Claude, custom a
 - [Build a RAG Agent](https://parallax-labs.github.io/context-harness/docs/guides/rag-agent/): Python agent with search, retrieval, and grounded answers
 - [Build a Chatbot](https://parallax-labs.github.io/context-harness/docs/guides/chatbot/): TypeScript chatbot with streaming and conversation history
 - [MCP Agents](https://parallax-labs.github.io/context-harness/docs/guides/agents/): Named personas with system prompts, scoped tools, and dynamic context
+
+## Extension Registry
+
+- [Registry Overview](https://parallax-labs.github.io/context-harness/docs/registry/overview/): How Git-backed extension registries work
+- [Usage Guide](https://parallax-labs.github.io/context-harness/docs/registry/usage-guide/): Install, browse, and use community extensions
+- [Available Extensions](https://parallax-labs.github.io/context-harness/docs/registry/available-extensions/): Complete catalog of community connectors, tools, and agents
 
 ## Connectors
 
