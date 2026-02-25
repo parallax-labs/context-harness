@@ -355,6 +355,105 @@ Add to config:
 
 ---
 
+### `ctx registry <command>`
+
+Manage extension registries — community connectors, tools, and agents from Git-backed repositories.
+
+```bash
+$ ctx registry --help
+Commands:
+  list      List configured registries and available extensions
+  install   Install (clone) configured registries
+  update    Update (git pull) registries
+  search    Search extensions by name, tag, or description
+  info      Show details for a specific extension
+  add       Scaffold a config entry for an extension in ctx.toml
+  override  Copy an extension to a writable registry for customization
+  init      Install the community extension registry (first-run setup)
+```
+
+#### `ctx registry init`
+
+Clone the community registry and add it to your config. Safe to run multiple times.
+
+```bash
+$ ctx registry init
+Cloning community extension registry...
+Installed: 10 connectors, 4 tools, 2 agents
+Added [registries.community] to ./config/ctx.toml
+```
+
+#### `ctx registry list`
+
+Show all configured registries and their available extensions, grouped by type.
+
+```bash
+$ ctx registry list
+```
+
+#### `ctx registry search <query>`
+
+Find extensions by name, tag, or description.
+
+```bash
+$ ctx registry search slack
+Found 2 extensions matching 'slack':
+  connectors/slack — Ingest message history from Slack channels
+  tools/send-slack-message — Post a message to a Slack channel
+```
+
+#### `ctx registry info <extension>`
+
+Show full details for an extension. Extension IDs use the `type/name` format.
+
+```bash
+$ ctx registry info connectors/rss
+Extension: connectors/rss
+Registry:  community
+Script:    ~/.ctx/registries/community/connectors/rss/connector.lua
+Description: Ingest articles from RSS and Atom feeds
+Tags: rss, atom, feed, blog, news
+Required config: feed_url
+Host APIs: http
+```
+
+#### `ctx registry add <extension>`
+
+Scaffold a `ctx.toml` config entry for a connector, pre-filled with required fields.
+
+```bash
+$ ctx registry add connectors/jira
+Added [connectors.script.jira] to ./config/ctx.toml
+Edit ./config/ctx.toml to set: url, email, api_token
+```
+
+#### `ctx registry install [--name <registry>]`
+
+Clone registries that have `url` configured but aren't cloned yet.
+
+```bash
+$ ctx registry install
+```
+
+#### `ctx registry update [--name <registry>]`
+
+Pull the latest changes for Git-backed registries.
+
+```bash
+$ ctx registry update
+```
+
+#### `ctx registry override <extension>`
+
+Copy an extension from a read-only registry to a writable one for local customization.
+
+```bash
+$ ctx registry override connectors/rss
+Copied connectors/rss to ~/.ctx/registries/personal/connectors/rss/
+```
+
+---
+
 ### `ctx export [--output <path>]`
 
 Export the search index as JSON for use with `ctx-search.js` on static sites. Replaces the Python export script.
