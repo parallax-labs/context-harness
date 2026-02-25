@@ -102,6 +102,7 @@ Guarantees:
 - `traits.rs` — `Connector` and `Tool` traits, `ToolContext`, `ConnectorRegistry`, `ToolRegistry`
 - `agents.rs` — `Agent` trait, `AgentPrompt`, `AgentRegistry`, `TomlAgent`
 - `agent_script.rs` — Lua scripted agents: `LuaAgentAdapter`, load/resolve/scaffold/test
+- `registry.rs` — Extension registries: `RegistryManager`, `RegistryManifest`, git ops, resolution, CLI commands
 
 Guarantees:
 - `Connector` trait: `name()`, `description()`, `scan()` → `Vec<SourceItem>`
@@ -111,6 +112,10 @@ Guarantees:
 - `ConnectorRegistry`: registered connectors available via `ctx sync custom:<name>`
 - `ToolRegistry`: registered tools available via `POST /tools/{name}`
 - `AgentRegistry`: registered agents available via `GET /agents/list` and `POST /agents/{name}/prompt`
+- `RegistryManager`: loads registries from config + `.ctx/` auto-discovery, resolves extensions with precedence ordering
+- Git operations: `clone_registry()`, `pull_registry()`, `is_git_repo()`, `is_dirty()`
+- Manifest parsing: `registry.toml` manifest with connector/tool/agent entries
+- Extension auto-discovery: tools and agents from registries are available without explicit config; connectors require activation via `ctx registry add`
 
 ---
 
@@ -185,6 +190,14 @@ Checkpoint updated
 | agent list  | agent_script::list_agents() |
 | agent test  | agent_script::test_agent() |
 | agent init  | agent_script::scaffold_agent() |
+| registry list | registry::cmd_list() |
+| registry install | registry::cmd_install() |
+| registry update | registry::cmd_update() |
+| registry search | registry::cmd_search() |
+| registry info | registry::cmd_info() |
+| registry add | registry::cmd_add() |
+| registry override | registry::cmd_override() |
+| registry init | registry::cmd_init_community() |
 
 ## HTTP-to-Module Mapping
 
@@ -213,3 +226,4 @@ The public contract is defined by:
 - LUA_TOOLS.md
 - RUST_TRAITS.md
 - AGENTS.md
+- REGISTRY.md

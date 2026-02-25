@@ -166,7 +166,7 @@ pub fn load_agent_definitions(config: &Config) -> Result<Vec<AgentDefinition>> {
 }
 
 /// Load a single agent script and extract its definition.
-fn load_single_agent(name: &str, agent_config: &ScriptAgentConfig) -> Result<AgentDefinition> {
+pub fn load_single_agent(name: &str, agent_config: &ScriptAgentConfig) -> Result<AgentDefinition> {
     let script_src = std::fs::read_to_string(&agent_config.path).with_context(|| {
         format!(
             "Failed to read agent script: {}",

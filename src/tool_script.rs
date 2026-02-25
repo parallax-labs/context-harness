@@ -173,7 +173,7 @@ pub fn load_tool_definitions(config: &Config) -> Result<Vec<ToolDefinition>> {
 }
 
 /// Load a single tool script and extract its definition.
-fn load_single_tool(name: &str, tool_config: &ScriptToolConfig) -> Result<ToolDefinition> {
+pub fn load_single_tool(name: &str, tool_config: &ScriptToolConfig) -> Result<ToolDefinition> {
     let script_src = std::fs::read_to_string(&tool_config.path)
         .with_context(|| format!("Failed to read tool script: {}", tool_config.path.display()))?;
 

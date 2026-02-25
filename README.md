@@ -11,6 +11,7 @@ Context Harness is a generalized framework for ingesting external knowledge sour
 ## Features
 
 - **Connector-driven ingestion** — plug in any source (filesystem, Git repos, S3 buckets, Lua scripts)
+- **Extension registries** — install community connectors, tools, and agents from Git-backed repos
 - **Local-first storage** — SQLite with FTS5 for keyword search
 - **Embedding pipeline** — OpenAI embeddings with automatic batching, retry, and staleness detection
 - **Hybrid retrieval** — keyword + semantic + weighted merge (configurable alpha)
@@ -164,6 +165,11 @@ Connectors → Normalization → Chunking → Embedding → SQLite Store → Que
 | `ctx serve mcp` | Start MCP-compatible HTTP server |
 | `ctx connector init <name>` | Scaffold a new Lua connector |
 | `ctx connector test <path>` | Test a connector without writing to DB |
+| `ctx registry list` | List configured registries and available extensions |
+| `ctx registry install` | Clone configured registries |
+| `ctx registry update` | Pull latest changes for registries |
+| `ctx registry search <q>` | Search extensions by name, tag, or description |
+| `ctx registry add <ext>` | Scaffold a config entry for a registry extension |
 | `ctx completions <shell>` | Generate shell completions (bash, zsh, fish) |
 
 ## HTTP API
@@ -280,6 +286,66 @@ ctx sync script:jira
 ```
 
 See `examples/connectors/github-issues.lua` for a complete example.
+
+## Extension Registries
+
+Install community connectors, tools, and agents from Git-backed repositories. Registries provide ready-to-use Lua extensions that you can install with one command and customize via overrides.
+
+### Install the Community Registry
+
+```bash
+ctx registry init --config ./config/ctx.toml
+```
+
+Or during first run, `ctx init` will offer to install it automatically.
+
+### Browse and Install Extensions
+
+```bash
+# List all available extensions
+ctx registry list --config ./config/ctx.toml
+
+# Search for a connector
+ctx registry search jira --config ./config/ctx.toml
+
+# See details
+ctx registry info connectors/jira --config ./config/ctx.toml
+
+# Add it to your config (scaffolds the TOML entry with placeholders)
+ctx registry add connectors/jira --config ./config/ctx.toml
+```
+
+Tools and agents from registries are **auto-discovered** at server startup — they appear in `GET /tools/list` and `GET /agents/list` without explicit config. Connectors need credentials, so they require explicit activation via `ctx registry add`.
+
+### Configure Multiple Registries
+
+```toml
+[registries.community]
+url = "https://github.com/parallax-labs/ctx-registry.git"
+path = "~/.ctx/registries/community"
+readonly = true
+auto_update = true
+
+[registries.company]
+url = "git@github.com:myorg/ctx-extensions.git"
+path = "~/.ctx/registries/company"
+readonly = true
+```
+
+Registries are resolved with precedence: explicit config > `.ctx/` project-local > personal > company > community.
+
+### Project-Local Extensions
+
+Place a `.ctx/` directory in your project root with Lua scripts organized as `connectors/<name>/connector.lua`, `tools/<name>/tool.lua`, or `agents/<name>/agent.lua`. They are auto-discovered from any subdirectory.
+
+### Customize an Extension
+
+```bash
+# Copy to a writable registry for editing
+ctx registry override connectors/jira --config ./config/ctx.toml
+```
+
+See [`docs/REGISTRY.md`](docs/REGISTRY.md) for the full specification.
 
 ## Embedding Configuration
 
