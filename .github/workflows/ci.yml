@@ -16,6 +16,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install OpenSSL (Linux)
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -90,6 +93,10 @@ jobs:
       - name: Install musl-tools
         if: matrix.target == 'x86_64-unknown-linux-musl'
         run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Install OpenSSL (Linux, for local-embeddings)
+        if: matrix.os == 'ubuntu-latest' && matrix.target != 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev
 
       - name: Build release binary
         run: cargo build --release --target ${{ matrix.target }} ${{ matrix.features }}

@@ -48,6 +48,17 @@ $ docker run -d -p 7331:7331 \
 
 SQLite is bundled via `rusqlite` — there is nothing else to install. The binary is fully self-contained with no runtime dependencies.
 
+**Building from source:** The **local** embedding provider has no system dependencies at runtime; models are downloaded on first use.
+
+- **Linux:** If you use default features (fastembed), install OpenSSL development headers: `libssl-dev` and `pkg-config` on Debian/Ubuntu, or `openssl-devel` on Fedora/RHEL.
+- **macOS:** The build links against the C++ standard library. If you see `library not found for -lc++`, run `xcode-select --install` to install the Xcode Command Line Tools. If you use Nix, run `nix develop` first so the dev shell provides Zig as the C/C++ compiler; then `cargo build` works.
+
+See the [configuration reference](https://parallax-labs.github.io/context-harness/docs/reference/configuration/#requirements-and-platform-support-for-local-embeddings) for details.
+
+### Release binaries and local embeddings
+
+[Pre-built release binaries](https://github.com/parallax-labs/context-harness/releases) are provided for Linux (glibc, musl, aarch64), macOS (Intel and Apple Silicon), and Windows. The **local** embedding provider is included on all targets: primary platforms use fastembed; Linux musl and macOS Intel use a pure-Rust (tract) backend. Details are in the [configuration reference](https://parallax-labs.github.io/context-harness/docs/reference/configuration/#requirements-and-platform-support-for-local-embeddings).
+
 ### Verify
 
 ```bash

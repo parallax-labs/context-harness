@@ -41,11 +41,19 @@ hex = "0.4"
 rmcp = { version = "0.16", features = ["server", "transport-streamable-http-server"] }
 clap_complete = "4.5.66"
 atty = "0.2.14"
-fastembed = { version = "5", optional = true }
+# Primary platforms (Linux glibc, Linux aarch64, macOS aarch64, Windows): fastembed with bundled ORT.
+fastembed = { version = "5", optional = true, default-features = false, features = ["ort-download-binaries-native-tls", "hf-hub-native-tls", "image-models"] }
+# Fallback platforms (Linux musl, macOS Intel): pure-Rust tract path.
+tract-onnx = { version = "0.22", optional = true }
+tokenizers = { version = "0.19", optional = true }
+ndarray = { version = "0.16", optional = true }
 
 [features]
-default = ["local-embeddings"]
-local-embeddings = ["dep:fastembed"]
+default = ["local-embeddings-fastembed"]
+# Primary: fastembed + ort download-binaries (no user-managed ORT).
+local-embeddings-fastembed = ["dep:fastembed"]
+# Fallback: tract + tokenizers for musl and Intel Mac.
+local-embeddings-tract = ["dep:tract-onnx", "dep:tokenizers", "dep:ndarray"]
 
 [dev-dependencies]
 tempfile = "3"

@@ -11,6 +11,9 @@
 *.swo
 *~
 
+# Nix build output
+/result
+
 # Zola build output
 /site/public/
 
