@@ -2,6 +2,10 @@
 //!
 //! Pure-Rust path: loads ONNX model with tract-onnx, tokenizes with the tokenizers crate,
 //! runs inference in spawn_blocking. No ONNX Runtime or system deps.
+#![cfg_attr(
+    all(feature = "local-embeddings-fastembed", feature = "local-embeddings-tract"),
+    allow(dead_code)
+)]
 
 use anyhow::{bail, Result};
 use std::path::PathBuf;

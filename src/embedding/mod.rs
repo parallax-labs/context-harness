@@ -82,7 +82,7 @@ pub async fn embed_texts(
         "ollama" => embed_ollama(config, texts).await,
         #[cfg(feature = "local-embeddings-fastembed")]
         "local" => embed_local_fastembed(config, texts).await,
-        #[cfg(feature = "local-embeddings-tract")]
+        #[cfg(all(feature = "local-embeddings-tract", not(feature = "local-embeddings-fastembed")))]
         "local" => embed_local_tract(config, texts).await,
         #[cfg(not(any(feature = "local-embeddings-fastembed", feature = "local-embeddings-tract")))]
         "local" => bail!(
@@ -532,6 +532,10 @@ async fn embed_local_fastembed(
 }
 
 #[cfg(feature = "local-embeddings-tract")]
+#[cfg_attr(
+    all(feature = "local-embeddings-fastembed", feature = "local-embeddings-tract"),
+    allow(dead_code)
+)]
 async fn embed_local_tract(config: &EmbeddingConfig, texts: &[String]) -> Result<Vec<Vec<f32>>> {
     local_tract::embed_local_tract(config, texts).await
 }
