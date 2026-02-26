@@ -49,6 +49,9 @@ Windows: download `ctx-windows-x86_64.zip` from the releases page and add `ctx.e
 
 **From source:**
 
+On Linux, install OpenSSL development headers first if you build with the default features (local embeddings):  
+`libssl-dev` and `pkg-config` on Debian/Ubuntu, or `openssl-devel` on Fedora/RHEL.
+
 ```bash
 cargo install --path .
 ```
@@ -387,6 +390,30 @@ dims = 1536
 ```
 
 Set the `OPENAI_API_KEY` environment variable before using embedding commands.
+
+### Platform support (release binaries)
+
+Pre-built [release binaries](https://github.com/parallax-labs/context-harness/releases) are built for six targets. The **local** embedding provider (fastembed/ONNX) is included in most builds; two targets ship without it due to toolchain constraints:
+
+| Binary | Local embeddings | OpenAI / Ollama |
+|--------|------------------|------------------|
+| Linux x86_64 (glibc) | ✅ | ✅ |
+| Linux x86_64 (musl) | ❌ | ✅ |
+| Linux aarch64 | ✅ | ✅ |
+| macOS x86_64 (Intel) | ❌ | ✅ |
+| macOS aarch64 (Apple Silicon) | ✅ | ✅ |
+| Windows x86_64 | ✅ | ✅ |
+
+- **Linux musl**: ONNX Runtime does not support musl; the static binary is built with `--no-default-features`.
+- **macOS Intel**: The `ort` crate does not ship prebuilt ONNX Runtime binaries for `x86_64-apple-darwin`.
+
+If you use a **musl** or **Intel Mac** binary and want local (fully offline) embeddings, either:
+
+1. **Build from source** (includes local embeddings by default):  
+   `cargo install --git https://github.com/parallax-labs/context-harness.git`
+2. **Use Ollama** with the prebuilt binary: run Ollama locally and set `provider = "ollama"` — no API key, no source build.
+
+See the [configuration docs](https://parallax-labs.github.io/context-harness/docs/reference/configuration/) for full platform notes.
 
 ## Hybrid Search
 

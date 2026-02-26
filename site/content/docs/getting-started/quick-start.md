@@ -129,6 +129,8 @@ $ ctx search "how does the system handle failures" --mode hybrid
 # Now finds conceptually related docs, not just keyword matches
 ```
 
+You can also use **Ollama** (`provider = "ollama"`) or **local** ONNX models (`provider = "local"`) for fully offline embeddings. Some pre-built binaries (Linux musl, macOS Intel) do not include the local provider — see the [configuration reference](/docs/reference/configuration/) for the platform table.
+
 ### 7. Add a remote repo (optional)
 
 Index a GitHub repo alongside your local files:

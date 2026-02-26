@@ -25,6 +25,24 @@ provider = "disabled"                  # "disabled" | "openai" | "ollama" | "loc
 # timeout_secs = 30                   # Per-request timeout
 # url = "http://localhost:11434"      # Ollama API base URL (ollama provider only)
 
+#### Platform support for local embeddings
+
+Pre-built release binaries are built for six targets. The **local** provider (fastembed/ONNX) is included in most; two targets ship without it:
+
+| Binary | Local embeddings | OpenAI / Ollama |
+|--------|------------------|------------------|
+| Linux x86_64 (glibc) | ✅ | ✅ |
+| Linux x86_64 (musl) | ❌ | ✅ |
+| Linux aarch64 | ✅ | ✅ |
+| macOS x86_64 (Intel) | ❌ | ✅ |
+| macOS aarch64 (Apple Silicon) | ✅ | ✅ |
+| Windows x86_64 | ✅ | ✅ |
+
+- **Linux musl**: ONNX Runtime does not support musl; the static binary is built without the local-embeddings feature.
+- **macOS Intel**: The `ort` crate does not provide prebuilt ONNX Runtime binaries for `x86_64-apple-darwin`.
+
+On **musl** or **Intel Mac**, to use local (fully offline) embeddings you can either build from source (`cargo install --git https://github.com/parallax-labs/context-harness.git`) or use the **Ollama** provider with the prebuilt binary.
+
 [retrieval]
 final_limit = 12                       # Max results returned to caller
 hybrid_alpha = 0.6                     # 0.0 = keyword only, 1.0 = semantic only
