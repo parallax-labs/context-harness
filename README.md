@@ -13,7 +13,7 @@ Context Harness is a generalized framework for ingesting external knowledge sour
 - **Connector-driven ingestion** — plug in any source (filesystem, Git repos, S3 buckets, Lua scripts)
 - **Extension registries** — install community connectors, tools, and agents from Git-backed repos
 - **Local-first storage** — SQLite with FTS5 for keyword search
-- **Embedding pipeline** — OpenAI embeddings with automatic batching, retry, and staleness detection
+- **Embedding pipeline** — local (ONNX), Ollama, and OpenAI embeddings with automatic batching, retry, and staleness detection
 - **Hybrid retrieval** — keyword + semantic + weighted merge (configurable alpha)
 - **MCP server** — expose context to Cursor and other AI tools via HTTP
 - **CLI-first** — everything accessible via the `ctx` command
@@ -349,16 +349,41 @@ See [`docs/REGISTRY.md`](docs/REGISTRY.md) for the full specification.
 
 ## Embedding Configuration
 
-To enable embeddings, set the `[embedding]` section in your config:
+Context Harness supports three embedding providers:
+
+| Provider | Description | Requires |
+|----------|-------------|----------|
+| `local` | Built-in ONNX models via fastembed — fully offline | Nothing (model downloads on first use) |
+| `ollama` | Local Ollama instance | Running Ollama with an embedding model |
+| `openai` | OpenAI API | `OPENAI_API_KEY` env var |
+
+### Local (recommended for offline use)
+
+```toml
+[embedding]
+provider = "local"
+# model = "all-minilm-l6-v2"  # default, 384 dims — no config needed
+```
+
+Supported models: `all-minilm-l6-v2` (384d), `bge-small-en-v1.5` (384d), `bge-base-en-v1.5` (768d), `bge-large-en-v1.5` (1024d), `nomic-embed-text-v1` (768d), `nomic-embed-text-v1.5` (768d), `multilingual-e5-small` (384d), `multilingual-e5-base` (768d), `multilingual-e5-large` (1024d).
+
+### Ollama
+
+```toml
+[embedding]
+provider = "ollama"
+model = "nomic-embed-text"
+dims = 768
+# url = "http://localhost:11434"  # default
+```
+
+### OpenAI
 
 ```toml
 [embedding]
 provider = "openai"
 model = "text-embedding-3-small"
 dims = 1536
-batch_size = 64
-max_retries = 5
-timeout_secs = 30
 ```
 
 Set the `OPENAI_API_KEY` environment variable before using embedding commands.

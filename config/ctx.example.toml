@@ -5,9 +5,12 @@ path = "./data/ctx.sqlite"
 max_tokens = 700
 overlap_tokens = 80
 
-# Embedding configuration (Phase 2)
-# provider: "disabled" (no embeddings), "openai" (OpenAI API)
-# When provider != "disabled", model and dims are required
+# Embedding configuration
+# provider: "disabled" | "openai" | "ollama" | "local"
+#
+# openai  — requires OPENAI_API_KEY env var; model + dims required
+# ollama  — requires running Ollama instance; model + dims required
+# local   — built-in ONNX models (no API key); model + dims are optional
 [embedding]
 provider = "disabled"
 # model = "text-embedding-3-small"
@@ -15,6 +18,27 @@ provider = "disabled"
 # batch_size = 64
 # max_retries = 5
 # timeout_secs = 30
+
+# ── OpenAI example ──
+# [embedding]
+# provider = "openai"
+# model = "text-embedding-3-small"
+# dims = 1536
+
+# ── Ollama example ──
+# [embedding]
+# provider = "ollama"
+# model = "nomic-embed-text"
+# dims = 768
+# url = "http://localhost:11434"   # optional, this is the default
+
+# ── Local (fastembed/ONNX) example ──
+# [embedding]
+# provider = "local"
+# model = "all-minilm-l6-v2"      # optional, this is the default (384 dims)
+# Supported models: all-minilm-l6-v2, bge-small-en-v1.5, bge-base-en-v1.5,
+#   bge-large-en-v1.5, nomic-embed-text-v1, nomic-embed-text-v1.5,
+#   multilingual-e5-small, multilingual-e5-base, multilingual-e5-large
 
 [retrieval]
 final_limit = 12

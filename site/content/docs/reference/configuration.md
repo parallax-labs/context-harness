@@ -17,12 +17,13 @@ max_tokens = 700                      # Max tokens per chunk (~4 chars/token)
 overlap_tokens = 80                    # Overlap between consecutive chunks
 
 [embedding]
-provider = "disabled"                  # "disabled" | "openai"
-# model = "text-embedding-3-small"    # OpenAI model name
-# dims = 1536                         # Embedding vector dimensions
-# batch_size = 64                     # Texts per API call
+provider = "disabled"                  # "disabled" | "openai" | "ollama" | "local"
+# model = "text-embedding-3-small"    # Model name (required for openai/ollama)
+# dims = 1536                         # Vector dimensions (required for openai/ollama)
+# batch_size = 64                     # Texts per batch
 # max_retries = 5                     # Retry count for transient failures
 # timeout_secs = 30                   # Per-request timeout
+# url = "http://localhost:11434"      # Ollama API base URL (ollama provider only)
 
 [retrieval]
 final_limit = 12                       # Max results returned to caller
@@ -129,7 +130,7 @@ workspace = "acme"                      # Plain string, no expansion
 |---------|---------|
 | `[db]` | SQLite database path |
 | `[chunking]` | Token limits for text chunking |
-| `[embedding]` | Embedding provider, model, dimensions |
+| `[embedding]` | Embedding provider (`disabled`, `openai`, `ollama`, `local`) |
 | `[retrieval]` | Hybrid alpha, candidate counts, result limits |
 | `[server]` | HTTP bind address |
 | `[connectors.filesystem.*]` | Named filesystem connector instances |

@@ -41,6 +41,11 @@ hex = "0.4"
 rmcp = { version = "0.16", features = ["server", "transport-streamable-http-server"] }
 clap_complete = "4.5.66"
 atty = "0.2.14"
+fastembed = { version = "5", optional = true }
+
+[features]
+default = ["local-embeddings"]
+local-embeddings = ["dep:fastembed"]
 
 [dev-dependencies]
 tempfile = "3"

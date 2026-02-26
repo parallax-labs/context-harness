@@ -24,31 +24,37 @@ jobs:
             os: ubuntu-latest
             name: ctx-linux-x86_64
             cross: false
+            features: ""
 
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
             name: ctx-linux-x86_64-musl
             cross: false
+            features: "--no-default-features"
 
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
             name: ctx-linux-aarch64
             cross: true
+            features: ""
 
           - target: x86_64-apple-darwin
             os: macos-latest
             name: ctx-macos-x86_64
             cross: false
+            features: ""
 
           - target: aarch64-apple-darwin
             os: macos-latest
             name: ctx-macos-aarch64
             cross: false
+            features: ""
 
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             name: ctx-windows-x86_64
             cross: false
+            features: ""
 
     steps:
       - uses: actions/checkout@v4
@@ -81,9 +87,9 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.cross }}" = "true" ]; then
-            cross build --release --target ${{ matrix.target }}
+            cross build --release --target ${{ matrix.target }} ${{ matrix.features }}
           else
-            cargo build --release --target ${{ matrix.target }}
+            cargo build --release --target ${{ matrix.target }} ${{ matrix.features }}
           fi
 
       - name: Package (unix)

@@ -1,6 +1,7 @@
 /target
 /data
 /demo/data
+.fastembed_cache/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
