@@ -20,5 +20,6 @@
 # Generated in CI — do not commit
 /site/static/docs/data.json
 /site/static/api/
+/site/static/site-index.json
 /site/docs/ctx-docs.sqlite
 

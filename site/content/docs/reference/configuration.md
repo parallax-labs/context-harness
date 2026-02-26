@@ -24,6 +24,7 @@ provider = "disabled"                  # "disabled" | "openai" | "ollama" | "loc
 # max_retries = 5                     # Retry count for transient failures
 # timeout_secs = 30                   # Per-request timeout
 # url = "http://localhost:11434"      # Ollama API base URL (ollama provider only)
+```
 
 #### Requirements and platform support for local embeddings
 
@@ -42,6 +43,7 @@ Pre-built release binaries are built for six targets. Local embeddings are inclu
 
 **Build features (from source):** Default build uses `local-embeddings-fastembed` (fastembed with bundled ORT). For musl or Intel Mac use `cargo build --no-default-features --features local-embeddings-tract`. To omit local embeddings entirely use `--no-default-features`.
 
+```toml
 [retrieval]
 final_limit = 12                       # Max results returned to caller
 hybrid_alpha = 0.6                     # 0.0 = keyword only, 1.0 = semantic only
