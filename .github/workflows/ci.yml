@@ -61,10 +61,11 @@ jobs:
             zig: true
             features: "--no-default-features --features local-embeddings-tract"
 
+          # Native aarch64 on ARM runner to avoid Zig cross-link issues (C++/ORT).
           - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
+            os: ubuntu-24.04-arm
             name: linux-aarch64
-            zig: true
+            zig: false
             features: ""
 
           - target: x86_64-apple-darwin
