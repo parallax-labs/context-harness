@@ -85,7 +85,7 @@ jobs:
 
       - name: Install cargo-zigbuild
         if: matrix.zig
-        run: cargo install cargo-zigbuild
+        run: cargo install cargo-zigbuild --force
 
       - name: Build release binary
         shell: bash
