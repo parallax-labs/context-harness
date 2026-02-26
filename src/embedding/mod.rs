@@ -533,7 +533,10 @@ async fn embed_local_fastembed(
 
 #[cfg(feature = "local-embeddings-tract")]
 #[cfg_attr(
-    all(feature = "local-embeddings-fastembed", feature = "local-embeddings-tract"),
+    all(
+        feature = "local-embeddings-fastembed",
+        feature = "local-embeddings-tract"
+    ),
     allow(dead_code)
 )]
 async fn embed_local_tract(config: &EmbeddingConfig, texts: &[String]) -> Result<Vec<Vec<f32>>> {
