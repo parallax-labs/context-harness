@@ -1,19 +1,19 @@
 +++
 title = "Local Embeddings on Every Platform"
-description = "Context Harness now ships local embeddings on all six release targets — no ORT install, no musl or Intel Mac left behind."
+description = "Context Harness ships local embeddings on all six release targets — no ORT install, no musl or Intel Mac left behind."
 date = 2026-02-26
 
 [taxonomies]
 tags = ["release", "embeddings"]
 +++
 
-Context Harness has always supported **local** embeddings: fully offline, no API key, models downloaded on first use. The catch was that two of our six release targets — **Linux musl** and **macOS Intel** — couldn't ship with local embeddings because ONNX Runtime doesn't provide prebuilt binaries for them, and we didn't want to ask users to install ORT or set `ORT_DYLIB_PATH`. So those binaries only supported OpenAI and Ollama.
+Context Harness supports **local** embeddings on all six release targets: fully offline, no API key, models downloaded on first use. No system dependencies, no env vars, no special install steps.
 
-We've changed that. Every release binary now includes the local embedding provider. No system dependencies, no env vars, no special install steps.
+ONNX Runtime doesn't provide prebuilt binaries for **Linux musl** or **macOS Intel**, so we don't rely on it for those two targets. Instead, every release binary includes the local embedding provider: primary platforms use fastembed with bundled ORT; musl and Intel Mac use a pure-Rust backend. Users never need to install ORT or set `ORT_DYLIB_PATH`.
 
-## How we did it: two backends, one config
+## How it works: two backends, one config
 
-We kept the same config and API. Under the hood we now use **two** backends and pick the right one per target:
+The same config and API apply everywhere. Under the hood we use **two** backends and pick the right one per target:
 
 - **Primary platforms** (Linux glibc, Linux aarch64, macOS Apple Silicon, Windows): **fastembed** with ONNX Runtime **bundled at compile time** (download-binaries). Same fast path as before; zero user-managed deps.
 - **Fallback platforms** (Linux musl, macOS Intel): a **pure-Rust** path using **tract-onnx** and the **tokenizers** crate. No native ORT, no C++ runtime; models still download from Hugging Face on first use and cache locally.
@@ -44,4 +44,4 @@ The flake default is now the **full** build (with local embeddings). `nix build`
 - **Two backends:** fastembed (primary) and tract (musl / Intel Mac), chosen at build time.
 - **One config:** `provider = "local"` everywhere; same model semantics where both backends support them.
 
-If you were on musl or Intel Mac and had to use Ollama or OpenAI only — you can now use `provider = "local"` with the official binaries and get fully offline embeddings with zero extra setup.
+On musl or Intel Mac, use `provider = "local"` with the official binaries for fully offline embeddings with zero extra setup.

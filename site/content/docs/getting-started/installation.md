@@ -91,7 +91,7 @@ See the [configuration reference](https://parallax-labs.github.io/context-harnes
 
 ```bash
 $ ctx --version
-context-harness 0.1.0
+context-harness 0.4.2
 
 $ ctx --help
 A local-first context engine for AI tools
