@@ -16,11 +16,7 @@ const DEFAULT_MAX_LEN: usize = 256;
 /// Model manifest: name -> (onnx path in repo, tokenizer path in repo, dims).
 fn model_manifest(model_name: &str) -> Result<(&'static str, &'static str, usize)> {
     match model_name {
-        "all-minilm-l6-v2" => Ok((
-            "onnx/model.onnx",
-            "tokenizer.json",
-            ALL_MINILM_DIMS,
-        )),
+        "all-minilm-l6-v2" => Ok(("onnx/model.onnx", "tokenizer.json", ALL_MINILM_DIMS)),
         _ => bail!(
             "Tract backend supports only all-minilm-l6-v2 for now. Requested: '{}'",
             model_name
@@ -30,7 +26,10 @@ fn model_manifest(model_name: &str) -> Result<(&'static str, &'static str, usize
 
 fn cache_dir() -> Result<PathBuf> {
     let base = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    let dir = PathBuf::from(base).join(".cache").join("context-harness").join("models");
+    let dir = PathBuf::from(base)
+        .join(".cache")
+        .join("context-harness")
+        .join("models");
     std::fs::create_dir_all(&dir).map_err(|e| anyhow::anyhow!("Create cache dir: {}", e))?;
     Ok(dir)
 }
@@ -52,7 +51,8 @@ fn download_to_cache(repo: &str, path: &str, cache_path: &std::path::Path) -> Re
         .bytes()
         .map_err(|e| anyhow::anyhow!("Read body: {}", e))?;
     if let Some(parent) = cache_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| anyhow::anyhow!("Create cache parent: {}", e))?;
+        std::fs::create_dir_all(parent)
+            .map_err(|e| anyhow::anyhow!("Create cache parent: {}", e))?;
     }
     std::fs::write(cache_path, &bytes).map_err(|e| anyhow::anyhow!("Write cache: {}", e))?;
     Ok(())
@@ -132,16 +132,12 @@ fn run_tract_embed(model_name: &str, batch_size: usize, texts: &[String]) -> Res
             }
         }
 
-        let input_ids_tensor = ndarray::Array2::from_shape_vec(
-            (batch_size_actual, max_len),
-            input_ids,
-        )
-        .map_err(|e| anyhow::anyhow!("Input ids shape: {}", e))?;
-        let attention_mask_tensor = ndarray::Array2::from_shape_vec(
-            (batch_size_actual, max_len),
-            attention_mask,
-        )
-        .map_err(|e| anyhow::anyhow!("Attention mask shape: {}", e))?;
+        let input_ids_tensor =
+            ndarray::Array2::from_shape_vec((batch_size_actual, max_len), input_ids)
+                .map_err(|e| anyhow::anyhow!("Input ids shape: {}", e))?;
+        let attention_mask_tensor =
+            ndarray::Array2::from_shape_vec((batch_size_actual, max_len), attention_mask)
+                .map_err(|e| anyhow::anyhow!("Attention mask shape: {}", e))?;
 
         let input_ids_t: Tensor = input_ids_tensor.into();
         let attention_mask_t: Tensor = attention_mask_tensor.into();

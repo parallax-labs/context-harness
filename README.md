@@ -60,8 +60,10 @@ Install into your profile: `nix profile install .#default` or `nix profile insta
 
 **From source:**
 
-Local embeddings have **no system dependencies**; models are downloaded on first use. On Linux, install OpenSSL development headers for the build if you use default features (fastembed):  
-`libssl-dev` and `pkg-config` on Debian/Ubuntu, or `openssl-devel` on Fedora/RHEL.
+Local embeddings have **no system dependencies**; models are downloaded on first use.
+
+- **Linux:** Install OpenSSL development headers if you use default features (fastembed): `libssl-dev` and `pkg-config` on Debian/Ubuntu, or `openssl-devel` on Fedora/RHEL.
+- **macOS:** The build links against the C++ standard library (used by some dependencies). If you see `library not found for -lc++`, install the Xcode Command Line Tools: `xcode-select --install`. If you use Nix, run `nix develop` first so the shell provides Zig as the C/C++ compiler; then `cargo build` works.
 
 ```bash
 cargo install --path .

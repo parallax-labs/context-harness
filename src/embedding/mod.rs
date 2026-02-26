@@ -422,13 +422,19 @@ fn parse_ollama_response(json: &serde_json::Value) -> Result<Vec<Vec<f32>>> {
 /// Models are downloaded on first use from Hugging Face and cached.
 /// After initial download, no network calls are needed — embeddings run entirely offline.
 /// No system dependencies: ORT is bundled (fastembed) or pure Rust (tract).
-#[cfg(any(feature = "local-embeddings-fastembed", feature = "local-embeddings-tract"))]
+#[cfg(any(
+    feature = "local-embeddings-fastembed",
+    feature = "local-embeddings-tract"
+))]
 pub struct LocalProvider {
     model_name: String,
     dims: usize,
 }
 
-#[cfg(any(feature = "local-embeddings-fastembed", feature = "local-embeddings-tract"))]
+#[cfg(any(
+    feature = "local-embeddings-fastembed",
+    feature = "local-embeddings-tract"
+))]
 impl LocalProvider {
     pub fn new(config: &EmbeddingConfig) -> Result<Self> {
         let (model_name, dims) = resolve_local_model(config)?;
@@ -436,7 +442,10 @@ impl LocalProvider {
     }
 }
 
-#[cfg(any(feature = "local-embeddings-fastembed", feature = "local-embeddings-tract"))]
+#[cfg(any(
+    feature = "local-embeddings-fastembed",
+    feature = "local-embeddings-tract"
+))]
 impl EmbeddingProvider for LocalProvider {
     fn model_name(&self) -> &str {
         &self.model_name
@@ -446,7 +455,10 @@ impl EmbeddingProvider for LocalProvider {
     }
 }
 
-#[cfg(any(feature = "local-embeddings-fastembed", feature = "local-embeddings-tract"))]
+#[cfg(any(
+    feature = "local-embeddings-fastembed",
+    feature = "local-embeddings-tract"
+))]
 fn resolve_local_model(config: &EmbeddingConfig) -> Result<(String, usize)> {
     let model_name = config
         .model
@@ -491,7 +503,10 @@ fn config_to_fastembed_model(name: &str) -> Result<fastembed::EmbeddingModel> {
 }
 
 #[cfg(feature = "local-embeddings-fastembed")]
-async fn embed_local_fastembed(config: &EmbeddingConfig, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+async fn embed_local_fastembed(
+    config: &EmbeddingConfig,
+    texts: &[String],
+) -> Result<Vec<Vec<f32>>> {
     let model_name = config
         .model
         .clone()
