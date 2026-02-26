@@ -129,15 +129,18 @@ echo "    $DOC_COUNT documents, $CHUNK_COUNT chunks"
 rm -f "$DOCS_CONFIG" "$DOCS_DB" "${DOCS_DB}-wal" "${DOCS_DB}-shm"
 rm -rf "$CACHE_DIR"
 
-# ── Step 5: Copy static assets that may not be tracked ──
-# Ensure ctx-search.js is in static/
+# ── Step 5: Generate site index for search (site navigation) ──
+echo "==> Generating site-index.json..."
+python3 "$ROOT_DIR/scripts/generate-site-index.py" 2>/dev/null || true
+
+# ── Step 6: Copy static assets that may not be tracked ──
 if [ -f "$SITE_DIR/ctx-search.js" ]; then
     cp "$SITE_DIR/ctx-search.js" "$STATIC_DIR/ctx-search.js"
 fi
 
-# ── Step 6: Build Zola site ──
+# ── Step 7: Build Zola site ──
 if [ "${SKIP_ZOLA:-}" != "1" ]; then
-    echo "==> Building Zola site..."
+    echo "==> Building Zola site (with site-index for search)..."
     cd "$SITE_DIR"
     zola build
     cd "$ROOT_DIR"

@@ -1,0 +1,192 @@
+[
+  {
+    "title": "Context Harness",
+    "url": "https://parallax-labs.github.io/context-harness/",
+    "description": "Local-first context engine for AI tools"
+  },
+  {
+    "title": "Demo",
+    "url": "https://parallax-labs.github.io/context-harness/demo/",
+    "description": "Search a pre-built knowledge base in your browser"
+  },
+  {
+    "title": "Blog",
+    "url": "https://parallax-labs.github.io/context-harness/blog/",
+    "description": "Recipes, release notes, and real-world use cases for Context Harness."
+  },
+  {
+    "title": "Recipe: Chat With Your Blog",
+    "url": "https://parallax-labs.github.io/context-harness/blog/chat-with-your-blog/",
+    "description": "Combine a WordPress connector with a custom agent to create a conversational persona grounded in your own published writing."
+  },
+  {
+    "title": "Recipe: Unified Context for Your Engineering Team",
+    "url": "https://parallax-labs.github.io/context-harness/blog/engineering-team-context/",
+    "description": "Set up a shared Context Harness instance that indexes multiple repos, Jira, runbooks, and ADRs \u2014 so every engineer"
+  },
+  {
+    "title": "Recipe: Index Your GitHub Issues",
+    "url": "https://parallax-labs.github.io/context-harness/blog/index-github-issues/",
+    "description": "A Lua connector that pulls issues from any GitHub repo and makes them searchable by your AI tools. Great for bug triage and project context."
+  },
+  {
+    "title": "Recipe: Index Your WordPress Blog",
+    "url": "https://parallax-labs.github.io/context-harness/blog/index-your-wordpress-blog/",
+    "description": "Write a 60-line Lua connector that parses a WordPress XML export and turns every post into a searchable document."
+  },
+  {
+    "title": "Local Embeddings on Every Platform",
+    "url": "https://parallax-labs.github.io/context-harness/blog/local-embeddings-everywhere/",
+    "description": "Context Harness now ships local embeddings on all six release targets \u2014 no ORT install, no musl or Intel Mac left behind."
+  },
+  {
+    "title": "v0.2.0: Native MCP Streamable HTTP",
+    "url": "https://parallax-labs.github.io/context-harness/blog/v0-2-0-mcp-streamable-http/",
+    "description": "Context Harness now speaks the MCP protocol natively \u2014 connect Cursor, Claude, and other MCP clients directly via URL."
+  },
+  {
+    "title": "v0.3.0: See What Your Index Is Doing",
+    "url": "https://parallax-labs.github.io/context-harness/blog/v0-3-0-observability-and-polish/",
+    "description": "New stats, search explain, native JSON export, shell completions, and Docker support \u2014 everything you need to actually use Context Harness."
+  },
+  {
+    "title": "v0.4.2: The Extension Registry Is Here",
+    "url": "https://parallax-labs.github.io/context-harness/blog/v0-4-2-release/",
+    "description": "The big release: a community extension registry inspired by cheat/cheat \u2014 one command, dozens of connectors and tools. Plus local embeddings on every binary and the build fixes that made it ship."
+  },
+  {
+    "title": "Documentation",
+    "url": "https://parallax-labs.github.io/context-harness/docs/",
+    "description": "Everything you need to install, configure, extend, and deploy Context Harness."
+  },
+  {
+    "title": "Connectors & Tools",
+    "url": "https://parallax-labs.github.io/context-harness/docs/connectors/",
+    "description": "Ingest data from any source and extend agents with custom Lua-scripted tools."
+  },
+  {
+    "title": "Built-in Connectors",
+    "url": "https://parallax-labs.github.io/context-harness/docs/connectors/built-in/",
+    "description": "Filesystem, Git, and S3 connectors for ingesting data from any source."
+  },
+  {
+    "title": "Lua Connectors",
+    "url": "https://parallax-labs.github.io/context-harness/docs/connectors/lua-connectors/",
+    "description": "Write custom data source connectors in Lua \u2014 no Rust compilation needed."
+  },
+  {
+    "title": "Lua Tools",
+    "url": "https://parallax-labs.github.io/context-harness/docs/connectors/lua-tools/",
+    "description": "Define custom MCP tools in Lua that AI agents can discover and call at runtime."
+  },
+  {
+    "title": "Rust Traits",
+    "url": "https://parallax-labs.github.io/context-harness/docs/connectors/rust-traits/",
+    "description": "Extend Context Harness with custom connectors, tools, and agents using compiled Rust traits."
+  },
+  {
+    "title": "Getting Started",
+    "url": "https://parallax-labs.github.io/context-harness/docs/getting-started/",
+    "description": "Install Context Harness and build your first knowledge base in 5 minutes."
+  },
+  {
+    "title": "Installation",
+    "url": "https://parallax-labs.github.io/context-harness/docs/getting-started/installation/",
+    "description": "Install the ctx binary from source, Nix, or Docker in under a minute."
+  },
+  {
+    "title": "Including Context Harness in Your Nix Flake",
+    "url": "https://parallax-labs.github.io/context-harness/docs/getting-started/nix-flake/",
+    "description": "Add Context Harness as an input to your Nix flake and use it in NixOS, Home Manager, or ad-hoc shells."
+  },
+  {
+    "title": "Quick Start",
+    "url": "https://parallax-labs.github.io/context-harness/docs/getting-started/quick-start/",
+    "description": "Go from zero to searchable knowledge base in 5 minutes."
+  },
+  {
+    "title": "Guides",
+    "url": "https://parallax-labs.github.io/context-harness/docs/guides/",
+    "description": "Step-by-step tutorials for building agents, chatbots, and multi-repo knowledge bases."
+  },
+  {
+    "title": "Agent Integration",
+    "url": "https://parallax-labs.github.io/context-harness/docs/guides/agent-integration/",
+    "description": "Step-by-step setup for Cursor, Claude Desktop, Continue.dev, OpenClaw, and custom agents."
+  },
+  {
+    "title": "MCP Agents",
+    "url": "https://parallax-labs.github.io/context-harness/docs/guides/agents/",
+    "description": "Define named personas with system prompts, scoped tools, and dynamic context injection."
+  },
+  {
+    "title": "Build a Knowledge-Base Chatbot",
+    "url": "https://parallax-labs.github.io/context-harness/docs/guides/chatbot/",
+    "description": "Build a TypeScript chatbot with streaming, conversation history, and a web UI."
+  },
+  {
+    "title": "Cursor & IDE Integration",
+    "url": "https://parallax-labs.github.io/context-harness/docs/guides/cursor-extension/",
+    "description": "Set up Context Harness as workspace-level context for Cursor, VS Code, and JetBrains IDEs."
+  },
+  {
+    "title": "Multi-Repo Context",
+    "url": "https://parallax-labs.github.io/context-harness/docs/guides/multi-repo/",
+    "description": "Index multiple repositories and data sources into a single searchable knowledge base."
+  },
+  {
+    "title": "Build a RAG Agent",
+    "url": "https://parallax-labs.github.io/context-harness/docs/guides/rag-agent/",
+    "description": "Build a Python agent that searches your knowledge base, retrieves context, and generates grounded answers."
+  },
+  {
+    "title": "Reference",
+    "url": "https://parallax-labs.github.io/context-harness/docs/reference/",
+    "description": "Complete API, CLI, configuration, and deployment reference."
+  },
+  {
+    "title": "CLI Reference",
+    "url": "https://parallax-labs.github.io/context-harness/docs/reference/cli/",
+    "description": "Every ctx command, flag, and option with examples."
+  },
+  {
+    "title": "Configuration",
+    "url": "https://parallax-labs.github.io/context-harness/docs/reference/configuration/",
+    "description": "Complete reference for every setting in ctx.toml."
+  },
+  {
+    "title": "Deployment",
+    "url": "https://parallax-labs.github.io/context-harness/docs/reference/deployment/",
+    "description": "Deploy Context Harness as a persistent MCP server, in Docker, CI/CD, or as a static search index."
+  },
+  {
+    "title": "MCP Server API",
+    "url": "https://parallax-labs.github.io/context-harness/docs/reference/mcp-server/",
+    "description": "HTTP API reference for AI agent integration."
+  },
+  {
+    "title": "Search & Retrieval",
+    "url": "https://parallax-labs.github.io/context-harness/docs/reference/search/",
+    "description": "Keyword, semantic, and hybrid search modes, scoring, and tuning."
+  },
+  {
+    "title": "Extension Registry",
+    "url": "https://parallax-labs.github.io/context-harness/docs/registry/",
+    "description": "Install community connectors, tools, and agents from Git-backed registries."
+  },
+  {
+    "title": "Available Extensions",
+    "url": "https://parallax-labs.github.io/context-harness/docs/registry/available-extensions/",
+    "description": "Complete catalog of connectors, tools, and agents in the community registry."
+  },
+  {
+    "title": "Registry Overview",
+    "url": "https://parallax-labs.github.io/context-harness/docs/registry/overview/",
+    "description": "How extension registries work \u2014 Git-backed repos of community connectors, tools, and agents."
+  },
+  {
+    "title": "Usage Guide",
+    "url": "https://parallax-labs.github.io/context-harness/docs/registry/usage-guide/",
+    "description": "Step-by-step guide to installing, browsing, and using community extensions."
+  }
+]

@@ -9,10 +9,11 @@
  *   <script>CtxSearch.init({ dataUrl: 'data.json' })</script>
  *
  * Options (via data attributes or init()):
- *   dataUrl      — path to the data.json file (required)
- *   placeholder  — search input placeholder text
- *   hotkey       — keyboard shortcut letter (default: 'k' for Cmd+K)
- *   trigger      — CSS selector for an existing element to use as trigger
+ *   dataUrl       — path to the data.json file (docs/repo index)
+ *   siteIndexUrl  — path to site-index.json for site navigation (optional)
+ *   placeholder   — search input placeholder text
+ *   hotkey        — keyboard shortcut letter (default: 'k' for Cmd+K)
+ *   trigger       — CSS selector for an existing element to use as trigger
  *
  * Generates data.json:
  *   ctx init --config ctx.toml
@@ -85,6 +86,43 @@
     });
   }
 
+  function searchSitePages(siteIndex, query, limit) {
+    if (!siteIndex || !Array.isArray(siteIndex)) return [];
+    const qTokens = tokenize(query);
+    if (!qTokens.length) return [];
+    const scored = [];
+    const text = (query || '').toLowerCase();
+    for (const page of siteIndex) {
+      const title = (page.title || '').toLowerCase();
+      const desc = (page.description || '').toLowerCase();
+      const combined = title + ' ' + desc;
+      let s = 0;
+      for (const t of qTokens) {
+        if (title.includes(t)) s += 1.5;
+        if (desc.includes(t)) s += 0.5;
+        if (combined.includes(t)) s += 0.3;
+      }
+      if (s > 0) scored.push({ page, s });
+    }
+    scored.sort((a, b) => b.s - a.s);
+    const maxS = scored.length ? scored[0].s : 1;
+    return scored.slice(0, limit).map(({ page, s }) => ({
+      title: page.title,
+      url: page.url,
+      source: 'Page',
+      score: maxS > 0 ? Math.min(1, s / maxS) : 0,
+      snippet: page.description || '',
+      type: 'site',
+    }));
+  }
+
+  function isSameOrigin(url) {
+    if (!url) return false;
+    try {
+      return new URL(url, location.href).origin === location.origin;
+    } catch (_) { return false; }
+  }
+
   // ── Styles ──
   const CSS = `
     .ctx-search-trigger{display:inline-flex;align-items:center;gap:8px;padding:7px 14px;
@@ -131,20 +169,35 @@
     document.head.appendChild(style);
 
     // State
-    let data = null, index = null, selectedIdx = -1, results = [];
+    let data = null, index = null, siteIndex = null, selectedIdx = -1, results = [];
 
-    // Load data
-    fetch(opts.dataUrl)
-      .then(r => r.json())
-      .then(d => {
-        data = d;
-        index = buildIndex(d.chunks);
-        if (triggerEl) {
-          const count = d.documents ? d.documents.length : 0;
-          triggerEl.title = `Search ${count} documents (${opts.hotkey === 'k' ? '⌘K' : '⌘' + opts.hotkey.toUpperCase()})`;
-        }
-      })
-      .catch(e => console.warn('[ctx-search] Failed to load data:', e));
+    // Load doc index
+    if (opts.dataUrl) {
+      fetch(opts.dataUrl)
+        .then(r => r.json())
+        .then(d => {
+          data = d;
+          index = d.chunks ? buildIndex(d.chunks) : null;
+          if (triggerEl) {
+            const count = (d.documents ? d.documents.length : 0) + (siteIndex ? siteIndex.length : 0);
+            triggerEl.title = `Search site and docs (${opts.hotkey === 'k' ? '⌘K' : '⌘' + opts.hotkey.toUpperCase()})`;
+          }
+        })
+        .catch(e => console.warn('[ctx-search] Failed to load data:', e));
+    }
+
+    // Load site index (pages for navigation)
+    if (opts.siteIndexUrl) {
+      fetch(opts.siteIndexUrl)
+        .then(r => r.json())
+        .then(d => {
+          siteIndex = Array.isArray(d) ? d : [];
+          if (triggerEl && !opts.dataUrl) {
+            triggerEl.title = `Search ${siteIndex.length} pages (${opts.hotkey === 'k' ? '⌘K' : '⌘' + opts.hotkey.toUpperCase()})`;
+          }
+        })
+        .catch(e => console.warn('[ctx-search] Failed to load site index:', e));
+    }
 
     // Create trigger button (unless user provides one)
     let triggerEl;
@@ -212,14 +265,15 @@
           : '<div class="ctx-empty">Type to search…</div>';
         return;
       }
+      const targetAttr = (r) => r.url && isSameOrigin(r.url) ? '' : (r.url ? ' target="_blank" rel="noopener"' : '');
       resultsEl.innerHTML = results.map((r, i) => `
-        <a class="ctx-result${i === selectedIdx ? ' selected' : ''}" ${r.url ? `href="${r.url}" target="_blank" rel="noopener"` : 'href="#"'} data-idx="${i}">
+        <a class="ctx-result${i === selectedIdx ? ' selected' : ''}" ${r.url ? `href="${esc(r.url)}"${targetAttr}` : 'href="#"'} data-idx="${i}">
           <div class="ctx-result-title">
             <span>${esc(r.title)}</span>
-            <span class="ctx-result-score">${r.score.toFixed(2)}</span>
+            <span class="ctx-result-score">${r.type === 'site' ? 'Page' : r.score.toFixed(2)}</span>
           </div>
           <div class="ctx-result-source">${esc(r.source)}</div>
-          <div class="ctx-result-snippet">${esc(r.snippet)}</div>
+          ${r.snippet ? `<div class="ctx-result-snippet">${esc(r.snippet)}</div>` : ''}
         </a>
       `).join('');
     }
@@ -235,7 +289,13 @@
     function openSelected() {
       if (selectedIdx >= 0 && results[selectedIdx]) {
         const r = results[selectedIdx];
-        if (r.url) window.open(r.url, '_blank');
+        if (r.url) {
+          if (isSameOrigin(r.url)) {
+            window.location.href = r.url;
+          } else {
+            window.open(r.url, '_blank');
+          }
+        }
         close();
       }
     }
@@ -249,13 +309,15 @@
 
     input.addEventListener('input', () => {
       const q = input.value.trim();
-      if (!q || !data || !index) {
+      if (!q) {
         results = [];
         selectedIdx = -1;
         render();
         return;
       }
-      results = search(q, data, index, 12);
+      const siteResults = searchSitePages(siteIndex, q, 6);
+      const docResults = (data && index) ? search(q, data, index, 8) : [];
+      results = [...siteResults, ...docResults].slice(0, 14);
       selectedIdx = results.length ? 0 : -1;
       render();
     });
@@ -278,8 +340,8 @@
 
     resultsEl.addEventListener('click', (e) => {
       const link = e.target.closest('.ctx-result');
-      if (link && !link.getAttribute('href')?.startsWith('http')) {
-        e.preventDefault();
+      if (link) {
+        if (link.getAttribute('href') === '#') e.preventDefault();
         close();
       }
     });
@@ -294,30 +356,27 @@
   // ── Public API ──
   const CtxSearch = {
     init(opts = {}) {
-      const defaults = { dataUrl: 'data.json', placeholder: 'Search documentation…', hotkey: 'k', trigger: null };
+      const defaults = { dataUrl: 'data.json', siteIndexUrl: '', placeholder: 'Search docs and site…', hotkey: 'k', trigger: null };
       createWidget({ ...defaults, ...opts });
     }
   };
 
   // Auto-init from script tag data attributes
   const script = document.currentScript;
-  if (script && script.dataset.json) {
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => {
-        CtxSearch.init({
-          dataUrl: script.dataset.json,
-          placeholder: script.dataset.placeholder || 'Search documentation…',
-          hotkey: script.dataset.hotkey || 'k',
-          trigger: script.dataset.trigger || null,
-        });
-      });
-    } else {
+  if (script && (script.dataset.json || script.dataset.siteIndex)) {
+    const init = () => {
       CtxSearch.init({
-        dataUrl: script.dataset.json,
-        placeholder: script.dataset.placeholder || 'Search documentation…',
+        dataUrl: script.dataset.json || null,
+        siteIndexUrl: script.dataset.siteIndex || null,
+        placeholder: script.dataset.placeholder || 'Search docs and site…',
         hotkey: script.dataset.hotkey || 'k',
         trigger: script.dataset.trigger || null,
       });
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
     }
   }
 
