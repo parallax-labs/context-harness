@@ -1,0 +1,66 @@
+# Context Harness config for developing context-harness itself.
+# Run from repo root: ctx sync all && ctx serve
+# MCP/Cursor: point at http://127.0.0.1:7332
+
+[db]
+path = "./data/ctx.sqlite"
+
+[chunking]
+max_tokens = 700
+overlap_tokens = 80
+
+[embedding]
+provider = "local"
+model = "all-minilm-l6-v2"
+# dims = 384  # default for all-minilm-l6-v2
+
+[retrieval]
+final_limit = 12
+hybrid_alpha = 0.6
+candidate_k_keyword = 80
+candidate_k_vector = 80
+group_by = "document"
+doc_agg = "max"
+max_chunks_per_doc = 3
+
+[server]
+bind = "127.0.0.1:7332"
+
+# ── Project docs (design, usage, internal) ─────────────────────
+
+[connectors.filesystem.docs]
+root = "./docs"
+include_globs = ["**/*.md"]
+exclude_globs = []
+follow_symlinks = false
+
+# ── Published site (docs + blog) ───────────────────────────────
+
+[connectors.filesystem.site]
+root = "./site/content"
+include_globs = ["**/*.md"]
+exclude_globs = []
+follow_symlinks = false
+
+# ── Repo root (README, CONTRIBUTING, CHANGELOG) ───────────────────
+
+[connectors.filesystem.root]
+root = "."
+include_globs = ["README.md", "CONTRIBUTING.md", "CHANGELOG.md"]
+exclude_globs = []
+follow_symlinks = false
+
+# ── Rust source (for implementation reference) ───────────────────
+
+[connectors.filesystem.src]
+root = "./src"
+include_globs = ["**/*.rs"]
+exclude_globs = []
+follow_symlinks = false
+
+[registries.community]
+url = "https://github.com/parallax-labs/ctx-registry.git"
+branch = "main"
+path = "~/.ctx/registries/community"
+readonly = true
+auto_update = true

@@ -1,10 +1,14 @@
 # Context Harness
 
+[![GitHub stars](https://img.shields.io/github/stars/parallax-labs/context-harness?style=flat)](https://github.com/parallax-labs/context-harness)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/parallax-labs/context-harness?include_prereleases&style=flat)](https://github.com/parallax-labs/context-harness/releases/latest)
+
 **A local-first context ingestion and retrieval framework for AI tools.**
 
 *by [Parallax Labs](https://github.com/parallax-labs)*
 
-**[📖 Documentation & guides](https://parallax-labs.github.io/context-harness/)**
+**[📖 Documentation & guides](https://parallax-labs.github.io/context-harness/)** · **[Try the demo](https://parallax-labs.github.io/context-harness/demo/)**
 
 ---
 
@@ -451,6 +455,8 @@ See [`config/ctx.example.toml`](config/ctx.example.toml) for a complete example,
 | [Live demo](https://parallax-labs.github.io/context-harness/demo/) | Search a pre-built knowledge base in the browser |
 
 The site also documents the **search widget** (`ctx-search.js`) for adding ⌘K search to static sites — see the [docs](https://parallax-labs.github.io/context-harness/docs/) for an example.
+
+If Context Harness is useful to you, consider [starring the repo](https://github.com/parallax-labs/context-harness).
 
 ## License
 
