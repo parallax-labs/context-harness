@@ -62,7 +62,7 @@ Install into your profile: `nix profile install .#default` or `nix profile insta
 
 Local embeddings have **no system dependencies**; models are downloaded on first use.
 
-- **Linux:** Install OpenSSL development headers if you use default features (fastembed): `libssl-dev` and `pkg-config` on Debian/Ubuntu, or `openssl-devel` on Fedora/RHEL.
+- **Linux:** Default features use rustls (no system OpenSSL). No extra packages required for a normal `cargo build`.
 - **macOS:** The build links against the C++ standard library (used by some dependencies). If you see `library not found for -lc++`, install the Xcode Command Line Tools: `xcode-select --install`. If you use Nix, run `nix develop` first so the shell provides Zig as the C/C++ compiler; then `cargo build` works.
 
 ```bash
@@ -419,6 +419,7 @@ Pre-built [release binaries](https://github.com/parallax-labs/context-harness/re
 
 - **Minimal binary (no local embeddings):** `cargo install --path . --no-default-features`
 - **From source on musl or Intel Mac (tract backend):** `cargo build --no-default-features --features local-embeddings-tract`
+- **CI/release:** Linux cross-builds (musl, aarch64) use Zig and [cargo-zigbuild](https://github.com/rust-cross/cargo-zigbuild); no cross-rs or system OpenSSL.
 
 See the [configuration docs](https://parallax-labs.github.io/context-harness/docs/reference/configuration/) for full platform notes.
 
