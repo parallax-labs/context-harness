@@ -37,7 +37,7 @@
   {
     "title": "Local Embeddings on Every Platform",
     "url": "https://parallax-labs.github.io/context-harness/blog/local-embeddings-everywhere/",
-    "description": "Context Harness now ships local embeddings on all six release targets \u2014 no ORT install, no musl or Intel Mac left behind."
+    "description": "Context Harness ships local embeddings on all six release targets \u2014 no ORT install, no musl or Intel Mac left behind."
   },
   {
     "title": "v0.2.0: Native MCP Streamable HTTP",
