@@ -27,11 +27,11 @@ jobs:
             cross: false
             features: ""
 
-          # Fallback: tract (pure Rust) for musl.
+          # Fallback: tract (pure Rust) for musl; use cross so image has x86_64-linux-musl-g++.
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
             name: ctx-linux-x86_64-musl
-            cross: false
+            cross: true
             features: "--no-default-features --features local-embeddings-tract"
 
           - target: aarch64-unknown-linux-gnu
