@@ -61,7 +61,7 @@ All fields above MUST exist in config schema.
 When `embedding.provider` is `openai` or `ollama`, `model` and `dims` are required.
 When `embedding.provider` is `local`, model and dims are optional (defaults to `all-minilm-l6-v2`, 384 dims).
 
-**Platform note:** Pre-built release binaries for Linux musl and macOS Intel are built without the local embedding provider (ONNX/fastembed). Those binaries support `openai` and `ollama` only. To use `provider = "local"` on those platforms, build from source. See the [configuration docs](https://parallax-labs.github.io/context-harness/docs/reference/configuration/) for the full platform table.
+**Platform note:** All release binaries include the local embedding provider. Primary platforms use fastembed; Linux musl and macOS Intel use a pure-Rust (tract) backend. See the [configuration docs](https://parallax-labs.github.io/context-harness/docs/reference/configuration/) for the full platform table.
 
 ### Connector Config
 

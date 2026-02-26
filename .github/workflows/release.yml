@@ -20,17 +20,19 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Primary: fastembed with bundled ORT (default features).
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             name: ctx-linux-x86_64
             cross: false
             features: ""
 
+          # Fallback: tract (pure Rust) for musl.
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
             name: ctx-linux-x86_64-musl
             cross: false
-            features: "--no-default-features"
+            features: "--no-default-features --features local-embeddings-tract"
 
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
@@ -38,11 +40,12 @@ jobs:
             cross: true
             features: ""
 
+          # Fallback: tract (pure Rust) for Intel Mac.
           - target: x86_64-apple-darwin
             os: macos-latest
             name: ctx-macos-x86_64
             cross: false
-            features: "--no-default-features"
+            features: "--no-default-features --features local-embeddings-tract"
 
           - target: aarch64-apple-darwin
             os: macos-latest
@@ -79,7 +82,7 @@ jobs:
         if: matrix.target == 'x86_64-unknown-linux-musl'
         run: sudo apt-get update && sudo apt-get install -y musl-tools
 
-      - name: Install OpenSSL (Linux, for local-embeddings)
+      - name: Install OpenSSL (Linux, for fastembed/native-tls on primary targets)
         if: matrix.os == 'ubuntu-latest' && matrix.target != 'x86_64-unknown-linux-musl'
         run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev
 

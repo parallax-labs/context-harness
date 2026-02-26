@@ -8,7 +8,7 @@ Context Harness solves the problem of giving AI agents (Cursor, Claude, custom a
 
 - **Extension registry**: install community connectors for Jira, Confluence, Slack, RSS, and more from Git-backed registries
 - **Connector-driven ingestion**: filesystem, Git, S3, and custom Lua scripts
-- **Local-first storage**: SQLite with WAL mode, FTS5 full-text search, vector embeddings (local ONNX, Ollama, or OpenAI)
+- **Local-first storage**: SQLite with WAL mode, FTS5 full-text search, vector embeddings (local fastembed/tract, Ollama, or OpenAI)
 - **Hybrid search**: BM25 keyword scoring + cosine semantic scoring with configurable alpha blending
 - **MCP server**: Streamable HTTP endpoint for Cursor, Claude Desktop, and any MCP-compatible agent
 - **Lua extensibility**: custom connectors and agent tools without recompiling Rust

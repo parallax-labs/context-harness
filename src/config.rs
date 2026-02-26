@@ -231,7 +231,7 @@ fn default_max_chunks_per_doc() -> usize {
 /// | `"disabled"` | No embeddings (default) |
 /// | `"openai"` | OpenAI API (`text-embedding-3-small`, etc.) |
 /// | `"ollama"` | Local Ollama instance (`nomic-embed-text`, etc.) |
-/// | `"local"` | Built-in ONNX models via fastembed (`all-minilm-l6-v2`, etc.) |
+/// | `"local"` | Built-in models via fastembed (primary) or tract (musl/Intel Mac) (`all-minilm-l6-v2`, etc.) |
 ///
 /// When using `"openai"`, the `OPENAI_API_KEY` environment variable must be set.
 /// When using `"ollama"`, an Ollama instance must be running (default: `http://localhost:11434`).

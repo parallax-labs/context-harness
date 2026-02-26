@@ -4,7 +4,7 @@
 //! - **[`DisabledProvider`]** — returns errors; used when embeddings are not configured.
 //! - **[`OpenAIProvider`]** — calls the OpenAI embeddings API with batching, retry, and backoff.
 //! - **[`OllamaProvider`]** — calls a local Ollama instance's `/api/embed` endpoint.
-//! - **[`LocalProvider`]** — runs ONNX models locally via fastembed (no network calls after model download).
+//! - **[`LocalProvider`]** — runs models locally via fastembed (primary) or tract (musl/Intel Mac); no network calls after model download.
 //!
 //! Also provides vector utilities for working with sqlite-vec:
 //! - [`cosine_similarity`] — compute similarity between two embedding vectors
@@ -31,6 +31,9 @@
 //! - HTTP 4xx (client error, not 429) → fail immediately
 //! - Network errors → retry
 //! - Backoff: 1s, 2s, 4s, 8s, 16s, 32s (capped at 2^5)
+
+#[cfg(feature = "local-embeddings-tract")]
+mod local_tract;
 
 use anyhow::{bail, Result};
 use std::time::Duration;
@@ -77,12 +80,13 @@ pub async fn embed_texts(
     match config.provider.as_str() {
         "openai" => embed_openai(config, texts).await,
         "ollama" => embed_ollama(config, texts).await,
-        #[cfg(feature = "local-embeddings")]
-        "local" => embed_local(config, texts).await,
-        #[cfg(not(feature = "local-embeddings"))]
+        #[cfg(feature = "local-embeddings-fastembed")]
+        "local" => embed_local_fastembed(config, texts).await,
+        #[cfg(feature = "local-embeddings-tract")]
+        "local" => embed_local_tract(config, texts).await,
+        #[cfg(not(any(feature = "local-embeddings-fastembed", feature = "local-embeddings-tract")))]
         "local" => bail!(
-            "Local embedding provider requires the 'local-embeddings' feature. \
-             Rebuild with: cargo install --features local-embeddings"
+            "Local embedding provider requires one of: --features local-embeddings-fastembed, --features local-embeddings-tract"
         ),
         "disabled" => bail!("Embedding provider is disabled"),
         other => bail!("Unknown embedding provider: {}", other),
@@ -411,22 +415,20 @@ fn parse_ollama_response(json: &serde_json::Value) -> Result<Vec<Vec<f32>>> {
     Ok(result)
 }
 
-// ============ Local Provider (fastembed) ============
+// ============ Local Provider (fastembed or tract) ============
 
-/// Embedding provider using fastembed for local ONNX inference.
+/// Embedding provider for local inference (fastembed on primary platforms, tract on musl/Intel Mac).
 ///
-/// Models are downloaded on first use from Hugging Face and cached
-/// in `~/.cache/huggingface/`. After initial download, no network
-/// calls are needed — embeddings run entirely offline.
-///
-/// Requires the `local-embeddings` cargo feature (enabled by default).
-#[cfg(feature = "local-embeddings")]
+/// Models are downloaded on first use from Hugging Face and cached.
+/// After initial download, no network calls are needed — embeddings run entirely offline.
+/// No system dependencies: ORT is bundled (fastembed) or pure Rust (tract).
+#[cfg(any(feature = "local-embeddings-fastembed", feature = "local-embeddings-tract"))]
 pub struct LocalProvider {
     model_name: String,
     dims: usize,
 }
 
-#[cfg(feature = "local-embeddings")]
+#[cfg(any(feature = "local-embeddings-fastembed", feature = "local-embeddings-tract"))]
 impl LocalProvider {
     pub fn new(config: &EmbeddingConfig) -> Result<Self> {
         let (model_name, dims) = resolve_local_model(config)?;
@@ -434,7 +436,7 @@ impl LocalProvider {
     }
 }
 
-#[cfg(feature = "local-embeddings")]
+#[cfg(any(feature = "local-embeddings-fastembed", feature = "local-embeddings-tract"))]
 impl EmbeddingProvider for LocalProvider {
     fn model_name(&self) -> &str {
         &self.model_name
@@ -444,7 +446,7 @@ impl EmbeddingProvider for LocalProvider {
     }
 }
 
-#[cfg(feature = "local-embeddings")]
+#[cfg(any(feature = "local-embeddings-fastembed", feature = "local-embeddings-tract"))]
 fn resolve_local_model(config: &EmbeddingConfig) -> Result<(String, usize)> {
     let model_name = config
         .model
@@ -466,7 +468,7 @@ fn resolve_local_model(config: &EmbeddingConfig) -> Result<(String, usize)> {
     Ok((model_name, dims))
 }
 
-#[cfg(feature = "local-embeddings")]
+#[cfg(feature = "local-embeddings-fastembed")]
 fn config_to_fastembed_model(name: &str) -> Result<fastembed::EmbeddingModel> {
     match name {
         "all-minilm-l6-v2" => Ok(fastembed::EmbeddingModel::AllMiniLML6V2),
@@ -488,8 +490,8 @@ fn config_to_fastembed_model(name: &str) -> Result<fastembed::EmbeddingModel> {
     }
 }
 
-#[cfg(feature = "local-embeddings")]
-async fn embed_local(config: &EmbeddingConfig, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+#[cfg(feature = "local-embeddings-fastembed")]
+async fn embed_local_fastembed(config: &EmbeddingConfig, texts: &[String]) -> Result<Vec<Vec<f32>>> {
     let model_name = config
         .model
         .clone()
@@ -514,6 +516,11 @@ async fn embed_local(config: &EmbeddingConfig, texts: &[String]) -> Result<Vec<V
     .await?
 }
 
+#[cfg(feature = "local-embeddings-tract")]
+async fn embed_local_tract(config: &EmbeddingConfig, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+    local_tract::embed_local_tract(config, texts).await
+}
+
 /// Create the appropriate [`EmbeddingProvider`] based on configuration.
 ///
 /// # Supported Providers
@@ -523,7 +530,7 @@ async fn embed_local(config: &EmbeddingConfig, texts: &[String]) -> Result<Vec<V
 /// | `"disabled"` | [`DisabledProvider`] |
 /// | `"openai"` | [`OpenAIProvider`] |
 /// | `"ollama"` | [`OllamaProvider`] |
-/// | `"local"` | `LocalProvider` (requires `local-embeddings` feature) |
+/// | `"local"` | `LocalProvider` (fastembed or tract, see features) |
 ///
 /// # Errors
 ///
@@ -534,12 +541,11 @@ pub fn create_provider(config: &EmbeddingConfig) -> Result<Box<dyn EmbeddingProv
         "disabled" => Ok(Box::new(DisabledProvider)),
         "openai" => Ok(Box::new(OpenAIProvider::new(config)?)),
         "ollama" => Ok(Box::new(OllamaProvider::new(config)?)),
-        #[cfg(feature = "local-embeddings")]
+        #[cfg(any(feature = "local-embeddings-fastembed", feature = "local-embeddings-tract"))]
         "local" => Ok(Box::new(LocalProvider::new(config)?)),
-        #[cfg(not(feature = "local-embeddings"))]
+        #[cfg(not(any(feature = "local-embeddings-fastembed", feature = "local-embeddings-tract")))]
         "local" => bail!(
-            "Local embedding provider requires the 'local-embeddings' feature. \
-             Rebuild with: cargo install --features local-embeddings"
+            "Local embedding provider requires one of: --features local-embeddings-fastembed, --features local-embeddings-tract"
         ),
         other => bail!("Unknown embedding provider: {}", other),
     }

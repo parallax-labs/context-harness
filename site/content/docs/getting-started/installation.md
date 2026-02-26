@@ -48,11 +48,11 @@ $ docker run -d -p 7331:7331 \
 
 SQLite is bundled via `rusqlite` — there is nothing else to install. The binary is fully self-contained with no runtime dependencies.
 
-**Building from source on Linux:** If you build with default features (including local embeddings), install OpenSSL development headers first: `libssl-dev` and `pkg-config` on Debian/Ubuntu, or `openssl-devel` on Fedora/RHEL.
+**Building from source on Linux:** If you build with default features (fastembed), install OpenSSL development headers first: `libssl-dev` and `pkg-config` on Debian/Ubuntu, or `openssl-devel` on Fedora/RHEL. The **local** embedding provider has no system dependencies; models are downloaded on first use. See the [configuration reference](https://parallax-labs.github.io/context-harness/docs/reference/configuration/#requirements-and-platform-support-for-local-embeddings) for details.
 
 ### Release binaries and local embeddings
 
-[Pre-built release binaries](https://github.com/parallax-labs/context-harness/releases) are provided for Linux (glibc, musl, aarch64), macOS (Intel and Apple Silicon), and Windows. Two of these builds do **not** include the **local** embedding provider (fastembed/ONNX): **Linux musl** and **macOS Intel**. On those platforms, use `openai` or `ollama` with the release binary, or [build from source](https://parallax-labs.github.io/context-harness/docs/reference/configuration/#platform-support-for-local-embeddings) to get local embeddings. Details are in the [configuration reference](https://parallax-labs.github.io/context-harness/docs/reference/configuration/#platform-support-for-local-embeddings).
+[Pre-built release binaries](https://github.com/parallax-labs/context-harness/releases) are provided for Linux (glibc, musl, aarch64), macOS (Intel and Apple Silicon), and Windows. The **local** embedding provider is included on all targets: primary platforms use fastembed; Linux musl and macOS Intel use a pure-Rust (tract) backend. Details are in the [configuration reference](https://parallax-labs.github.io/context-harness/docs/reference/configuration/#requirements-and-platform-support-for-local-embeddings).
 
 ### Verify
 

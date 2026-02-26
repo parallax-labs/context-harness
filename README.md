@@ -13,7 +13,7 @@ Context Harness is a generalized framework for ingesting external knowledge sour
 - **Connector-driven ingestion** — plug in any source (filesystem, Git repos, S3 buckets, Lua scripts)
 - **Extension registries** — install community connectors, tools, and agents from Git-backed repos
 - **Local-first storage** — SQLite with FTS5 for keyword search
-- **Embedding pipeline** — local (ONNX), Ollama, and OpenAI embeddings with automatic batching, retry, and staleness detection
+- **Embedding pipeline** — local (fastembed or tract), Ollama, and OpenAI embeddings with automatic batching, retry, and staleness detection
 - **Hybrid retrieval** — keyword + semantic + weighted merge (configurable alpha)
 - **MCP server** — expose context to Cursor and other AI tools via HTTP
 - **CLI-first** — everything accessible via the `ctx` command
@@ -47,9 +47,20 @@ sudo mv ctx /usr/local/bin/
 
 Windows: download `ctx-windows-x86_64.zip` from the releases page and add `ctx.exe` to your PATH.
 
+**Nix (NixOS / nix-darwin):**
+
+The flake provides two packages:
+
+- **`.#default`** — full build with local embeddings (no system ORT; model downloads on first use).  
+  `nix build` or `nix build .#default` then `./result/bin/ctx --version`.
+- **`.#no-local-embeddings`** — minimal binary, no local embeddings.  
+  `nix build .#no-local-embeddings` then `./result/bin/ctx --version`.
+
+Install into your profile: `nix profile install .#default` or `nix profile install .#no-local-embeddings`. For a development shell with Rust and git: `nix develop`. CI does not use Nix; it uses the existing GitHub Actions.
+
 **From source:**
 
-On Linux, install OpenSSL development headers first if you build with the default features (local embeddings):  
+Local embeddings have **no system dependencies**; models are downloaded on first use. On Linux, install OpenSSL development headers for the build if you use default features (fastembed):  
 `libssl-dev` and `pkg-config` on Debian/Ubuntu, or `openssl-devel` on Fedora/RHEL.
 
 ```bash
@@ -356,7 +367,7 @@ Context Harness supports three embedding providers:
 
 | Provider | Description | Requires |
 |----------|-------------|----------|
-| `local` | Built-in ONNX models via fastembed — fully offline | Nothing (model downloads on first use) |
+| `local` | Built-in models via fastembed (primary) or tract (musl/Intel Mac) — fully offline | No system deps; model downloads on first use |
 | `ollama` | Local Ollama instance | Running Ollama with an embedding model |
 | `openai` | OpenAI API | `OPENAI_API_KEY` env var |
 
@@ -393,25 +404,19 @@ Set the `OPENAI_API_KEY` environment variable before using embedding commands.
 
 ### Platform support (release binaries)
 
-Pre-built [release binaries](https://github.com/parallax-labs/context-harness/releases) are built for six targets. The **local** embedding provider (fastembed/ONNX) is included in most builds; two targets ship without it due to toolchain constraints:
+Pre-built [release binaries](https://github.com/parallax-labs/context-harness/releases) are built for six targets. The **local** embedding provider is included on all targets: primary platforms use fastembed (bundled ORT); Linux musl and macOS Intel use a pure-Rust (tract) backend.
 
 | Binary | Local embeddings | OpenAI / Ollama |
 |--------|------------------|------------------|
-| Linux x86_64 (glibc) | ✅ | ✅ |
-| Linux x86_64 (musl) | ❌ | ✅ |
-| Linux aarch64 | ✅ | ✅ |
-| macOS x86_64 (Intel) | ❌ | ✅ |
-| macOS aarch64 (Apple Silicon) | ✅ | ✅ |
-| Windows x86_64 | ✅ | ✅ |
+| Linux x86_64 (glibc) | ✅ fastembed | ✅ |
+| Linux x86_64 (musl) | ✅ tract | ✅ |
+| Linux aarch64 | ✅ fastembed | ✅ |
+| macOS x86_64 (Intel) | ✅ tract | ✅ |
+| macOS aarch64 (Apple Silicon) | ✅ fastembed | ✅ |
+| Windows x86_64 | ✅ fastembed | ✅ |
 
-- **Linux musl**: ONNX Runtime does not support musl; the static binary is built with `--no-default-features`.
-- **macOS Intel**: The `ort` crate does not ship prebuilt ONNX Runtime binaries for `x86_64-apple-darwin`.
-
-If you use a **musl** or **Intel Mac** binary and want local (fully offline) embeddings, either:
-
-1. **Build from source** (includes local embeddings by default):  
-   `cargo install --git https://github.com/parallax-labs/context-harness.git`
-2. **Use Ollama** with the prebuilt binary: run Ollama locally and set `provider = "ollama"` — no API key, no source build.
+- **Minimal binary (no local embeddings):** `cargo install --path . --no-default-features`
+- **From source on musl or Intel Mac (tract backend):** `cargo build --no-default-features --features local-embeddings-tract`
 
 See the [configuration docs](https://parallax-labs.github.io/context-harness/docs/reference/configuration/) for full platform notes.
 
