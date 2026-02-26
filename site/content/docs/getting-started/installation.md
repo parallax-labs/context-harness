@@ -1,10 +1,42 @@
 +++
 title = "Installation"
-description = "Install the ctx binary from source or Docker in under a minute."
+description = "Install the ctx binary from source, Nix, or Docker in under a minute."
 weight = 1
 +++
 
-### From source (recommended)
+### Pre-built binaries (recommended)
+
+Download the latest release for your platform from [GitHub Releases](https://github.com/parallax-labs/context-harness/releases/latest). Linux (glibc, musl, aarch64), macOS (Intel and Apple Silicon), and Windows are supported. All binaries include the local embedding provider. See [configuration](/docs/reference/configuration/) for the platform table.
+
+### Nix (NixOS / nix-darwin)
+
+You can install Context Harness **straight from the repo flake** — no release tarball required.
+
+**From a clone of the repo:**
+
+```bash
+# Build the default package (full binary with local embeddings)
+nix build .#default
+./result/bin/ctx --version
+
+# Or install into your user profile (on $PATH)
+nix profile install .#default
+```
+
+**Without cloning (flake reference):**
+
+```bash
+nix profile install github:parallax-labs/context-harness#default
+```
+
+| Package | Description |
+|---------|-------------|
+| `.#default` | Full build with local embeddings (fastembed; models download on first use). |
+| `.#no-local-embeddings` | Minimal binary, no local embeddings. Use with OpenAI or Ollama only. |
+
+Use `nix develop` for a development shell with Rust and git. To **include Context Harness as a dependency in your own Nix flake** (e.g. NixOS module or Home Manager), see the [Nix flake guide](/docs/getting-started/nix-flake/).
+
+### From source
 
 One command:
 
@@ -54,10 +86,6 @@ SQLite is bundled via `rusqlite` — there is nothing else to install. The binar
 - **macOS:** The build links against the C++ standard library. If you see `library not found for -lc++`, run `xcode-select --install` to install the Xcode Command Line Tools. If you use Nix, run `nix develop` first so the dev shell provides Zig as the C/C++ compiler; then `cargo build` works.
 
 See the [configuration reference](https://parallax-labs.github.io/context-harness/docs/reference/configuration/#requirements-and-platform-support-for-local-embeddings) for details.
-
-### Release binaries and local embeddings
-
-[Pre-built release binaries](https://github.com/parallax-labs/context-harness/releases) are provided for Linux (glibc, musl, aarch64), macOS (Intel and Apple Silicon), and Windows. The **local** embedding provider is included on all targets: primary platforms use fastembed; Linux musl and macOS Intel use a pure-Rust (tract) backend. Details are in the [configuration reference](https://parallax-labs.github.io/context-harness/docs/reference/configuration/#requirements-and-platform-support-for-local-embeddings).
 
 ### Verify
 

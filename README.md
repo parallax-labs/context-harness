@@ -4,9 +4,11 @@
 
 *by [Parallax Labs](https://github.com/parallax-labs)*
 
+**[📖 Documentation & guides](https://parallax-labs.github.io/context-harness/)**
+
 ---
 
-Context Harness is a generalized framework for ingesting external knowledge sources into a local, queryable memory store (SQLite + embeddings) and exposing it to developer tools via CLI and MCP-compatible HTTP server.
+Context Harness ingests external knowledge (files, Git repos, S3, Lua scripts) into a local SQLite store with optional embeddings, and exposes it via the `ctx` CLI and an MCP-compatible HTTP server so tools like Cursor and Claude can search your context.
 
 ## Features
 
@@ -21,11 +23,13 @@ Context Harness is a generalized framework for ingesting external knowledge sour
 
 ## Quick Start
 
+For a 5-minute walkthrough with copy-paste config, see the [Quick Start guide](https://parallax-labs.github.io/context-harness/docs/getting-started/quick-start/) on the docs site.
+
 ### 1. Install
 
 **Pre-built binaries** (recommended):
 
-Download the latest release for your platform from [GitHub Releases](https://github.com/parallax-labs/context-harness/releases/latest):
+Download the latest release from [GitHub Releases](https://github.com/parallax-labs/context-harness/releases/latest):
 
 ```bash
 # macOS (Apple Silicon)
@@ -49,14 +53,33 @@ Windows: download `ctx-windows-x86_64.zip` from the releases page and add `ctx.e
 
 **Nix (NixOS / nix-darwin):**
 
+Install straight from the repo flake — no release tarball needed.
+
+From a clone:
+
+```bash
+# Build (full binary with local embeddings)
+nix build .#default
+./result/bin/ctx --version
+
+# Or install into your user profile (on $PATH)
+nix profile install .#default
+```
+
+Without cloning (flake URL):
+
+```bash
+nix profile install github:parallax-labs/context-harness#default
+```
+
 The flake provides two packages:
 
-- **`.#default`** — full build with local embeddings (no system ORT; model downloads on first use).  
-  `nix build` or `nix build .#default` then `./result/bin/ctx --version`.
-- **`.#no-local-embeddings`** — minimal binary, no local embeddings.  
-  `nix build .#no-local-embeddings` then `./result/bin/ctx --version`.
+| Package | Description |
+|---------|-------------|
+| **`.#default`** | Full build with local embeddings (fastembed; model downloads on first use). |
+| **`.#no-local-embeddings`** | Minimal binary, no local embeddings (use OpenAI or Ollama only). |
 
-Install into your profile: `nix profile install .#default` or `nix profile install .#no-local-embeddings`. For a development shell with Rust and git: `nix develop`. CI does not use Nix; it uses the existing GitHub Actions.
+Use `nix develop` for a development shell. To use Context Harness inside your own flake (NixOS, Home Manager), see the [Nix flake guide](https://parallax-labs.github.io/context-harness/docs/getting-started/nix-flake/).
 
 **From source:**
 
@@ -76,67 +99,31 @@ cp config/ctx.example.toml config/ctx.toml
 # Edit config/ctx.toml with your settings
 ```
 
-### 3. Initialize
+Config path defaults to `./config/ctx.toml`; use `--config` to override. See [configuration reference](https://parallax-labs.github.io/context-harness/docs/reference/configuration/) for all options.
+
+### 3. Initialize and sync
 
 ```bash
-ctx init --config ./config/ctx.toml
+ctx init
+ctx sync all          # sync all connectors in parallel
+ctx sync git:platform # or sync a specific connector
 ```
 
-### 4. Sync
+### 4. Search
 
 ```bash
-# Sync all configured connectors (parallel)
-ctx sync all --config ./config/ctx.toml
-
-# Sync all filesystem connectors
-ctx sync filesystem --config ./config/ctx.toml
-
-# Sync a specific named instance
-ctx sync git:platform --config ./config/ctx.toml
-
-# Sync a Lua script connector
-ctx sync script:jira --config ./config/ctx.toml
+ctx search "your query"              # keyword (default)
+ctx search "your query" --mode hybrid   # keyword + semantic (needs embeddings)
+ctx embed pending                    # backfill embeddings if using local/ollama/openai
 ```
 
-### 5. Search
+### 5. MCP server (Cursor, Claude, etc.)
 
 ```bash
-# Keyword search (default)
-ctx search "your query here" --config ./config/ctx.toml
-
-# Semantic search (requires embedding provider)
-ctx search "your query here" --mode semantic --config ./config/ctx.toml
-
-# Hybrid search (keyword + semantic weighted merge)
-ctx search "your query here" --mode hybrid --config ./config/ctx.toml
+ctx serve mcp
 ```
 
-### 6. Embeddings
-
-```bash
-# Backfill missing embeddings
-ctx embed pending --config ./config/ctx.toml
-
-# Rebuild all embeddings
-ctx embed rebuild --config ./config/ctx.toml
-```
-
-### 7. MCP Server
-
-Start the HTTP server for integration with Cursor, Claude, and other MCP-compatible tools:
-
-```bash
-ctx serve mcp --config ./config/ctx.toml
-```
-
-The server exposes:
-- `/mcp` — MCP Streamable HTTP endpoint (JSON-RPC for Cursor, Claude, etc.)
-- `POST /tools/search` — context.search (REST)
-- `POST /tools/get` — context.get (REST)
-- `GET /tools/sources` — context.sources (REST)
-- `GET /health` — health check
-
-**Cursor integration** — start the server, then add to `.cursor/mcp.json`:
+Add to `.cursor/mcp.json`:
 
 ```json
 {
@@ -160,11 +147,13 @@ Connectors → Normalization → Chunking → Embedding → SQLite Store → Que
 2. Items are normalized into a standard `Document`
 3. Documents are chunked and stored in SQLite
 4. FTS5 index enables keyword search over chunks
-5. Chunks are embedded (OpenAI or disabled) and vectors stored as blobs
+5. Chunks are embedded (local, Ollama, or OpenAI) and vectors stored as blobs
 6. Query engine supports keyword, semantic, and hybrid retrieval
 7. Results exposed via CLI and MCP-compatible HTTP server
 
 ## CLI Commands
+
+Full reference: [CLI docs](https://parallax-labs.github.io/context-harness/docs/reference/cli/).
 
 | Command | Description |
 |---------|-------------|
@@ -190,7 +179,7 @@ Connectors → Normalization → Chunking → Embedding → SQLite Store → Que
 
 ## HTTP API
 
-The server exposes an MCP Streamable HTTP endpoint and REST endpoints. All REST endpoints return JSON matching the schemas in [`docs/SCHEMAS.md`](docs/SCHEMAS.md).
+The server exposes an MCP Streamable HTTP endpoint and REST endpoints. See [MCP server reference](https://parallax-labs.github.io/context-harness/docs/reference/mcp-server/) for details. REST responses follow the schemas in [`docs/SCHEMAS.md`](docs/SCHEMAS.md).
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -216,7 +205,7 @@ Errors follow a consistent format:
 
 ## Connector Configuration
 
-All connector types support **named instances** — configure multiple of each:
+All connector types support **named instances** — configure multiple of each. Full reference: [Built-in connectors](https://parallax-labs.github.io/context-harness/docs/connectors/built-in/).
 
 ### Filesystem Connector
 
@@ -305,7 +294,7 @@ See `examples/connectors/github-issues.lua` for a complete example.
 
 ## Extension Registries
 
-Install community connectors, tools, and agents from Git-backed repositories. Registries provide ready-to-use Lua extensions that you can install with one command and customize via overrides.
+Install community connectors, tools, and agents from Git-backed repositories. See [Registry overview](https://parallax-labs.github.io/context-harness/docs/registry/overview/) and [Usage guide](https://parallax-labs.github.io/context-harness/docs/registry/usage-guide/) on the docs site.
 
 ### Install the Community Registry
 
@@ -361,7 +350,7 @@ Place a `.ctx/` directory in your project root with Lua scripts organized as `co
 ctx registry override connectors/jira --config ./config/ctx.toml
 ```
 
-See [`docs/REGISTRY.md`](docs/REGISTRY.md) for the full specification.
+See the [registry docs](https://parallax-labs.github.io/context-harness/docs/registry/overview/) for the full specification.
 
 ## Embedding Configuration
 
@@ -425,14 +414,14 @@ See the [configuration docs](https://parallax-labs.github.io/context-harness/doc
 
 ## Hybrid Search
 
-Hybrid search merges keyword (FTS5/BM25) and semantic (cosine similarity) signals using a configurable alpha weight:
+Hybrid search merges keyword (FTS5/BM25) and semantic (cosine similarity) signals with a configurable alpha:
 
 ```toml
 [retrieval]
 hybrid_alpha = 0.6  # 0.0 = keyword only, 1.0 = semantic only
 ```
 
-See [`docs/HYBRID_SCORING.md`](docs/HYBRID_SCORING.md) for the full scoring specification.
+Use `ctx search "query" --mode hybrid --explain` to see score breakdowns. See [search reference](https://parallax-labs.github.io/context-harness/docs/reference/search/) and [`docs/HYBRID_SCORING.md`](docs/HYBRID_SCORING.md) for the full specification.
 
 ## Server Configuration
 
@@ -441,27 +430,27 @@ See [`docs/HYBRID_SCORING.md`](docs/HYBRID_SCORING.md) for the full scoring spec
 bind = "127.0.0.1:7331"
 ```
 
+For production (Docker, systemd, CI), see [Deployment](https://parallax-labs.github.io/context-harness/docs/reference/deployment/).
+
 ## Configuration
 
-See [`config/ctx.example.toml`](config/ctx.example.toml) for a complete example.
+See [`config/ctx.example.toml`](config/ctx.example.toml) for a complete example, or the [configuration reference](https://parallax-labs.github.io/context-harness/docs/reference/configuration/) on the docs site.
 
 ## Documentation
 
-Documentation is live at **[parallax-labs.github.io/context-harness](https://parallax-labs.github.io/context-harness/)**.
+**Website: [parallax-labs.github.io/context-harness](https://parallax-labs.github.io/context-harness/)**
 
-- **[Docs](https://parallax-labs.github.io/context-harness/docs/)** — getting started, configuration, CLI reference, HTTP API, deployment
-- **[API Reference](https://parallax-labs.github.io/context-harness/api/context_harness/)** — Rustdoc API docs generated from source
-- **[Live Demo](https://parallax-labs.github.io/context-harness/demo/)** — search a pre-built knowledge base in your browser
+| Link | Description |
+|------|-------------|
+| [Getting started](https://parallax-labs.github.io/context-harness/docs/getting-started/quick-start/) | Quick Start, [Installation](https://parallax-labs.github.io/context-harness/docs/getting-started/installation/), [Nix flake](https://parallax-labs.github.io/context-harness/docs/getting-started/nix-flake/) |
+| [Configuration](https://parallax-labs.github.io/context-harness/docs/reference/configuration/) | Full `ctx.toml` reference, embedding providers, platform table |
+| [CLI reference](https://parallax-labs.github.io/context-harness/docs/reference/cli/) | Every command and flag |
+| [Connectors & registry](https://parallax-labs.github.io/context-harness/docs/connectors/built-in/) | Built-in connectors, [Lua connectors](https://parallax-labs.github.io/context-harness/docs/connectors/lua-connectors/), [extension registry](https://parallax-labs.github.io/context-harness/docs/registry/overview/) |
+| [Guides](https://parallax-labs.github.io/context-harness/docs/guides/agents/) | Agent integration, Cursor, RAG, multi-repo, deployment |
+| [API (Rustdoc)](https://parallax-labs.github.io/context-harness/api/context_harness/) | Generated Rust API docs |
+| [Live demo](https://parallax-labs.github.io/context-harness/demo/) | Search a pre-built knowledge base in the browser |
 
-### Search Widget
-
-Context Harness ships a drop-in search widget (`ctx-search.js`) for adding ⌘K search to any static site:
-
-```html
-<script src="ctx-search.js" data-json="data.json"></script>
-```
-
-Build the search index in CI, deploy `data.json` as a static asset, and get instant client-side search — no server, no API keys. See the [docs page](https://parallax-labs.github.io/context-harness/docs/) for a live example.
+The site also documents the **search widget** (`ctx-search.js`) for adding ⌘K search to static sites — see the [docs](https://parallax-labs.github.io/context-harness/docs/) for an example.
 
 ## License
 

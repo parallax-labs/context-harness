@@ -160,6 +160,9 @@ jobs:
           ref: main
           fetch-depth: 0
 
+      - name: Fetch release tag
+        run: git fetch origin tag "${{ github.ref_name }}" || true
+
       - name: Generate blog post stub
         run: |
           chmod +x scripts/generate-release-blog.sh
@@ -181,12 +184,18 @@ jobs:
         run: |
           VERSION="${{ github.ref_name }}"
           BRANCH="release-blog/${VERSION}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
           git add site/content/blog/
           git commit -m "blog: add release post stub for ${VERSION}"
-          git push -u origin "$BRANCH"
-          gh pr create \
-            --title "Blog: release notes for ${VERSION}" \
-            --body "Auto-generated blog post stub for the ${VERSION} release. Edit the TODO placeholders, then merge to publish." \
-            --base main \
-            --head "$BRANCH"
+          git push -u origin "$BRANCH" --force
+          if [ -z "$(gh pr list --head "$BRANCH" --state open)" ]; then
+            gh pr create \
+              --title "Blog: release notes for ${VERSION}" \
+              --body "Auto-generated blog post stub for the ${VERSION} release. Edit the TODO placeholders, then merge to publish." \
+              --base main \
+              --head "$BRANCH"
+          else
+            echo "PR for ${BRANCH} already exists"
+          fi
