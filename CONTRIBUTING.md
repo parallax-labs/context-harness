@@ -2,6 +2,12 @@
 
 Thanks for your interest in contributing!
 
+## Good first issues
+
+We tag small, well-scoped tasks with [**good first issue**](https://github.com/parallax-labs/context-harness/labels/good%20first%20issue). New contributors can also look for [**help wanted**](https://github.com/parallax-labs/context-harness/labels/help%20wanted).
+
+**Current good first issues:** [#7](https://github.com/parallax-labs/context-harness/issues/7), [#8](https://github.com/parallax-labs/context-harness/issues/8).
+
 ## Getting Started
 
 1. Fork the repository
