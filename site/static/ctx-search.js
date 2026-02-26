@@ -267,7 +267,7 @@
       }
       const targetAttr = (r) => r.url && isSameOrigin(r.url) ? '' : (r.url ? ' target="_blank" rel="noopener"' : '');
       resultsEl.innerHTML = results.map((r, i) => `
-        <a class="ctx-result${i === selectedIdx ? ' selected' : ''}" ${r.url ? `href="${esc(r.url)}"${targetAttr}` : 'href="#"'} data-idx="${i}">
+        <a class="ctx-result${i === selectedIdx ? ' selected' : ''}" ${r.url ? `href="${esc(r.url)}"${targetAttr(r)}` : 'href="#"'} data-idx="${i}">
           <div class="ctx-result-title">
             <span>${esc(r.title)}</span>
             <span class="ctx-result-score">${r.type === 'site' ? 'Page' : r.score.toFixed(2)}</span>
