@@ -24,39 +24,39 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             name: ctx-linux-x86_64
-            cross: false
+            zig: false
             features: ""
 
-          # Fallback: tract (pure Rust) for musl; use cross so image has x86_64-linux-musl-g++.
+          # Fallback: tract (pure Rust) for musl; Zig provides musl C++ toolchain.
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
             name: ctx-linux-x86_64-musl
-            cross: true
+            zig: true
             features: "--no-default-features --features local-embeddings-tract"
 
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
             name: ctx-linux-aarch64
-            cross: true
+            zig: true
             features: ""
 
           # Fallback: tract (pure Rust) for Intel Mac.
           - target: x86_64-apple-darwin
             os: macos-latest
             name: ctx-macos-x86_64
-            cross: false
+            zig: false
             features: "--no-default-features --features local-embeddings-tract"
 
           - target: aarch64-apple-darwin
             os: macos-latest
             name: ctx-macos-aarch64
-            cross: false
+            zig: false
             features: ""
 
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             name: ctx-windows-x86_64
-            cross: false
+            zig: false
             features: ""
 
     steps:
@@ -76,25 +76,21 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: release-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          key: release-${{ matrix.target }}-${{ matrix.zig && 'zig-' || '' }}${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Install musl-tools
-        if: matrix.target == 'x86_64-unknown-linux-musl'
-        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Install Zig
+        if: matrix.zig
+        uses: goto-bus-stop/setup-zig@v2
 
-      - name: Install OpenSSL (Linux, for fastembed/native-tls on primary targets)
-        if: matrix.os == 'ubuntu-latest' && matrix.target != 'x86_64-unknown-linux-musl'
-        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev
-
-      - name: Install cross
-        if: matrix.cross
-        run: cargo install cross --git https://github.com/cross-rs/cross
+      - name: Install cargo-zigbuild
+        if: matrix.zig
+        run: cargo install cargo-zigbuild
 
       - name: Build release binary
         shell: bash
         run: |
-          if [ "${{ matrix.cross }}" = "true" ]; then
-            cross build --release --target ${{ matrix.target }} ${{ matrix.features }}
+          if [ "${{ matrix.zig }}" = "true" ]; then
+            cargo zigbuild --release --target ${{ matrix.target }} ${{ matrix.features }}
           else
             cargo build --release --target ${{ matrix.target }} ${{ matrix.features }}
           fi
