@@ -64,6 +64,7 @@ mod lua_runtime;
 mod mcp;
 mod migrate;
 mod models;
+mod progress;
 mod registry;
 mod search;
 mod server;
@@ -159,6 +160,14 @@ enum Commands {
         /// Maximum number of items to process.
         #[arg(long)]
         limit: Option<usize>,
+
+        /// Progress output: `human` (default when stderr is a TTY) or `json` (one JSON object per line on stderr).
+        #[arg(long, value_name = "MODE", value_parser = ["human", "json"])]
+        progress: Option<String>,
+
+        /// Disable progress output (e.g. for scripts that parse stdout).
+        #[arg(long)]
+        no_progress: bool,
     },
 
     /// Search indexed documents.
@@ -565,8 +574,31 @@ async fn main() -> anyhow::Result<()> {
             since,
             until,
             limit,
+            progress,
+            no_progress,
         } => {
-            ingest::run_sync(&cfg, &connector, full, dry_run, since, until, limit).await?;
+            let progress_mode = if no_progress {
+                progress::ProgressMode::Off
+            } else if let Some(ref mode) = progress {
+                match mode.as_str() {
+                    "json" => progress::ProgressMode::Json,
+                    _ => progress::ProgressMode::Human,
+                }
+            } else {
+                progress::ProgressMode::default_for_tty()
+            };
+            let reporter = progress_mode.reporter();
+            ingest::run_sync(
+                &cfg,
+                &connector,
+                full,
+                dry_run,
+                since,
+                until,
+                limit,
+                Some(reporter.as_ref()),
+            )
+            .await?;
         }
         Commands::Search {
             query,
