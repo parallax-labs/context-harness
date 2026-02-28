@@ -1,7 +1,7 @@
 # Context Harness
 
 [![GitHub stars](https://img.shields.io/github/stars/parallax-labs/context-harness?style=flat)](https://github.com/parallax-labs/context-harness)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/parallax-labs/context-harness?include_prereleases&style=flat)](https://github.com/parallax-labs/context-harness/releases/latest)
 
 **A local-first context ingestion and retrieval framework for AI tools.**
@@ -464,7 +464,9 @@ If Context Harness is useful to you, consider [starring the repo](https://github
 
 ## License
 
-MIT — see [LICENSE](LICENSE)
+AGPL-3.0 — see [LICENSE](LICENSE)
+
+For commercial licensing inquiries, contact [Parallax Labs](https://github.com/parallax-labs).
 
 ## Contributing
 
