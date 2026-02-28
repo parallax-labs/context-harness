@@ -46,7 +46,7 @@ sync filesystem:docs
 ok
 ```
 
-No `extract_binary = true` or similar — **extraction is inferred from file extension**. If a file matches a glob and has a supported binary extension, it’s read as bytes and passed to the extraction pipeline. Corrupt or password-protected PDFs (and other extraction failures) are skipped and counted in `extraction skipped`; the rest of the sync still succeeds.
+**Extraction is inferred from file extension** — no extra config flag required. If a file matches a glob and has a supported binary extension, it’s read as bytes and passed to the extraction pipeline. Corrupt or password-protected PDFs (and other extraction failures) are skipped and counted in `extraction skipped`; the rest of the sync still succeeds.
 
 ---
 
@@ -75,6 +75,6 @@ That’s the only extra knob. No per-format flags; the same rule applies to all 
 
 ### Docs and upgrading
 
-The [built-in connectors](/docs/connectors/built-in/#supported-file-formats) doc has the full table of supported formats and a minimal example. The [configuration reference](/docs/reference/configuration/) and [quick-start](/docs/getting-started/quick-start/) mention the new behavior. No breaking config changes: if you already had `extract_binary = true` in an old config, that key is now ignored (serde skips unknown keys). Just ensure your `include_globs` list the extensions you want, and you’re set.
+For the full table of supported formats and a minimal example, see the [built-in connectors](https://parallax-labs.github.io/context-harness/docs/connectors/built-in/#supported-file-formats) doc. The [configuration reference](https://parallax-labs.github.io/context-harness/docs/reference/configuration/) covers `max_extract_bytes` and other filesystem options; the [quick-start](https://parallax-labs.github.io/context-harness/docs/getting-started/quick-start/) shows a sample config. Just ensure your `include_globs` list the extensions you want, and you’re set.
 
 If you’ve been waiting to point Context Harness at a folder of PDFs and Office docs and search across them, this release is it. Sync, search, and use the same MCP and agent workflows you already have — the new formats slot right in.

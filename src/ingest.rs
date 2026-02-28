@@ -58,6 +58,7 @@ use crate::db;
 use crate::embed_cmd;
 use crate::extract;
 use crate::models::SourceItem;
+use crate::progress::{SyncProgressEvent, SyncProgressReporter};
 use crate::traits::{Connector, ConnectorRegistry};
 
 /// Default max extract size when connector is not filesystem or name not found (spec §4.1).
@@ -161,6 +162,7 @@ fn resolve_connectors<'a>(
 /// - `since` — optional `YYYY-MM-DD` date; only items updated on or after this date are processed.
 /// - `until` — optional `YYYY-MM-DD` date; only items updated on or before this date are processed.
 /// - `limit` — optional maximum number of items to process (per connector instance).
+/// - `progress` — optional progress reporter; when provided, progress is emitted on stderr.
 ///
 /// # Errors
 ///
@@ -168,6 +170,7 @@ fn resolve_connectors<'a>(
 /// - The specified connector is unknown or not configured.
 /// - A connector fails to scan (e.g., network error).
 /// - A database operation fails.
+#[allow(clippy::too_many_arguments)]
 pub async fn run_sync(
     config: &Config,
     connector: &str,
@@ -176,10 +179,11 @@ pub async fn run_sync(
     since: Option<String>,
     until: Option<String>,
     limit: Option<usize>,
+    progress: Option<&dyn SyncProgressReporter>,
 ) -> Result<()> {
     let registry = ConnectorRegistry::from_config(config);
     run_sync_with_registry(
-        config, connector, full, dry_run, since, until, limit, &registry,
+        config, connector, full, dry_run, since, until, limit, &registry, progress,
     )
     .await
 }
@@ -222,7 +226,7 @@ pub async fn run_sync_with_extensions(
         bail!("No connectors matched '{}'.", connector);
     }
 
-    run_connectors(config, &resolved, full, dry_run, since, until, limit).await
+    run_connectors(config, &resolved, full, dry_run, since, until, limit, None).await
 }
 
 /// Runs the ingestion pipeline with a pre-built [`ConnectorRegistry`].
@@ -239,10 +243,24 @@ pub async fn run_sync_with_registry(
     until: Option<String>,
     limit: Option<usize>,
     registry: &ConnectorRegistry,
+    progress: Option<&dyn SyncProgressReporter>,
 ) -> Result<()> {
     let connectors = resolve_connectors(registry, connector)?;
-    run_connectors(config, &connectors, full, dry_run, since, until, limit).await
+    run_connectors(
+        config,
+        &connectors,
+        full,
+        dry_run,
+        since,
+        until,
+        limit,
+        progress,
+    )
+    .await
 }
+
+/// Report progress every N items during ingest (avoids flooding stderr).
+const INGEST_PROGRESS_INTERVAL: u64 = 10;
 
 /// Core sync engine: scans connectors sequentially, ingests items.
 ///
@@ -258,6 +276,7 @@ async fn run_connectors(
     since: Option<String>,
     until: Option<String>,
     limit: Option<usize>,
+    progress: Option<&dyn SyncProgressReporter>,
 ) -> Result<()> {
     if connectors.len() > 1 {
         println!("Syncing {} connector instances...", connectors.len());
@@ -269,6 +288,11 @@ async fn run_connectors(
 
     for conn in connectors {
         let label = conn.source_label();
+        if let Some(p) = progress {
+            p.report(SyncProgressEvent::Discovering {
+                connector: label.to_string(),
+            });
+        }
         match conn.scan().await {
             Ok(items) => {
                 scan_results.push((label, items));
@@ -352,6 +376,17 @@ async fn run_connectors(
         let mut extraction_skipped = 0u64;
         let mut max_updated: i64 = checkpoint.unwrap_or(0);
         let max_extract_bytes = max_extract_bytes_for_source(config, &source_label);
+        let total_items = items.len() as u64;
+
+        if let Some(p) = progress {
+            if total_items > 0 {
+                p.report(SyncProgressEvent::Ingesting {
+                    connector: source_label.clone(),
+                    n: 0,
+                    total: total_items,
+                });
+            }
+        }
 
         for item in items.iter_mut() {
             if let Some(ref bytes) = item.raw_bytes {
@@ -391,6 +426,17 @@ async fn run_connectors(
 
             docs_upserted += 1;
             chunks_written += chunk_count;
+
+            if let Some(p) = progress {
+                let n = docs_upserted;
+                if n.is_multiple_of(INGEST_PROGRESS_INTERVAL) || n == total_items {
+                    p.report(SyncProgressEvent::Ingesting {
+                        connector: source_label.clone(),
+                        n,
+                        total: total_items,
+                    });
+                }
+            }
 
             let ts = item.updated_at.timestamp();
             if ts > max_updated {
