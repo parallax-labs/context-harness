@@ -40,6 +40,22 @@ use crate::config::FilesystemConnectorConfig;
 use crate::models::SourceItem;
 use crate::traits::Connector;
 
+/// Binary file extensions that are read as bytes and extracted (spec §2.2).
+const BINARY_EXTENSIONS: &[&str] = &[".pdf", ".docx", ".pptx", ".xlsx"];
+
+/// Extension to MIME type per spec §4.1.
+fn binary_content_type(ext: &str) -> Option<&'static str> {
+    match ext.to_lowercase().as_str() {
+        ".pdf" => Some("application/pdf"),
+        ".docx" => Some("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+        ".pptx" => {
+            Some("application/vnd.openxmlformats-officedocument.presentationml.presentation")
+        }
+        ".xlsx" => Some("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+        _ => None,
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Connector trait implementation
 // ═══════════════════════════════════════════════════════════════════════
@@ -159,8 +175,9 @@ pub fn scan_filesystem(
         }
 
         let source_label = format!("filesystem:{}", name);
-        let item = file_to_source_item(path, &rel_str, &source_label)?;
-        items.push(item);
+        if let Some(item) = file_to_source_item(path, &rel_str, &source_label, fs_config)? {
+            items.push(item);
+        }
     }
 
     // Sort for deterministic ordering
@@ -169,11 +186,17 @@ pub fn scan_filesystem(
     Ok(items)
 }
 
-/// Convert a single file to a [`SourceItem`].
+/// Convert a single file to a [`SourceItem`], or `None` if the file should be skipped (spec §2.2).
 ///
-/// Reads file content, extracts filesystem metadata, and constructs
-/// a `SourceItem` with the given source label (e.g. `"filesystem:docs"`).
-fn file_to_source_item(path: &Path, relative_path: &str, source: &str) -> Result<SourceItem> {
+/// For files with a supported binary extension (.pdf, .docx, .pptx, .xlsx), reads raw bytes
+/// and returns an item with `raw_bytes` set and empty `body`. Otherwise reads as UTF-8; on
+/// decode failure and binary extension, falls back to raw bytes; else skips (returns `None`).
+fn file_to_source_item(
+    path: &Path,
+    relative_path: &str,
+    source: &str,
+    fs_config: &FilesystemConnectorConfig,
+) -> Result<Option<SourceItem>> {
     let metadata = std::fs::metadata(path)?;
     let modified = metadata
         .modified()
@@ -183,26 +206,77 @@ fn file_to_source_item(path: &Path, relative_path: &str, source: &str) -> Result
         .unwrap_or_default()
         .as_secs() as i64;
 
-    let body = std::fs::read_to_string(path).unwrap_or_default();
-
     let title = path
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_default();
 
-    Ok(SourceItem {
-        source: source.to_string(),
-        source_id: relative_path.to_string(),
-        source_url: Some(format!("file://{}", path.display())),
-        title: Some(title),
-        author: None,
-        created_at: Utc.timestamp_opt(modified_secs, 0).unwrap(),
-        updated_at: Utc.timestamp_opt(modified_secs, 0).unwrap(),
-        content_type: "text/plain".to_string(),
-        body,
-        metadata_json: "{}".to_string(),
-        raw_json: None,
-    })
+    let ext = path
+        .extension()
+        .map(|e| format!(".{}", e.to_string_lossy()))
+        .unwrap_or_default()
+        .to_lowercase();
+    let is_binary_ext = BINARY_EXTENSIONS.contains(&ext.as_str());
+    let content_type_from_ext = binary_content_type(&ext);
+
+    if let (true, Some(mime)) = (is_binary_ext, content_type_from_ext) {
+        if metadata.len() > fs_config.max_extract_bytes {
+            return Ok(None);
+        }
+        let bytes = std::fs::read(path)?;
+        return Ok(Some(SourceItem {
+            source: source.to_string(),
+            source_id: relative_path.to_string(),
+            source_url: Some(format!("file://{}", path.display())),
+            title: Some(title),
+            author: None,
+            created_at: Utc.timestamp_opt(modified_secs, 0).unwrap(),
+            updated_at: Utc.timestamp_opt(modified_secs, 0).unwrap(),
+            content_type: mime.to_string(),
+            body: String::new(),
+            metadata_json: "{}".to_string(),
+            raw_json: None,
+            raw_bytes: Some(bytes),
+        }));
+    }
+
+    match std::fs::read_to_string(path) {
+        Ok(body) => Ok(Some(SourceItem {
+            source: source.to_string(),
+            source_id: relative_path.to_string(),
+            source_url: Some(format!("file://{}", path.display())),
+            title: Some(title),
+            author: None,
+            created_at: Utc.timestamp_opt(modified_secs, 0).unwrap(),
+            updated_at: Utc.timestamp_opt(modified_secs, 0).unwrap(),
+            content_type: "text/plain".to_string(),
+            body,
+            metadata_json: "{}".to_string(),
+            raw_json: None,
+            raw_bytes: None,
+        })),
+        Err(_) => {
+            if let (true, Some(mime)) = (is_binary_ext, content_type_from_ext) {
+                let bytes = std::fs::read(path)?;
+                Ok(Some(SourceItem {
+                    source: source.to_string(),
+                    source_id: relative_path.to_string(),
+                    source_url: Some(format!("file://{}", path.display())),
+                    title: Some(title),
+                    author: None,
+                    created_at: Utc.timestamp_opt(modified_secs, 0).unwrap(),
+                    updated_at: Utc.timestamp_opt(modified_secs, 0).unwrap(),
+                    content_type: mime.to_string(),
+                    body: String::new(),
+                    metadata_json: "{}".to_string(),
+                    raw_json: None,
+                    raw_bytes: Some(bytes),
+                }))
+            } else {
+                Ok(None)
+            }
+        }
+    }
 }
 
 /// Build a [`GlobSet`] from a list of glob pattern strings.

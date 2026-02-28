@@ -1,6 +1,6 @@
 [package]
 name = "context-harness"
-version = "0.3.0"
+version = "0.5.0"
 edition = "2021"
 description = "A local-first context ingestion and retrieval framework for AI tools"
 license = "MIT"
@@ -41,6 +41,9 @@ hex = "0.4"
 rmcp = { version = "0.16", features = ["server", "transport-streamable-http-server"] }
 clap_complete = "4.5.66"
 atty = "0.2.14"
+pdf-extract = "0.10"
+zip = "2.2"
+quick-xml = "0.36"
 # Primary platforms (Linux glibc, Linux aarch64, macOS aarch64, Windows): fastembed with bundled ORT (rustls, no OpenSSL).
 fastembed = { version = "5", optional = true, default-features = false, features = ["ort-download-binaries-rustls-tls", "hf-hub-rustls-tls", "image-models"] }
 # Fallback platforms (Linux musl, macOS Intel): pure-Rust tract path.
@@ -58,4 +61,5 @@ local-embeddings-tract = ["dep:tract-onnx", "dep:tokenizers", "dep:ndarray"]
 [dev-dependencies]
 tempfile = "3"
 reqwest = { version = "0.12", default-features = false, features = ["json", "blocking", "rustls-tls"] }
+lopdf = "0.38"
 

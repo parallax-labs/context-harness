@@ -57,6 +57,7 @@ mod db;
 mod embed_cmd;
 mod embedding;
 mod export;
+mod extract;
 mod get;
 mod ingest;
 mod lua_runtime;

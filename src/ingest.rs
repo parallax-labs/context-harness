@@ -56,8 +56,27 @@ use crate::chunk::chunk_text;
 use crate::config::Config;
 use crate::db;
 use crate::embed_cmd;
+use crate::extract;
 use crate::models::SourceItem;
 use crate::traits::{Connector, ConnectorRegistry};
+
+/// Default max extract size when connector is not filesystem or name not found (spec §4.1).
+const DEFAULT_MAX_EXTRACT_BYTES: u64 = 50_000_000;
+
+/// Resolve max_extract_bytes for a source from config. Parses "filesystem:name" and looks up
+/// the connector config; non-filesystem or unknown name uses DEFAULT_MAX_EXTRACT_BYTES.
+fn max_extract_bytes_for_source(config: &Config, source_label: &str) -> u64 {
+    if let Some(name) = source_label.strip_prefix("filesystem:") {
+        config
+            .connectors
+            .filesystem
+            .get(name)
+            .map(|c| c.max_extract_bytes)
+            .unwrap_or(DEFAULT_MAX_EXTRACT_BYTES)
+    } else {
+        DEFAULT_MAX_EXTRACT_BYTES
+    }
+}
 
 /// Resolve a connector argument into a filtered list of connectors to scan.
 ///
@@ -330,9 +349,35 @@ async fn run_connectors(
         let mut chunks_written = 0u64;
         let mut embeddings_written = 0u64;
         let mut embeddings_pending = 0u64;
+        let mut extraction_skipped = 0u64;
         let mut max_updated: i64 = checkpoint.unwrap_or(0);
+        let max_extract_bytes = max_extract_bytes_for_source(config, &source_label);
 
-        for item in &items {
+        for item in items.iter_mut() {
+            if let Some(ref bytes) = item.raw_bytes {
+                if bytes.len() as u64 > max_extract_bytes {
+                    extraction_skipped += 1;
+                    eprintln!(
+                        "Warning: skipping {} (size {} > max_extract_bytes {})",
+                        item.source_id,
+                        bytes.len(),
+                        max_extract_bytes
+                    );
+                    continue;
+                }
+                match extract::extract_text(bytes, &item.content_type) {
+                    Ok(text) => {
+                        item.body = text;
+                        item.raw_bytes = None;
+                    }
+                    Err(e) => {
+                        extraction_skipped += 1;
+                        eprintln!("Warning: extraction failed for {}: {}", item.source_id, e);
+                        continue;
+                    }
+                }
+            }
+
             let doc_id = upsert_document(&pool, item).await?;
             let chunks = chunk_text(&doc_id, &item.body, config.chunking.max_tokens);
             let chunk_count = chunks.len() as u64;
@@ -360,6 +405,7 @@ async fn run_connectors(
         println!("  fetched: {} items", items.len());
         println!("  upserted documents: {}", docs_upserted);
         println!("  chunks written: {}", chunks_written);
+        println!("  extraction skipped: {}", extraction_skipped);
         if config.embedding.is_enabled() {
             println!("  embeddings written: {}", embeddings_written);
             println!("  embeddings pending: {}", embeddings_pending);

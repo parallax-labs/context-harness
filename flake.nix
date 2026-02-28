@@ -18,8 +18,9 @@
           manifest = (pkgs.lib.importTOML ./Cargo.toml).package;
         in
         rec {
-          # Default: full build with local embeddings (fastembed; model downloads on first use).
-          default = with-embeddings;
+          # Default: no local embeddings so nix run works in sandbox (no network).
+          # ort-sys (used by fastembed) needs to download ONNX Runtime at build time; sandboxed Nix builds have no network.
+          default = no-local-embeddings;
 
           no-local-embeddings = pkgs.rustPlatform.buildRustPackage {
             pname = manifest.name;
@@ -33,11 +34,15 @@
 
             buildNoDefaultFeatures = true;
 
+            # Binary is named ctx (Cargo [[bin]] name), not context-harness (package name).
+            meta.mainProgram = "ctx";
+
             # Integration tests run git (init, clone, etc.)
             nativeCheckInputs = [ pkgs.git ];
           };
 
-          # Full build with local-embeddings (fastembed with download-binaries; no system ORT).
+          # Full build with local embeddings (fastembed). Requires network at build time so ort-sys can download ONNX Runtime.
+          # If sandboxed build fails, try: nix build --option sandbox false .#with-embeddings  OR  nix develop && cargo build
           with-embeddings = pkgs.rustPlatform.buildRustPackage {
             pname = "${manifest.name}-full";
             version = manifest.version;
@@ -48,14 +53,13 @@
               lockFile = ./Cargo.lock;
             };
 
-            buildInputs = pkgs.lib.optional pkgs.stdenv.isLinux pkgs.openssl;
-            nativeBuildInputs = pkgs.lib.optional pkgs.stdenv.isLinux pkgs.pkg-config
-              ++ pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.zig;
-            # On Darwin (Nix): use Zig as CC/C++ so linking uses Zig's toolchain and avoids -lc++ path issues.
-            preBuild = pkgs.lib.optionalString pkgs.stdenv.isDarwin ''
-              export CC="${pkgs.zig}/bin/zig cc"
-              export CXX="${pkgs.zig}/bin/zig c++"
-            '';
+            buildInputs = pkgs.lib.optional pkgs.stdenv.isLinux pkgs.openssl
+              ++ pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.libcxx;
+            nativeBuildInputs = pkgs.lib.optional pkgs.stdenv.isLinux pkgs.pkg-config;
+            meta.mainProgram = "ctx";
+
+            # On Darwin: libcxx in buildInputs gives the linker -lc++ so deps (e.g. ort/fastembed) link.
+            # Do not set CC/CXX to Zig here: some deps run `zig build` when zig is on PATH, which fails without build.zig.
             nativeCheckInputs = [ pkgs.git ];
           };
         });

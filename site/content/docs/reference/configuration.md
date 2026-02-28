@@ -60,8 +60,9 @@ bind = "127.0.0.1:7331"               # HTTP server bind address
 
 [connectors.filesystem.local]
 root = "./docs"
-include_globs = ["**/*.md", "**/*.rs"]
+include_globs = ["**/*.md", "**/*.rs", "**/*.pdf", "**/*.docx"]
 exclude_globs = ["**/target/**"]
+max_extract_bytes = 50_000_000          # Skip binary files larger than this (bytes)
 
 [connectors.git.platform]
 url = "https://github.com/acme/platform.git"
@@ -152,7 +153,7 @@ workspace = "acme"                      # Plain string, no expansion
 | `[embedding]` | Embedding provider (`disabled`, `openai`, `ollama`, `local`) |
 | `[retrieval]` | Hybrid alpha, candidate counts, result limits |
 | `[server]` | HTTP bind address |
-| `[connectors.filesystem.*]` | Named filesystem connector instances |
+| `[connectors.filesystem.*]` | Named filesystem connector instances (see [Built-in connectors](/docs/connectors/built-in/#supported-file-formats) for supported formats) |
 | `[connectors.git.*]` | Named git connector instances |
 | `[connectors.s3.*]` | Named S3 connector instances |
 | `[connectors.script.*]` | Named Lua scripted connector instances |

@@ -151,6 +151,7 @@ impl Connector for JsonConnector {
                 body: doc.body,
                 metadata_json: "{}".to_string(),
                 raw_json: None,
+                raw_bytes: None,
             })
             .collect();
 

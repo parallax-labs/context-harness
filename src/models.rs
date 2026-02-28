@@ -43,6 +43,7 @@ use chrono::{DateTime, Utc};
 /// | `body` | Full text content of the document |
 /// | `metadata_json` | Connector-specific metadata as a JSON string |
 /// | `raw_json` | Optional raw API response for debugging |
+/// | `raw_bytes` | When set, the pipeline runs extraction and sets `body` before upsert; content_type identifies the format |
 #[derive(Debug, Clone)]
 pub struct SourceItem {
     /// Connector name: `"filesystem"`, `"git"`, or `"s3"`.
@@ -67,6 +68,8 @@ pub struct SourceItem {
     pub metadata_json: String,
     /// Optional raw API/connector response for debugging.
     pub raw_json: Option<String>,
+    /// When set, the pipeline runs extraction and sets body from the result before upsert; content_type identifies the format.
+    pub raw_bytes: Option<Vec<u8>>,
 }
 
 /// Normalized document stored in the SQLite `documents` table.

@@ -63,6 +63,8 @@ root = "./"
 include_globs = ["**/*.md", "**/*.txt", "**/*.rs"]
 exclude_globs = ["**/target/**", "**/.git/**"]
 follow_symlinks = false
+# Optional: add "**/*.pdf", "**/*.docx" etc. to include_globs to index PDF/Office (extracted automatically)
+# max_extract_bytes = 50_000_000   # skip files larger than this (default: 50MB)
 
 # Git connector — ingest docs from a Git repository
 # [connectors.git.platform]
