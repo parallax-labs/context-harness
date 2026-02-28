@@ -32,9 +32,8 @@ This plan implements the behavior specified in [FILE_SUPPORT.md](FILE_SUPPORT.md
 **File:** [src/config.rs](src/config.rs)
 
 - Add to `FilesystemConnectorConfig`:
-  - `extract_binary: bool` with `#[serde(default)]` (default `false`).
   - `max_extract_bytes: u64` with `#[serde(default = "default_max_extract_bytes")]`; add `fn default_max_extract_bytes() -> u64 { 50_000_000 }`.
-- Update the doc comment example to show optional `extract_binary = true` and `max_extract_bytes = 50_000_000`.
+- Binary extraction is inferred from file extension per spec (no separate flag). Update the doc comment example to show optional `max_extract_bytes = 50_000_000`.
 
 **Deliverable:** `cargo build` succeeds; existing tests pass. No behavior change yet.
 
@@ -76,14 +75,11 @@ This plan implements the behavior specified in [FILE_SUPPORT.md](FILE_SUPPORT.md
 
 - **Config:** Pass `FilesystemConnectorConfig` into `scan_filesystem` and into `file_to_source_item` (or have `file_to_source_item` take config and path, and decide text vs binary).
 - **Extension set:** Define the set of extensions that trigger binary path: `[".pdf", ".docx", ".pptx", ".xlsx"]`. Map extension to MIME per spec §4.1 (`.pdf` → `application/pdf`, etc.).
-- **Per-file logic in `file_to_source_item`:**
-  1. If `extract_binary` is true and file extension is in the set: read file with `std::fs::read(path)`. If file size > `max_extract_bytes`, do not emit an item (skip) — but the spec says "SHALL be skipped and SHALL be counted in the skipped summary". So we have two options: (A) skip at connector level and not emit the item (then we cannot count it in "extraction skipped" unless we add a separate mechanism), or (B) emit an item with raw_bytes set and let the pipeline reject it when size > max and count as skipped. Spec §4.1 says "Files larger than this ... SHALL NOT be extracted; they SHALL be skipped and SHALL be counted in the skipped summary." So the count is "extraction skipped". Easiest: connector emits item with raw_bytes; pipeline checks size before calling extract; if over limit, skip and count. So connector always emits binary-path items for matching extensions (and reads bytes); pipeline enforces max_extract_bytes. Alternatively connector checks size and does not emit (then we need another way to report "skipped" for size — e.g. connector could return a separate "skipped" count). Simplest: connector emits all binary-path items; pipeline before extraction checks `item.raw_bytes.as_ref().map(|b| b.len()).unwrap_or(0) > max_extract_bytes` (pipeline needs config or max value). So pipeline needs `max_extract_bytes` in the ingest path. That implies config (or a constant) available in ingest. So: connector emits item with raw_bytes; ingest has access to config; for each item with raw_bytes, if bytes.len() > config.connectors.filesystem.<?> max_extract_bytes we need per-connector config. So we need to pass per-connector config into the ingest loop. Currently ingest only has `Config` and the connector's label. So we could add a way to get "max_extract_bytes for this connector" from config (e.g. by connector label: "filesystem:docs" -> look up connectors.filesystem.docs.max_extract_bytes). So in ingest we have source_label; we can parse "filesystem:name" and look up config.connectors.filesystem.get(name).and_then(|c| c.max_extract_bytes). So: connector does NOT check max_extract_bytes; it emits all binary-path items. Pipeline in ingest checks size against the connector's max_extract_bytes (from config) and if over, skips and counts. That matches spec: "Files larger than this ... SHALL NOT be extracted; they SHALL be skipped and SHALL be counted in the extraction skipped summary."
-  2. If extract_binary is true and extension in set: read bytes with `std::fs::read`. Set `content_type` from extension. Set `body` to empty string. Set `raw_bytes = Some(bytes)`.
-  3. Else: try `std::fs::read_to_string(path)`. If Ok, set body and content_type "text/plain", raw_bytes None. If Err (e.g. invalid UTF-8) and extract_binary is true and extension in set: fall back to read-as-bytes and set raw_bytes (same as 2). Otherwise: skip file (do not push item) — spec "the connector SHALL skip the file ... and SHALL NOT fail the scan".
+- **Per-file logic in `file_to_source_item`:** Binary extraction is inferred from file extension (no extract_binary flag). If file extension is in the set [.pdf, .docx, .pptx, .xlsx]: optionally check file size with metadata; if size > max_extract_bytes, skip (return None) to avoid reading huge files into memory; otherwise read with `std::fs::read`, set content_type from extension, body empty, raw_bytes = Some(bytes). For all other files: try `std::fs::read_to_string(path)`. If Ok, set body and content_type "text/plain", raw_bytes None. If Err (e.g. invalid UTF-8) and extension in set: fall back to read-as-bytes. Otherwise: skip file (return None).
 - **Signature:** `file_to_source_item` needs the config and the list of binary extensions (or just config). So `file_to_source_item(path, relative_path, source, fs_config: &FilesystemConnectorConfig) -> Result<Option<SourceItem>>` where `None` means "skipped" (invalid UTF-8 and not binary path). Or return `Result<SourceItem>` and use a variant: for "skip" we could return Err with a custom error that the caller treats as skip. Cleaner: return `Result<Option<SourceItem>>`; caller only pushes when `Some`.
 - **Call site:** In the walk loop, when we get `Some(item)` push it; when `None` do not push. Do not fail the scan.
 
-**Deliverable:** With `extract_binary = true` and `include_globs` including `**/*.pdf`, the filesystem connector returns items with `raw_bytes = Some(...)` and `content_type = "application/pdf"`. With `extract_binary = false`, behavior unchanged (no raw_bytes).
+**Deliverable:** With `include_globs` including `**/*.pdf` (and extension inferred as binary), the filesystem connector returns items with `raw_bytes = Some(...)` and `content_type = "application/pdf"` for matching files under the size limit.
 
 ---
 
@@ -99,7 +95,7 @@ This plan implements the behavior specified in [FILE_SUPPORT.md](FILE_SUPPORT.md
 - **Count:** Add `let mut extraction_skipped = 0u64`. After the loop, print `println!("  extraction skipped: {}", extraction_skipped);` (same style as "upserted documents: N") so it is machine-parseable (spec §6).
 - **Dry-run:** For dry-run, items with raw_bytes are still "items found"; we do not need to run extraction in dry-run. So in dry-run branch, when counting items and estimating chunks, treat raw_bytes items as "body unknown" — e.g. skip them for chunk estimate or use 0. Spec does not mandate dry-run behavior for binary; leave dry-run as-is (items.len() includes binary items; estimated chunks can be 0 for them or omit from sum).
 
-**Deliverable:** Full sync with a connector that has extract_binary = true and PDFs in the directory: PDFs are ingested and searchable; corrupt PDF skips and prints "extraction skipped: 1"; files over max_extract_bytes skip and count toward extraction_skipped.
+**Deliverable:** Full sync with a connector whose include_globs include PDFs: PDFs are ingested and searchable; corrupt PDF skips and prints "extraction skipped: 1"; files over max_extract_bytes skip and count toward extraction_skipped.
 
 ---
 
@@ -110,7 +106,7 @@ Add tests that assert each acceptance criterion. Prefer integration tests that r
 ### 6.1 Test: PDF ingest and search (spec §8.1)
 
 - Create a temp directory with a PDF that contains known phrase "spec test phrase".
-- Configure a filesystem connector (in code or via temp config) with extract_binary = true and include_globs including `**/*.pdf`.
+- Configure a filesystem connector (in code or via temp config) with include_globs including `**/*.pdf` (binary extraction is inferred from extension).
 - Run sync (via `run_sync` or CLI).
 - Run search for "spec test phrase"; assert at least one result with snippet containing that phrase.
 
@@ -134,10 +130,6 @@ Add tests that assert each acceptance criterion. Prefer integration tests that r
 
 - Add a file larger than max_extract_bytes (e.g. create a 60MB file or mock the size check). Assert it is skipped and extraction skipped count includes it. (Implementation may enforce max in connector or pipeline; test the observable behavior.)
 
-### 6.7 Test: extract_binary = false (spec §8.7)
-
-- With extract_binary = false (default), add a PDF to the directory. Sync. Assert the PDF is not ingested (search for its text returns no result, or document count does not include it). Assert no panic and existing text files still work.
-
 **Test location:** [tests/](tests/) integration tests (e.g. `tests/file_support.rs`) or in [src/extract.rs](src/extract.rs) for unit tests and in a new `tests/ingest_file_support.rs` for pipeline tests. Use tempfile for dirs and sample PDFs/docx; minimal binary fixtures can be committed or generated in test.
 
 ---
@@ -146,11 +138,11 @@ Add tests that assert each acceptance criterion. Prefer integration tests that r
 
 | Phase | Deliverable | Spec ref |
 |-------|-------------|----------|
-| 1 | SourceItem.raw_bytes; config extract_binary, max_extract_bytes; all constructors set raw_bytes | §2.1, §4.1 |
+| 1 | SourceItem.raw_bytes; config max_extract_bytes (extraction inferred from extension); all constructors set raw_bytes | §2.1, §4.1 |
 | 2 | extract.rs (PDF + OOXML); Cargo deps; unit tests for extract | §1.1, §5, §9 |
 | 3 | Filesystem connector: binary path, extension→MIME, skip on UTF-8 fail when not binary | §2.2 |
 | 4 | Ingest: run extraction for raw_bytes items; max size check; extraction_skipped count and log | §1.2, §6, §7 |
-| 5 | Tests for §8.1–§8.7 | §8 |
+| 5 | Tests for §8.1–§8.6 | §8 |
 
 ---
 
@@ -163,7 +155,7 @@ Add tests that assert each acceptance criterion. Prefer integration tests that r
 | [Cargo.toml](Cargo.toml) | Add pdf-extract, zip, quick-xml. |
 | [src/lib.rs](src/lib.rs) | Add `pub mod extract`. |
 | [src/models.rs](src/models.rs) | Add `raw_bytes: Option<Vec<u8>>`. |
-| [src/config.rs](src/config.rs) | Add extract_binary, max_extract_bytes to FilesystemConnectorConfig. |
+| [src/config.rs](src/config.rs) | Add max_extract_bytes to FilesystemConnectorConfig (binary extraction inferred from extension per spec). |
 | [src/extract.rs](src/extract.rs) | New: extract_text, PDF + OOXML. |
 | [src/connector_fs.rs](src/connector_fs.rs) | Binary path, config, skip logic. |
 | [src/connector_git.rs](src/connector_git.rs) | Add raw_bytes: None. |

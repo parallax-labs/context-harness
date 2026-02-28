@@ -17,6 +17,8 @@ pub const MIME_XLSX: &str = "application/vnd.openxmlformats-officedocument.sprea
 const XLSX_MAX_SHEETS: usize = 100;
 /// Maximum cells to process per sheet (avoids unbounded memory).
 const XLSX_MAX_CELLS_PER_SHEET: usize = 100_000;
+/// Maximum decompressed bytes to read from a single ZIP entry (zip-bomb protection).
+const MAX_XML_ENTRY_BYTES: u64 = 50 * 1024 * 1024;
 
 /// Extraction error (spec §5.1: no panic; return error and pipeline skips item).
 #[derive(Debug)]
@@ -57,19 +59,47 @@ fn extract_pdf(bytes: &[u8]) -> Result<String, ExtractError> {
     pdf_extract::extract_text_from_mem(bytes).map_err(|e| ExtractError::Pdf(e.to_string()))
 }
 
+fn read_zip_entry_bounded(
+    archive: &mut zip::ZipArchive<std::io::Cursor<&[u8]>>,
+    name: &str,
+    max_bytes: u64,
+) -> Result<Vec<u8>, ExtractError> {
+    let entry = archive
+        .by_name(name)
+        .map_err(|e| ExtractError::Ooxml(e.to_string()))?;
+    let mut out = Vec::new();
+    entry
+        .take(max_bytes)
+        .read_to_end(&mut out)
+        .map_err(|e| ExtractError::Ooxml(e.to_string()))?;
+    if out.len() as u64 >= max_bytes {
+        return Err(ExtractError::Ooxml(format!(
+            "ZIP entry {} exceeds size limit ({} bytes)",
+            name, max_bytes
+        )));
+    }
+    Ok(out)
+}
+
 fn extract_docx(bytes: &[u8]) -> Result<String, ExtractError> {
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
         .map_err(|e| ExtractError::Ooxml(e.to_string()))?;
     let mut doc_xml = Vec::new();
     let mut found = false;
     for i in 0..archive.len() {
-        let mut entry = archive
+        let entry = archive
             .by_index(i)
             .map_err(|e| ExtractError::Ooxml(e.to_string()))?;
         if entry.name() == "word/document.xml" {
             entry
+                .take(MAX_XML_ENTRY_BYTES)
                 .read_to_end(&mut doc_xml)
                 .map_err(|e| ExtractError::Ooxml(e.to_string()))?;
+            if doc_xml.len() as u64 >= MAX_XML_ENTRY_BYTES {
+                return Err(ExtractError::Ooxml(
+                    "word/document.xml exceeds size limit".to_string(),
+                ));
+            }
             found = true;
             break;
         }
@@ -120,16 +150,15 @@ fn extract_pptx(bytes: &[u8]) -> Result<String, ExtractError> {
         .filter(|n| n.starts_with("ppt/slides/slide") && n.ends_with(".xml"))
         .map(|s| s.to_string())
         .collect();
-    slide_names.sort();
+    slide_names.sort_by_key(|name| {
+        name.trim_start_matches("ppt/slides/slide")
+            .trim_end_matches(".xml")
+            .parse::<u32>()
+            .unwrap_or(u32::MAX)
+    });
     let mut out = String::new();
     for name in slide_names {
-        let mut entry = archive
-            .by_name(&name)
-            .map_err(|e| ExtractError::Ooxml(e.to_string()))?;
-        let mut xml = Vec::new();
-        entry
-            .read_to_end(&mut xml)
-            .map_err(|e| ExtractError::Ooxml(e.to_string()))?;
+        let xml = read_zip_entry_bounded(&mut archive, &name, MAX_XML_ENTRY_BYTES)?;
         let text = extract_a_t_elements(&xml)?;
         if !out.is_empty() && !text.is_empty() {
             out.push(' ');
@@ -170,7 +199,7 @@ fn extract_xlsx(bytes: &[u8]) -> Result<String, ExtractError> {
     let sheet_names = list_worksheet_names(&mut archive)?;
     let mut out = String::new();
     for (idx, name) in sheet_names.into_iter().take(XLSX_MAX_SHEETS).enumerate() {
-        let sheet_xml = read_zip_entry(&mut archive, &name)?;
+        let sheet_xml = read_zip_entry_bounded(&mut archive, &name, MAX_XML_ENTRY_BYTES)?;
         let cell_texts = extract_xlsx_sheet_cells(&sheet_xml, &shared_strings)?;
         if idx > 0 && !out.is_empty() {
             out.push(' ');
@@ -183,13 +212,7 @@ fn extract_xlsx(bytes: &[u8]) -> Result<String, ExtractError> {
 fn read_shared_strings(
     archive: &mut zip::ZipArchive<std::io::Cursor<&[u8]>>,
 ) -> Result<Vec<String>, ExtractError> {
-    let mut xml = Vec::new();
-    let mut entry = archive
-        .by_name("xl/sharedStrings.xml")
-        .map_err(|_| ExtractError::Ooxml("xl/sharedStrings.xml not found".to_string()))?;
-    entry
-        .read_to_end(&mut xml)
-        .map_err(|e| ExtractError::Ooxml(e.to_string()))?;
+    let xml = read_zip_entry_bounded(archive, "xl/sharedStrings.xml", MAX_XML_ENTRY_BYTES)?;
     let mut strings = Vec::new();
     let mut reader = quick_xml::Reader::from_reader(xml.as_slice());
     reader.config_mut().trim_text(true);
@@ -229,22 +252,13 @@ fn list_worksheet_names(
         .filter(|n| n.starts_with("xl/worksheets/sheet") && n.ends_with(".xml"))
         .map(|s| s.to_string())
         .collect();
-    names.sort();
+    names.sort_by_key(|name| {
+        name.trim_start_matches("xl/worksheets/sheet")
+            .trim_end_matches(".xml")
+            .parse::<u32>()
+            .unwrap_or(u32::MAX)
+    });
     Ok(names)
-}
-
-fn read_zip_entry(
-    archive: &mut zip::ZipArchive<std::io::Cursor<&[u8]>>,
-    name: &str,
-) -> Result<Vec<u8>, ExtractError> {
-    let mut out = Vec::new();
-    let mut entry = archive
-        .by_name(name)
-        .map_err(|e| ExtractError::Ooxml(e.to_string()))?;
-    entry
-        .read_to_end(&mut out)
-        .map_err(|e| ExtractError::Ooxml(e.to_string()))?;
-    Ok(out)
 }
 
 fn extract_xlsx_sheet_cells(xml: &[u8], shared_strings: &[String]) -> Result<String, ExtractError> {

@@ -77,6 +77,57 @@ fn minimal_docx_with_text(phrase: &str) -> Vec<u8> {
     buf
 }
 
+/// PDF built with lopdf that pdf-extract can parse; contains the given phrase (for §8.4 and PDF search test).
+fn extractable_pdf_with_phrase(phrase: &str) -> Vec<u8> {
+    use lopdf::content::{Content, Operation};
+    use lopdf::{dictionary, Document, Object, Stream};
+    let mut doc = Document::with_version("1.5");
+    let pages_id = doc.new_object_id();
+    let font_id = doc.add_object(dictionary! {
+        "Type" => "Font",
+        "Subtype" => "Type1",
+        "BaseFont" => "Helvetica",
+    });
+    let resources_id = doc.add_object(dictionary! {
+        "Font" => dictionary! {
+            "F1" => font_id,
+        },
+    });
+    let content = Content {
+        operations: vec![
+            Operation::new("BT", vec![]),
+            Operation::new("Tf", vec!["F1".into(), 12.into()]),
+            Operation::new("Td", vec![100.into(), 700.into()]),
+            Operation::new("Tj", vec![Object::string_literal(phrase)]),
+            Operation::new("ET", vec![]),
+        ],
+    };
+    let content_id = doc.add_object(Stream::new(dictionary! {}, content.encode().unwrap()));
+    let page_id = doc.add_object(dictionary! {
+        "Type" => "Page",
+        "Parent" => pages_id,
+        "Contents" => content_id,
+        "Resources" => resources_id,
+        "MediaBox" => vec![0.into(), 0.into(), 612.into(), 792.into()],
+    });
+    doc.objects.insert(
+        pages_id,
+        Object::Dictionary(dictionary! {
+            "Type" => "Pages",
+            "Kids" => vec![Object::Reference(page_id)],
+            "Count" => 1,
+        }),
+    );
+    let catalog_id = doc.add_object(dictionary! {
+        "Type" => "Catalog",
+        "Pages" => pages_id,
+    });
+    doc.trailer.set("Root", catalog_id);
+    let mut buf = Vec::new();
+    doc.save_to(&mut buf).unwrap();
+    buf
+}
+
 fn setup_file_support_env(include_pdf: bool, include_docx: bool) -> (TempDir, std::path::PathBuf) {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path().to_path_buf();
@@ -149,7 +200,7 @@ fn run_ctx(config_path: &Path, args: &[&str]) -> (String, String, bool) {
     (stdout, stderr, output.status.success())
 }
 
-// §8.1 — PDF ingest and search (using docx: same pipeline; minimal PDF does not yield text from pdf-extract)
+// §8.1 — Ingest and search: using docx (minimal PDF not extracted by pdf-extract)
 #[test]
 fn file_support_pdf_ingest_and_search() {
     let (_tmp, config_path) = setup_file_support_env(false, true);
@@ -178,7 +229,7 @@ fn file_support_pdf_ingest_and_search() {
     );
 }
 
-// §8.2 — Idempotent re-sync
+// §8.2 — Idempotent re-sync: second sync without --full upserts 0 when nothing changed
 #[test]
 fn file_support_idempotent_resync() {
     let (_tmp, config_path) = setup_file_support_env(true, false);
@@ -187,15 +238,15 @@ fn file_support_idempotent_resync() {
 
     run_ctx(&config_path, &["init"]);
     let (stdout1, _, _) = run_ctx(&config_path, &["sync", "filesystem:test", "--full"]);
-    let (stdout2, _, _) = run_ctx(&config_path, &["sync", "filesystem:test", "--full"]);
     assert!(
         stdout1.contains("upserted documents: 1") || stdout1.contains("upserted documents: 2"),
         "first sync: {}",
         stdout1
     );
+    let (stdout2, _, _) = run_ctx(&config_path, &["sync", "filesystem:test"]);
     assert!(
-        stdout2.contains("upserted documents: 1") || stdout2.contains("upserted documents: 2"),
-        "second sync should upsert same count: {}",
+        stdout2.contains("upserted documents: 0"),
+        "second sync (incremental) should upsert 0 when nothing changed: {}",
         stdout2
     );
 }
@@ -227,12 +278,45 @@ fn file_support_skipped_on_failure() {
     );
 }
 
+// §8.1 (PDF) — Separate test: sync a real extractable PDF and assert search finds text from it
+#[test]
+fn file_support_pdf_extractable_search() {
+    let (_tmp, config_path) = setup_file_support_env(true, false);
+    let files_dir = _tmp.path().join("files");
+    fs::write(
+        files_dir.join("spec.pdf"),
+        extractable_pdf_with_phrase("spec test phrase"),
+    )
+    .unwrap();
+
+    run_ctx(&config_path, &["init"]);
+    let (stdout, stderr, success) = run_ctx(&config_path, &["sync", "filesystem:test"]);
+    assert!(success, "sync failed: stdout={}, stderr={}", stdout, stderr);
+    assert!(
+        stdout.contains("upserted documents:") && !stdout.contains("upserted documents: 0"),
+        "expected at least one document, got: {}",
+        stdout
+    );
+
+    let (search_out, _, success) = run_ctx(&config_path, &["search", "spec test phrase"]);
+    assert!(success, "search failed");
+    assert!(
+        search_out.contains("spec test phrase") || search_out.contains("spec.pdf"),
+        "search should return snippet with phrase or filename, got: {}",
+        search_out
+    );
+}
+
 // §8.4 — Ingested PDF has content_type application/pdf in DB (assert via search/get output or we'd need DB access)
 #[test]
 fn file_support_content_type_stored() {
     let (_tmp, config_path) = setup_file_support_env(true, false);
     let files_dir = _tmp.path().join("files");
-    fs::write(files_dir.join("spec.pdf"), minimal_pdf_with_phrase()).unwrap();
+    fs::write(
+        files_dir.join("spec.pdf"),
+        extractable_pdf_with_phrase("spec test phrase"),
+    )
+    .unwrap();
 
     run_ctx(&config_path, &["init"]);
     run_ctx(&config_path, &["sync", "filesystem:test"]);
@@ -242,14 +326,17 @@ fn file_support_content_type_stored() {
         .find(|l| l.trim().starts_with("id:"))
         .and_then(|l| l.split("id:").nth(1))
         .map(|s| s.trim().to_string());
-    if let Some(doc_id) = id {
-        let (get_out, _, _) = run_ctx(&config_path, &["get", &doc_id]);
-        assert!(
-            get_out.contains("application/pdf"),
-            "stored document should have content_type application/pdf, got: {}",
-            get_out
-        );
-    }
+    assert!(
+        id.is_some(),
+        "search output did not contain an id: line; output was:\n{}",
+        search_out
+    );
+    let (get_out, _, _) = run_ctx(&config_path, &["get", &id.unwrap()]);
+    assert!(
+        get_out.contains("application/pdf"),
+        "stored document should have content_type application/pdf, got: {}",
+        get_out
+    );
 }
 
 // §8.5 — Office format (docx): same as §8.1
@@ -277,7 +364,7 @@ fn file_support_office_format_docx() {
     );
 }
 
-// §8.6 — File larger than max_extract_bytes is skipped and counted
+// §8.6 — File larger than max_extract_bytes is skipped (at connector; not in extraction skipped count)
 #[test]
 fn file_support_max_size_skipped() {
     let (_tmp, config_path) = setup_file_support_env(true, false);
@@ -290,13 +377,8 @@ fn file_support_max_size_skipped() {
     let (stdout, _, success) = run_ctx(&config_path, &["sync", "filesystem:test"]);
     assert!(success, "sync must succeed");
     assert!(
-        stdout.contains("extraction skipped: 1"),
-        "big.pdf should be skipped: {}",
-        stdout
-    );
-    assert!(
         stdout.contains("upserted documents: 2"),
-        "small.md and readme.md should be ingested: {}",
+        "big.pdf over max_extract_bytes is skipped at connector; only small.md and readme.md: {}",
         stdout
     );
 }

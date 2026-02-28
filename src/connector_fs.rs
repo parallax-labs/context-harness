@@ -195,7 +195,7 @@ fn file_to_source_item(
     path: &Path,
     relative_path: &str,
     source: &str,
-    _fs_config: &FilesystemConnectorConfig,
+    fs_config: &FilesystemConnectorConfig,
 ) -> Result<Option<SourceItem>> {
     let metadata = std::fs::metadata(path)?;
     let modified = metadata
@@ -214,11 +214,15 @@ fn file_to_source_item(
     let ext = path
         .extension()
         .map(|e| format!(".{}", e.to_string_lossy()))
-        .unwrap_or_default();
+        .unwrap_or_default()
+        .to_lowercase();
     let is_binary_ext = BINARY_EXTENSIONS.contains(&ext.as_str());
     let content_type_from_ext = binary_content_type(&ext);
 
     if let (true, Some(mime)) = (is_binary_ext, content_type_from_ext) {
+        if metadata.len() > fs_config.max_extract_bytes {
+            return Ok(None);
+        }
         let bytes = std::fs::read(path)?;
         return Ok(Some(SourceItem {
             source: source.to_string(),
