@@ -69,6 +69,7 @@ mod registry;
 mod search;
 mod server;
 mod sources;
+mod sqlite_store;
 mod stats;
 mod tool_script;
 #[allow(dead_code)]

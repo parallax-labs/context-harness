@@ -94,7 +94,7 @@ Local embeddings have **no system dependencies**; models are downloaded on first
 - **macOS:** The build links against the C++ standard library (used by some dependencies). If you see `library not found for -lc++`, install the Xcode Command Line Tools: `xcode-select --install`. If you use Nix, run `nix develop` first so the shell provides Zig as the C/C++ compiler; then `cargo build` works.
 
 ```bash
-cargo install --path .
+cargo install --path crates/context-harness
 ```
 
 ### 2. Configure
@@ -414,8 +414,8 @@ Pre-built [release binaries](https://github.com/parallax-labs/context-harness/re
 | macOS aarch64 (Apple Silicon) | ✅ fastembed | ✅ |
 | Windows x86_64 | ✅ fastembed | ✅ |
 
-- **Minimal binary (no local embeddings):** `cargo install --path . --no-default-features`
-- **From source on musl or Intel Mac (tract backend):** `cargo build --no-default-features --features local-embeddings-tract`
+- **Minimal binary (no local embeddings):** `cargo install --path crates/context-harness --no-default-features`
+- **From source on musl or Intel Mac (tract backend):** `cargo build -p context-harness --no-default-features --features local-embeddings-tract`
 - **CI/release:** Linux cross-builds (musl, aarch64) use Zig and [cargo-zigbuild](https://github.com/rust-cross/cargo-zigbuild); no cross-rs or system OpenSSL.
 
 See the [configuration docs](https://parallax-labs.github.io/context-harness/docs/reference/configuration/) for full platform notes.

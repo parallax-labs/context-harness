@@ -122,11 +122,13 @@ pub mod registry;
 pub mod search;
 pub mod server;
 pub mod sources;
+pub mod sqlite_store;
 pub mod stats;
 pub mod tool_script;
 pub mod traits;
 
 pub use agents::{Agent, AgentPrompt, AgentRegistry, TomlAgent};
+pub use context_harness_core::store;
 pub use models::SourceItem;
 pub use traits::{
     Connector, ConnectorRegistry, GetTool, SearchTool, SourcesTool, Tool, ToolContext, ToolRegistry,

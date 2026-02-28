@@ -91,9 +91,9 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.zig }}" = "true" ]; then
-            cargo zigbuild --release --target ${{ matrix.target }} ${{ matrix.features }}
+            cargo zigbuild --release --target ${{ matrix.target }} -p context-harness ${{ matrix.features }}
           else
-            cargo build --release --target ${{ matrix.target }} ${{ matrix.features }}
+            cargo build --release --target ${{ matrix.target }} -p context-harness ${{ matrix.features }}
           fi
 
       - name: Package (unix)

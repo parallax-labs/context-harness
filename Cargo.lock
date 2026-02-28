@@ -676,6 +676,7 @@ dependencies = [
  "chrono",
  "clap",
  "clap_complete",
+ "context-harness-core",
  "fastembed",
  "globset",
  "hex",
@@ -700,6 +701,19 @@ dependencies = [
  "uuid",
  "walkdir",
  "zip",
+]
+
+[[package]]
+name = "context-harness-core"
+version = "0.5.1"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "serde",
+ "serde_json",
+ "sha2",
+ "uuid",
 ]
 
 [[package]]

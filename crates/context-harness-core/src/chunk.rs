@@ -22,7 +22,7 @@
 //! # Example
 //!
 //! ```rust
-//! use context_harness::chunk::chunk_text;
+//! use context_harness_core::chunk::chunk_text;
 //!
 //! let chunks = chunk_text("doc-123", "Hello world.\n\nSecond paragraph.", 700);
 //! assert_eq!(chunks.len(), 1);
@@ -76,11 +76,10 @@ pub fn chunk_text(document_id: &str, text: &str, max_tokens: usize) -> Vec<Chunk
             continue;
         }
 
-        // If adding this paragraph would exceed max, flush current buffer
         let would_be = if current_buf.is_empty() {
             trimmed.len()
         } else {
-            current_buf.len() + 2 + trimmed.len() // +2 for \n\n separator
+            current_buf.len() + 2 + trimmed.len()
         };
 
         if would_be > max_chars && !current_buf.is_empty() {
@@ -89,20 +88,16 @@ pub fn chunk_text(document_id: &str, text: &str, max_tokens: usize) -> Vec<Chunk
             current_buf.clear();
         }
 
-        // If a single paragraph exceeds max, split it by sentences/lines
         if trimmed.len() > max_chars {
             if !current_buf.is_empty() {
                 chunks.push(make_chunk(document_id, chunk_index, &current_buf));
                 chunk_index += 1;
                 current_buf.clear();
             }
-            // Hard split at max_chars boundaries (UTF-8 safe)
             let mut remaining = trimmed;
             while !remaining.is_empty() {
                 let split_at = snap_to_char_boundary(remaining, remaining.len().min(max_chars));
-                // Ensure we make progress even with only multi-byte chars
                 let split_at = if split_at == 0 && !remaining.is_empty() {
-                    // Advance past at least one full character
                     remaining
                         .char_indices()
                         .nth(1)
@@ -111,7 +106,6 @@ pub fn chunk_text(document_id: &str, text: &str, max_tokens: usize) -> Vec<Chunk
                 } else {
                     split_at
                 };
-                // Try to split at a newline or space boundary
                 let actual_split = if split_at < remaining.len() {
                     remaining[..split_at]
                         .rfind('\n')
@@ -121,7 +115,6 @@ pub fn chunk_text(document_id: &str, text: &str, max_tokens: usize) -> Vec<Chunk
                 } else {
                     split_at
                 };
-                // Final safety: ensure actual_split is on a char boundary
                 let actual_split = snap_to_char_boundary(remaining, actual_split);
                 let actual_split = if actual_split == 0 && !remaining.is_empty() {
                     remaining
@@ -147,12 +140,10 @@ pub fn chunk_text(document_id: &str, text: &str, max_tokens: usize) -> Vec<Chunk
         }
     }
 
-    // Flush remaining
     if !current_buf.is_empty() {
         chunks.push(make_chunk(document_id, chunk_index, &current_buf));
     }
 
-    // Guarantee at least one chunk
     if chunks.is_empty() {
         chunks.push(make_chunk(document_id, 0, text.trim()));
     }
@@ -161,9 +152,6 @@ pub fn chunk_text(document_id: &str, text: &str, max_tokens: usize) -> Vec<Chunk
 }
 
 /// Snap a byte index back to the nearest valid UTF-8 char boundary.
-///
-/// If `index` falls in the middle of a multi-byte character, this walks
-/// backwards until it finds the start of that character.
 fn snap_to_char_boundary(s: &str, index: usize) -> usize {
     if index >= s.len() {
         return s.len();
@@ -220,11 +208,9 @@ mod tests {
 
     #[test]
     fn test_multiple_paragraphs_exceed_limit() {
-        // max_tokens=5 => max_chars=20
         let text = "This is paragraph one.\n\nThis is paragraph two.\n\nThis is paragraph three.";
         let chunks = chunk_text("doc1", text, 5);
         assert!(chunks.len() > 1);
-        // Indices must be contiguous starting at 0
         for (i, c) in chunks.iter().enumerate() {
             assert_eq!(c.chunk_index, i as i64);
         }
@@ -244,14 +230,10 @@ mod tests {
 
     #[test]
     fn test_multibyte_utf8_chars() {
-        // Box-drawing characters are 3 bytes each (─ = E2 94 80)
         let text = "┌──────────────────┐\n│ Hello world      │\n└──────────────────┘";
-        // Small token limit to force a hard split through the box-drawing chars
-        let chunks = chunk_text("doc1", text, 3); // 12 chars max
+        let chunks = chunk_text("doc1", text, 3);
         assert!(!chunks.is_empty());
         for c in &chunks {
-            // Every chunk must be valid UTF-8 (Rust guarantees this, but
-            // the indexing must not panic)
             assert!(!c.text.is_empty() || c.chunk_index == 0);
         }
     }
