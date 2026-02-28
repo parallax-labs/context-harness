@@ -1,6 +1,6 @@
 [package]
 name = "context-harness"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2021"
 description = "A local-first context ingestion and retrieval framework for AI tools"
 license = "MIT"
