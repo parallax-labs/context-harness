@@ -98,10 +98,7 @@ pub struct ScoreExplanation {
 /// This is the core search function that all frontends (CLI, HTTP) delegate to.
 /// It fetches candidates from the store, normalizes scores, merges, aggregates
 /// by document, and returns sorted results.
-pub async fn search<S: Store>(
-    store: &S,
-    req: &SearchRequest<'_>,
-) -> Result<Vec<SearchResultItem>> {
+pub async fn search<S: Store>(store: &S, req: &SearchRequest<'_>) -> Result<Vec<SearchResultItem>> {
     if req.query.trim().is_empty() {
         return Ok(Vec::new());
     }
