@@ -16,7 +16,7 @@ use anyhow::{bail, Result};
 
 #[allow(unused_imports)]
 pub use context_harness_core::search::{
-    normalize_scores, ScoreExplanation, SearchParams, SearchResultItem,
+    normalize_scores, ScoreExplanation, SearchParams, SearchRequest, SearchResultItem,
 };
 #[allow(unused_imports)]
 pub use context_harness_core::store::ChunkCandidate;
@@ -76,17 +76,17 @@ pub async fn search_documents(
         final_limit: limit.unwrap_or(config.retrieval.final_limit),
     };
 
-    let results = context_harness_core::search::search(
-        &store,
+    let req = SearchRequest {
         query,
-        query_vec.as_deref(),
+        query_vec: query_vec.as_deref(),
         mode,
         source_filter,
         since,
-        &params,
+        params,
         explain,
-    )
-    .await?;
+    };
+
+    let results = context_harness_core::search::search(&store, &req).await?;
 
     pool.close().await;
     Ok(results)

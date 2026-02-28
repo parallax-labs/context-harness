@@ -35,6 +35,25 @@ pub struct SearchParams {
     pub final_limit: i64,
 }
 
+/// Bundles all inputs for a single search invocation.
+#[derive(Debug, Clone)]
+pub struct SearchRequest<'a> {
+    /// Search query text.
+    pub query: &'a str,
+    /// Pre-computed query embedding (required for semantic/hybrid modes).
+    pub query_vec: Option<&'a [f32]>,
+    /// `"keyword"`, `"semantic"`, or `"hybrid"`.
+    pub mode: &'a str,
+    /// Only return results from this connector source.
+    pub source_filter: Option<&'a str>,
+    /// Only return documents updated after this date (`YYYY-MM-DD`).
+    pub since: Option<&'a str>,
+    /// Retrieval tuning parameters.
+    pub params: SearchParams,
+    /// If true, populate [`ScoreExplanation`] on each result.
+    pub explain: bool,
+}
+
 /// A search result matching the `SCHEMAS.md` `context.search` response shape.
 #[derive(Debug, Clone, Serialize)]
 pub struct SearchResultItem {
@@ -79,53 +98,45 @@ pub struct ScoreExplanation {
 /// This is the core search function that all frontends (CLI, HTTP) delegate to.
 /// It fetches candidates from the store, normalizes scores, merges, aggregates
 /// by document, and returns sorted results.
-///
-/// # Arguments
-///
-/// * `store` — Storage backend implementing [`Store`].
-/// * `query` — Search query text.
-/// * `query_vec` — Pre-computed query embedding (required for semantic/hybrid).
-/// * `mode` — `"keyword"`, `"semantic"`, or `"hybrid"`.
-/// * `source_filter` — Optional: only return results from this connector.
-/// * `since` — Optional: only return documents updated after this date (`YYYY-MM-DD`).
-/// * `params` — Retrieval tuning parameters.
-/// * `explain` — If true, populate [`ScoreExplanation`] on each result.
-#[allow(clippy::too_many_arguments)]
 pub async fn search<S: Store>(
     store: &S,
-    query: &str,
-    query_vec: Option<&[f32]>,
-    mode: &str,
-    source_filter: Option<&str>,
-    since: Option<&str>,
-    params: &SearchParams,
-    explain: bool,
+    req: &SearchRequest<'_>,
 ) -> Result<Vec<SearchResultItem>> {
-    if query.trim().is_empty() {
+    if req.query.trim().is_empty() {
         return Ok(Vec::new());
     }
 
-    match mode {
+    match req.mode {
         "keyword" | "semantic" | "hybrid" => {}
         _ => bail!(
             "Unknown search mode: {}. Use keyword, semantic, or hybrid.",
-            mode
+            req.mode
         ),
     }
 
-    let keyword_candidates = if mode == "keyword" || mode == "hybrid" {
+    let keyword_candidates = if req.mode == "keyword" || req.mode == "hybrid" {
         store
-            .keyword_search(query, params.candidate_k_keyword, source_filter, since)
+            .keyword_search(
+                req.query,
+                req.params.candidate_k_keyword,
+                req.source_filter,
+                req.since,
+            )
             .await?
     } else {
         Vec::new()
     };
 
-    let vector_candidates = if mode == "semantic" || mode == "hybrid" {
-        match query_vec {
+    let vector_candidates = if req.mode == "semantic" || req.mode == "hybrid" {
+        match req.query_vec {
             Some(qv) => {
                 store
-                    .vector_search(qv, params.candidate_k_vector, source_filter, since)
+                    .vector_search(
+                        qv,
+                        req.params.candidate_k_vector,
+                        req.source_filter,
+                        req.since,
+                    )
                     .await?
             }
             None => bail!("query_vec is required for semantic/hybrid mode"),
@@ -158,10 +169,10 @@ pub async fn search<S: Store>(
         all_chunks.entry(c.chunk_id.clone()).or_insert(c);
     }
 
-    let effective_alpha = match mode {
+    let effective_alpha = match req.mode {
         "keyword" => 0.0,
         "semantic" => 1.0,
-        _ => params.hybrid_alpha,
+        _ => req.params.hybrid_alpha,
     };
 
     struct ScoredChunk {
@@ -232,13 +243,13 @@ pub async fn search<S: Store>(
             store.get_document_metadata(&doc_result.doc_id).await?;
 
         if let Some(meta) = meta {
-            if let Some(src) = source_filter {
+            if let Some(src) = req.source_filter {
                 if meta.source != src {
                     continue;
                 }
             }
 
-            if let Some(since_str) = since {
+            if let Some(since_str) = req.since {
                 let since_date = NaiveDate::parse_from_str(since_str, "%Y-%m-%d")?;
                 let since_ts = since_date
                     .and_hms_opt(0, 0, 0)
@@ -252,7 +263,7 @@ pub async fn search<S: Store>(
 
             let updated_at_iso = format_ts_iso(meta.updated_at);
 
-            let explanation = if explain {
+            let explanation = if req.explain {
                 Some(ScoreExplanation {
                     keyword_score: doc_result.keyword_score,
                     semantic_score: doc_result.semantic_score,
@@ -286,7 +297,7 @@ pub async fn search<S: Store>(
             .then(a.id.cmp(&b.id))
     });
 
-    results.truncate(params.final_limit as usize);
+    results.truncate(req.params.final_limit as usize);
 
     Ok(results)
 }
