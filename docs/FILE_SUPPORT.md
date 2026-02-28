@@ -64,7 +64,7 @@ The following keys SHALL be supported under `[connectors.filesystem.<name>]`:
 
 | Key | Type | Default | Meaning |
 |-----|------|---------|---------|
-| `max_extract_bytes` | integer | `50_000_000` | Files larger than this (bytes) SHALL NOT be extracted; they SHALL be skipped and SHALL be counted in the skipped summary. |
+| `max_extract_bytes` | integer | `50_000_000` | Files larger than this (bytes) SHALL NOT be extracted; they SHALL be skipped (SHALL NOT be ingested). The connector MAY skip such files before supplying them to the pipeline; when skipped at the connector, they need not be counted in the "extraction skipped" summary. A future revision MAY add a separate "connector skipped (oversize)" count. |
 
 Binary extraction is inferred from file extension: any file with extension `.pdf`, `.docx`, `.pptx`, or `.xlsx` that matches include_globs SHALL be read as raw bytes and passed to the pipeline. No separate opt-in is required.
 
@@ -112,7 +112,7 @@ The following SHALL hold when the implementation is complete:
 3. **Skipped on failure:** If a PDF is corrupt or password-protected, sync SHALL complete successfully; the sync output SHALL include `extraction skipped: 1` (or higher); the remaining items SHALL be ingested.
 4. **Content-type stored:** For an ingested PDF, the stored document SHALL have `content_type` equal to `application/pdf`. For docx/pptx/xlsx, `content_type` SHALL match the MIME in §1.1.
 5. **Office format:** The same as (1) SHALL hold for at least one of .docx, .pptx, or .xlsx (e.g. a docx with known text is synced and search returns a snippet containing that text).
-6. **Max size:** A file larger than `max_extract_bytes` SHALL be skipped (SHALL NOT be ingested) and SHALL be counted in the extraction-skipped total.
+6. **Max size:** A file larger than `max_extract_bytes` SHALL be skipped (SHALL NOT be ingested). When the connector skips the file before passing it to the pipeline, it need not be counted in the extraction-skipped total; the test SHALL assert that the oversize file is not ingested and that the remaining items are ingested as expected.
 
 ---
 

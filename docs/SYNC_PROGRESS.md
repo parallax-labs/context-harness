@@ -1,10 +1,10 @@
-# Sync and Embed Progress — Design & Specification
+# Sync and Embed Progress — Design & Planning
 
 This document specifies how Context Harness will report **observable progress**
 during `ctx sync` (and optionally `ctx embed pending`) so users know what has
 been scanned, how much is left, and when search is up to date.
 
-**Status:** Draft (spec only; implementation deferred)  
+**Status:** Design & planning — not yet implemented; the authoritative spec will follow implementation.  
 **Created:** 2026-02  
 **Depends on:** `ingest.rs` (sync pipeline), `main.rs` (CLI)
 

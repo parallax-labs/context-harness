@@ -212,7 +212,28 @@ fn extract_xlsx(bytes: &[u8]) -> Result<String, ExtractError> {
 fn read_shared_strings(
     archive: &mut zip::ZipArchive<std::io::Cursor<&[u8]>>,
 ) -> Result<Vec<String>, ExtractError> {
-    let xml = read_zip_entry_bounded(archive, "xl/sharedStrings.xml", MAX_XML_ENTRY_BYTES)?;
+    // xl/sharedStrings.xml is optional in valid .xlsx (e.g. no shared strings or only inline/numeric cells).
+    let xml = match archive.by_name("xl/sharedStrings.xml") {
+        Ok(entry) => {
+            let mut buf = Vec::new();
+            entry
+                .take(MAX_XML_ENTRY_BYTES)
+                .read_to_end(&mut buf)
+                .map_err(|e| ExtractError::Ooxml(e.to_string()))?;
+            if buf.len() as u64 >= MAX_XML_ENTRY_BYTES {
+                return Err(ExtractError::Ooxml(
+                    "xl/sharedStrings.xml exceeds size limit".to_string(),
+                ));
+            }
+            buf
+        }
+        Err(e) => {
+            if matches!(e, zip::result::ZipError::FileNotFound) {
+                return Ok(Vec::new());
+            }
+            return Err(ExtractError::Ooxml(e.to_string()));
+        }
+    };
     let mut strings = Vec::new();
     let mut reader = quick_xml::Reader::from_reader(xml.as_slice());
     reader.config_mut().trim_text(true);
@@ -261,6 +282,7 @@ fn list_worksheet_names(
     Ok(names)
 }
 
+/// Limit bounds parsing work (cells considered), not only text cells emitted.
 fn extract_xlsx_sheet_cells(xml: &[u8], shared_strings: &[String]) -> Result<String, ExtractError> {
     let mut cells: Vec<String> = Vec::new();
     let mut reader = quick_xml::Reader::from_reader(xml);
@@ -276,6 +298,7 @@ fn extract_xlsx_sheet_cells(xml: &[u8], shared_strings: &[String]) -> Result<Str
         match reader.read_event_into(&mut buf) {
             Ok(quick_xml::events::Event::Start(e)) => {
                 if e.local_name().as_ref() == b"c" {
+                    cell_count += 1;
                     cell_is_shared_str = e.attributes().any(|a| {
                         a.as_ref()
                             .map(|a| a.key.as_ref() == b"t" && a.value.as_ref() == b"s")
@@ -292,7 +315,6 @@ fn extract_xlsx_sheet_cells(xml: &[u8], shared_strings: &[String]) -> Result<Str
                     if let Ok(i) = s.parse::<usize>() {
                         if i < shared_strings.len() {
                             cells.push(shared_strings[i].clone());
-                            cell_count += 1;
                         }
                     }
                 }

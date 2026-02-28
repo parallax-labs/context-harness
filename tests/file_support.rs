@@ -16,8 +16,10 @@ fn ctx_binary() -> std::path::PathBuf {
     path
 }
 
-/// Minimal valid PDF containing the text "spec test phrase" (for §8.1).
-/// Builds body then xref with correct byte offsets so pdf-extract can parse it.
+/// Minimal valid PDF containing the text "spec test phrase", used in format-level tests (e.g. §8.2, §8.3).
+/// Builds body then xref with correct byte offsets. This hand-rolled PDF is not guaranteed to be
+/// extracted by the pipeline; the §8.1 ingest/search test uses docx (or `extractable_pdf_with_phrase`)
+/// for reliable extraction.
 fn minimal_pdf_with_phrase() -> Vec<u8> {
     let mut out = Vec::new();
     out.extend_from_slice(b"%PDF-1.4\n");
@@ -200,9 +202,9 @@ fn run_ctx(config_path: &Path, args: &[&str]) -> (String, String, bool) {
     (stdout, stderr, output.status.success())
 }
 
-// §8.1 — Ingest and search: using docx (minimal PDF not extracted by pdf-extract)
+// §8.1 — Ingest and search using docx (same pipeline as PDF; extractable PDF tested in file_support_pdf_extractable_search)
 #[test]
-fn file_support_pdf_ingest_and_search() {
+fn file_support_ingest_and_search_docx() {
     let (_tmp, config_path) = setup_file_support_env(false, true);
     let files_dir = _tmp.path().join("files");
     fs::write(
