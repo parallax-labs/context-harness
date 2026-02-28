@@ -34,10 +34,10 @@ API_DIR="$STATIC_DIR/api"
 # ── Step 1: Build ctx binary ──
 if [ "${SKIP_CARGO:-}" != "1" ]; then
     echo "==> Building ctx binary..."
-    cargo build --release 2>&1
+    cargo build --release -p context-harness 2>&1
 
     echo "==> Generating rustdoc..."
-    cargo doc --no-deps --document-private-items 2>&1
+    cargo doc --workspace --no-deps --document-private-items 2>&1
     mkdir -p "$API_DIR"
     cp -r target/doc/* "$API_DIR/"
 else
@@ -81,7 +81,7 @@ bind = "127.0.0.1:7331"
 url = "$GIT_URL"
 branch = "$GIT_BRANCH"
 root = "."
-include_globs = ["docs/**/*.md", "src/**/*.rs", "README.md", "CHANGELOG.md", "CONTRIBUTING.md"]
+include_globs = ["docs/**/*.md", "crates/**/*.rs", "README.md", "CHANGELOG.md", "CONTRIBUTING.md"]
 exclude_globs = ["**/target/**"]
 shallow = true
 cache_dir = "$CACHE_DIR"

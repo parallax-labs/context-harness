@@ -1,0 +1,19 @@
+[package]
+name = "context-harness-core"
+version = "0.5.1"
+edition = "2021"
+description = "Core library for Context Harness — models, chunking, store trait, search algorithm, and embedding trait"
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/parallax-labs/context-harness"
+readme = "../../README.md"
+keywords = ["ai", "context", "search", "embeddings"]
+categories = ["database"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+sha2 = "0.10"
+anyhow = "1"
+chrono = { version = "0.4", features = ["serde"] }
+async-trait = "0.1"

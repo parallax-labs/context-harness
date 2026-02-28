@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - 'site/**'
-      - 'src/**'
+      - 'crates/**'
       - 'docs/**'
       - 'scripts/**'
       - 'Cargo.toml'

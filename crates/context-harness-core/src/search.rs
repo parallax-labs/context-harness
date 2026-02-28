@@ -1,12 +1,9 @@
 //! Search engine with keyword, semantic, and hybrid retrieval modes.
 //!
-//! - **Keyword** — FTS5 full-text search using BM25 scoring.
-//! - **Semantic** — Cosine similarity over stored embedding vectors.
-//! - **Hybrid** — Weighted merge of keyword and semantic results using min-max
-//!   normalization and configurable `hybrid_alpha` (see `docs/HYBRID_SCORING.md`).
-//!
-//! Results are returned as [`SearchResultItem`] values suitable for both CLI and
-//! HTTP server consumption.
+//! The core search algorithm operates entirely through the [`Store`] trait,
+//! with no database or configuration dependencies. The calling application
+//! is responsible for embedding queries, constructing [`SearchParams`],
+//! and passing the appropriate store implementation.
 //!
 //! # Hybrid Scoring Algorithm
 //!
@@ -17,27 +14,47 @@
 //! 5. Group by document (MAX aggregation).
 //! 6. Sort by score (desc), updated_at (desc), id (asc).
 //! 7. Truncate to `final_limit`.
-//!
-//! # Filtering
-//!
-//! Results can be filtered by:
-//! - `--source <name>` — only return documents from a specific connector
-//! - `--since <YYYY-MM-DD>` — only return documents updated after a date
 
 use anyhow::{bail, Result};
 use chrono::NaiveDate;
 use serde::Serialize;
-use sqlx::{Row, SqlitePool};
 use std::collections::HashMap;
 
-use crate::config::Config;
-use crate::db;
-use crate::embedding;
+use crate::store::{ChunkCandidate, DocumentMetadata, Store};
+
+/// Retrieval tuning parameters, decoupled from application config.
+#[derive(Debug, Clone)]
+pub struct SearchParams {
+    /// Weight for semantic vs keyword: `hybrid = (1-α)*keyword + α*semantic`.
+    pub hybrid_alpha: f64,
+    /// Number of keyword candidates to fetch.
+    pub candidate_k_keyword: i64,
+    /// Number of vector candidates to fetch.
+    pub candidate_k_vector: i64,
+    /// Maximum results to return.
+    pub final_limit: i64,
+}
+
+/// Bundles all inputs for a single search invocation.
+#[derive(Debug, Clone)]
+pub struct SearchRequest<'a> {
+    /// Search query text.
+    pub query: &'a str,
+    /// Pre-computed query embedding (required for semantic/hybrid modes).
+    pub query_vec: Option<&'a [f32]>,
+    /// `"keyword"`, `"semantic"`, or `"hybrid"`.
+    pub mode: &'a str,
+    /// Only return results from this connector source.
+    pub source_filter: Option<&'a str>,
+    /// Only return documents updated after this date (`YYYY-MM-DD`).
+    pub since: Option<&'a str>,
+    /// Retrieval tuning parameters.
+    pub params: SearchParams,
+    /// If true, populate [`ScoreExplanation`] on each result.
+    pub explain: bool,
+}
 
 /// A search result matching the `SCHEMAS.md` `context.search` response shape.
-///
-/// Used by both the CLI (`run_search`) and HTTP server (`handle_search`).
-/// Scores are normalized to `[0.0, 1.0]` and sorted descending.
 #[derive(Debug, Clone, Serialize)]
 pub struct SearchResultItem {
     /// Document UUID.
@@ -61,8 +78,7 @@ pub struct SearchResultItem {
     pub explain: Option<ScoreExplanation>,
 }
 
-/// Scoring breakdown for a search result, showing how the final
-/// hybrid score was derived from keyword and semantic signals.
+/// Scoring breakdown for a search result.
 #[derive(Debug, Clone, Serialize)]
 pub struct ScoreExplanation {
     /// Normalized keyword score (0.0 if absent from keyword candidates).
@@ -77,72 +93,56 @@ pub struct ScoreExplanation {
     pub vector_candidates: usize,
 }
 
-/// Core search function returning structured results.
+/// Run a hybrid search against a [`Store`] backend.
 ///
-/// This is the shared implementation used by both `ctx search` (CLI) and
-/// `POST /tools/search` (HTTP server).
-///
-/// # Arguments
-///
-/// * `config` — Application configuration (retrieval tuning, embedding settings).
-/// * `query` — Search query text.
-/// * `mode` — Search mode: `"keyword"`, `"semantic"`, or `"hybrid"`.
-/// * `source_filter` — Optional filter: only return results from this connector.
-/// * `since` — Optional filter: only return documents updated after this date (`YYYY-MM-DD`).
-/// * `limit` — Optional result limit (overrides `retrieval.final_limit`).
-/// * `explain` — If true, populate [`ScoreExplanation`] on each result.
-///
-/// # Errors
-///
-/// - Empty query returns an empty result set (not an error).
-/// - Unknown mode returns an error.
-/// - Semantic/hybrid mode with disabled embeddings returns an error.
-pub async fn search_documents(
-    config: &Config,
-    query: &str,
-    mode: &str,
-    source_filter: Option<&str>,
-    since: Option<&str>,
-    limit: Option<i64>,
-    explain: bool,
-) -> Result<Vec<SearchResultItem>> {
-    if query.trim().is_empty() {
+/// This is the core search function that all frontends (CLI, HTTP) delegate to.
+/// It fetches candidates from the store, normalizes scores, merges, aggregates
+/// by document, and returns sorted results.
+pub async fn search<S: Store>(store: &S, req: &SearchRequest<'_>) -> Result<Vec<SearchResultItem>> {
+    if req.query.trim().is_empty() {
         return Ok(Vec::new());
     }
 
-    match mode {
+    match req.mode {
         "keyword" | "semantic" | "hybrid" => {}
         _ => bail!(
             "Unknown search mode: {}. Use keyword, semantic, or hybrid.",
-            mode
+            req.mode
         ),
     }
 
-    if (mode == "semantic" || mode == "hybrid") && !config.embedding.is_enabled() {
-        bail!(
-            "Mode '{}' requires embeddings. Set [embedding] provider in config.",
-            mode
-        );
-    }
-
-    let pool = db::connect(config).await?;
-    let final_limit = limit.unwrap_or(config.retrieval.final_limit);
-    let alpha = config.retrieval.hybrid_alpha;
-
-    let keyword_candidates = if mode == "keyword" || mode == "hybrid" {
-        fetch_keyword_candidates(&pool, query, config.retrieval.candidate_k_keyword).await?
+    let keyword_candidates = if req.mode == "keyword" || req.mode == "hybrid" {
+        store
+            .keyword_search(
+                req.query,
+                req.params.candidate_k_keyword,
+                req.source_filter,
+                req.since,
+            )
+            .await?
     } else {
         Vec::new()
     };
 
-    let vector_candidates = if mode == "semantic" || mode == "hybrid" {
-        fetch_vector_candidates(&pool, config, query, config.retrieval.candidate_k_vector).await?
+    let vector_candidates = if req.mode == "semantic" || req.mode == "hybrid" {
+        match req.query_vec {
+            Some(qv) => {
+                store
+                    .vector_search(
+                        qv,
+                        req.params.candidate_k_vector,
+                        req.source_filter,
+                        req.since,
+                    )
+                    .await?
+            }
+            None => bail!("query_vec is required for semantic/hybrid mode"),
+        }
     } else {
         Vec::new()
     };
 
     if keyword_candidates.is_empty() && vector_candidates.is_empty() {
-        pool.close().await;
         return Ok(Vec::new());
     }
 
@@ -166,10 +166,10 @@ pub async fn search_documents(
         all_chunks.entry(c.chunk_id.clone()).or_insert(c);
     }
 
-    let effective_alpha = match mode {
+    let effective_alpha = match req.mode {
         "keyword" => 0.0,
         "semantic" => 1.0,
-        _ => alpha,
+        _ => req.params.hybrid_alpha,
     };
 
     struct ScoredChunk {
@@ -236,39 +236,31 @@ pub async fn search_documents(
     let mut results: Vec<SearchResultItem> = Vec::new();
 
     for doc_result in doc_map.values() {
-        let doc_row = sqlx::query(
-            "SELECT id, title, source, source_id, updated_at, source_url FROM documents WHERE id = ?",
-        )
-        .bind(&doc_result.doc_id)
-        .fetch_optional(&pool)
-        .await?;
+        let meta: Option<DocumentMetadata> =
+            store.get_document_metadata(&doc_result.doc_id).await?;
 
-        if let Some(row) = doc_row {
-            let source: String = row.get("source");
-            let updated_at: i64 = row.get("updated_at");
-            let source_id: String = row.get("source_id");
-
-            if let Some(src) = source_filter {
-                if source != src {
+        if let Some(meta) = meta {
+            if let Some(src) = req.source_filter {
+                if meta.source != src {
                     continue;
                 }
             }
 
-            if let Some(since_str) = since {
+            if let Some(since_str) = req.since {
                 let since_date = NaiveDate::parse_from_str(since_str, "%Y-%m-%d")?;
                 let since_ts = since_date
                     .and_hms_opt(0, 0, 0)
                     .unwrap()
                     .and_utc()
                     .timestamp();
-                if updated_at < since_ts {
+                if meta.updated_at < since_ts {
                     continue;
                 }
             }
 
-            let updated_at_iso = format_ts_iso(updated_at);
+            let updated_at_iso = format_ts_iso(meta.updated_at);
 
-            let explanation = if explain {
+            let explanation = if req.explain {
                 Some(ScoreExplanation {
                     keyword_score: doc_result.keyword_score,
                     semantic_score: doc_result.semantic_score,
@@ -281,20 +273,19 @@ pub async fn search_documents(
             };
 
             results.push(SearchResultItem {
-                id: row.get("id"),
+                id: meta.id,
                 score: doc_result.doc_score,
-                title: row.get("title"),
-                source,
-                source_id,
+                title: meta.title,
+                source: meta.source,
+                source_id: meta.source_id,
                 updated_at: updated_at_iso,
                 snippet: doc_result.best_snippet.clone(),
-                source_url: row.get("source_url"),
+                source_url: meta.source_url,
                 explain: explanation,
             });
         }
     }
 
-    // Sort: score desc, updated_at desc (string works for ISO8601), id asc
     results.sort_by(|a, b| {
         b.score
             .partial_cmp(&a.score)
@@ -303,212 +294,22 @@ pub async fn search_documents(
             .then(a.id.cmp(&b.id))
     });
 
-    results.truncate(final_limit as usize);
+    results.truncate(req.params.final_limit as usize);
 
-    pool.close().await;
     Ok(results)
 }
 
-/// CLI entry point — calls [`search_documents`] and prints results to stdout.
-pub async fn run_search(
-    config: &Config,
-    query: &str,
-    mode: &str,
-    source_filter: Option<String>,
-    since: Option<String>,
-    limit: Option<i64>,
-    explain: bool,
-) -> Result<()> {
-    let results = search_documents(
-        config,
-        query,
-        mode,
-        source_filter.as_deref(),
-        since.as_deref(),
-        limit,
-        explain,
-    )
-    .await?;
-
-    if results.is_empty() {
-        println!("No results.");
-        return Ok(());
-    }
-
-    if explain {
-        if let Some(ex) = results.first().and_then(|r| r.explain.as_ref()) {
-            println!(
-                "Search: mode={}, alpha={:.2}, candidates: {} keyword + {} vector",
-                mode, ex.alpha, ex.keyword_candidates, ex.vector_candidates
-            );
-            println!();
-        }
-    }
-
-    for (i, result) in results.iter().enumerate() {
-        let title_display = result.title.as_deref().unwrap_or("(untitled)");
-        println!(
-            "{}. [{:.2}] {} / {}",
-            i + 1,
-            result.score,
-            result.source,
-            title_display
-        );
-        if let Some(ref ex) = result.explain {
-            println!(
-                "    scoring: keyword={:.3}  semantic={:.3}  → hybrid={:.3}",
-                ex.keyword_score, ex.semantic_score, result.score
-            );
-        }
-        println!("    updated: {}", result.updated_at);
-        println!("    source: {}", result.source);
-        if let Some(ref url) = result.source_url {
-            println!("    url: {}", url);
-        }
-        println!(
-            "    excerpt: \"{}\"",
-            result.snippet.replace('\n', " ").trim()
-        );
-        println!("    id: {}", result.id);
-        println!();
-    }
-
-    Ok(())
-}
-
 /// Format a Unix timestamp as ISO 8601.
-fn format_ts_iso(ts: i64) -> String {
+pub fn format_ts_iso(ts: i64) -> String {
     chrono::DateTime::from_timestamp(ts, 0)
         .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
         .unwrap_or_else(|| ts.to_string())
 }
 
-// ============ Candidate types ============
-
-/// A candidate chunk from either keyword or vector search.
-#[derive(Debug, Clone)]
-struct ChunkCandidate {
-    /// Chunk UUID.
-    chunk_id: String,
-    /// Parent document UUID.
-    document_id: String,
-    /// Raw score from the search engine (BM25 rank or cosine similarity).
-    raw_score: f64,
-    /// Text excerpt for display.
-    snippet: String,
-}
-
-// ============ Keyword search ============
-
-/// Fetch keyword search candidates using FTS5 with BM25 ranking.
-///
-/// Queries the `chunks_fts` virtual table and returns candidates
-/// sorted by BM25 relevance. FTS5 returns negative rank values
-/// (lower = better), which are negated to positive scores.
-async fn fetch_keyword_candidates(
-    pool: &SqlitePool,
-    query: &str,
-    candidate_k: i64,
-) -> Result<Vec<ChunkCandidate>> {
-    let rows = sqlx::query(
-        r#"
-        SELECT chunk_id, document_id, rank,
-               snippet(chunks_fts, 2, '>>>', '<<<', '...', 48) AS snippet
-        FROM chunks_fts
-        WHERE chunks_fts MATCH ?
-        ORDER BY rank
-        LIMIT ?
-        "#,
-    )
-    .bind(query)
-    .bind(candidate_k)
-    .fetch_all(pool)
-    .await?;
-
-    let candidates: Vec<ChunkCandidate> = rows
-        .iter()
-        .map(|row| {
-            let rank: f64 = row.get("rank");
-            ChunkCandidate {
-                chunk_id: row.get("chunk_id"),
-                document_id: row.get("document_id"),
-                raw_score: -rank,
-                snippet: row.get("snippet"),
-            }
-        })
-        .collect();
-
-    Ok(candidates)
-}
-
-// ============ Vector search ============
-
-/// Fetch semantic search candidates using cosine similarity.
-///
-/// Embeds the query text, then computes cosine similarity against all
-/// stored chunk vectors. Returns the top `candidate_k` results.
-///
-/// Note: This performs a brute-force scan over all vectors. For large
-/// datasets, consider adding approximate nearest neighbor (ANN) indexing.
-async fn fetch_vector_candidates(
-    pool: &SqlitePool,
-    config: &Config,
-    query: &str,
-    candidate_k: i64,
-) -> Result<Vec<ChunkCandidate>> {
-    let provider = embedding::create_provider(&config.embedding)?;
-    let query_vec = embedding::embed_query(provider.as_ref(), &config.embedding, query).await?;
-
-    let rows = sqlx::query(
-        r#"
-        SELECT cv.chunk_id, cv.document_id, cv.embedding,
-               COALESCE(substr(c.text, 1, 240), '') AS snippet
-        FROM chunk_vectors cv
-        JOIN chunks c ON c.id = cv.chunk_id
-        "#,
-    )
-    .fetch_all(pool)
-    .await?;
-
-    let mut candidates: Vec<ChunkCandidate> = rows
-        .iter()
-        .map(|row| {
-            let blob: Vec<u8> = row.get("embedding");
-            let vec = embedding::blob_to_vec(&blob);
-            let similarity = embedding::cosine_similarity(&query_vec, &vec) as f64;
-            ChunkCandidate {
-                chunk_id: row.get("chunk_id"),
-                document_id: row.get("document_id"),
-                raw_score: similarity,
-                snippet: row.get("snippet"),
-            }
-        })
-        .collect();
-
-    candidates.sort_by(|a, b| {
-        b.raw_score
-            .partial_cmp(&a.raw_score)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    candidates.truncate(candidate_k as usize);
-
-    Ok(candidates)
-}
-
-// ============ Score normalization ============
-
 /// Min-max normalize raw scores to `[0.0, 1.0]`.
 ///
 /// If all scores are equal, they are normalized to `1.0`.
-///
-/// # Formula
-///
-/// ```text
-///              score - min
-/// normalized = ───────────
-///              max - min
-/// ```
-fn normalize_scores(candidates: &[ChunkCandidate]) -> Vec<(&ChunkCandidate, f64)> {
+pub fn normalize_scores(candidates: &[ChunkCandidate]) -> Vec<(&ChunkCandidate, f64)> {
     if candidates.is_empty() {
         return Vec::new();
     }
@@ -534,8 +335,6 @@ fn normalize_scores(candidates: &[ChunkCandidate]) -> Vec<(&ChunkCandidate, f64)
         })
         .collect()
 }
-
-// ============ Tests ============
 
 #[cfg(test)]
 mod tests {

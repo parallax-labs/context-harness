@@ -72,7 +72,7 @@ pub struct SourceItem {
     pub raw_bytes: Option<Vec<u8>>,
 }
 
-/// Normalized document stored in the SQLite `documents` table.
+/// Normalized document stored in the `documents` table.
 ///
 /// Created during ingestion by normalizing a [`SourceItem`]. Each document
 /// is uniquely identified by the `(source, source_id)` pair, and carries

@@ -15,7 +15,7 @@
       packages = forAllSystems (system:
         let
           pkgs = pkgsFor system;
-          manifest = (pkgs.lib.importTOML ./Cargo.toml).package;
+          manifest = (pkgs.lib.importTOML ./crates/context-harness/Cargo.toml).package;
         in
         rec {
           # Default: no local embeddings so nix run works in sandbox (no network).

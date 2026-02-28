@@ -14,8 +14,8 @@ We tag small, well-scoped tasks with [**good first issue**](https://github.com/p
 2. Clone your fork
 3. Create a feature branch: `git checkout -b feature/my-feature`
 4. Make your changes
-5. Run tests: `cargo test`
-6. Run lints: `cargo clippy` and `cargo fmt`
+5. Run tests: `cargo test --workspace`
+6. Run lints: `cargo clippy --workspace` and `cargo fmt --all`
 7. Commit and push
 8. Open a pull request
 
@@ -33,10 +33,10 @@ cp config/ctx.example.toml config/ctx.toml
 cargo build
 
 # Test
-cargo test
+cargo test --workspace
 
 # Run
-cargo run -- --help
+cargo run -p context-harness -- --help
 ```
 
 ## Code Style
