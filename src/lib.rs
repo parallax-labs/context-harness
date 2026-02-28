@@ -110,6 +110,7 @@ pub mod db;
 pub mod embed_cmd;
 pub mod embedding;
 pub mod export;
+pub mod extract;
 pub mod get;
 pub mod ingest;
 pub mod lua_runtime;

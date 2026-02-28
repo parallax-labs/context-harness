@@ -551,6 +551,7 @@ pub struct RegistryConfig {
 /// include_globs = ["**/*.md", "**/*.txt"]
 /// exclude_globs = ["**/drafts/**"]
 /// follow_symlinks = false
+/// max_extract_bytes = 50_000_000
 /// ```
 #[derive(Debug, Deserialize, Clone)]
 pub struct FilesystemConnectorConfig {
@@ -565,6 +566,9 @@ pub struct FilesystemConnectorConfig {
     /// Whether to follow symbolic links. Default: `false`.
     #[serde(default)]
     pub follow_symlinks: bool,
+    /// Files larger than this (bytes) are not extracted; they are skipped and counted in extraction skipped. Default: 50_000_000.
+    #[serde(default = "default_max_extract_bytes")]
+    pub max_extract_bytes: u64,
 }
 
 /// Git connector configuration.
@@ -668,6 +672,10 @@ fn default_s3_region() -> String {
 
 fn default_include_globs() -> Vec<String> {
     vec!["**/*.md".to_string(), "**/*.txt".to_string()]
+}
+
+fn default_max_extract_bytes() -> u64 {
+    50_000_000
 }
 
 impl EmbeddingConfig {

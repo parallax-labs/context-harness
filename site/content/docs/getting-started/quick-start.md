@@ -29,6 +29,7 @@ bind = "127.0.0.1:7331"
 root = "./docs"
 include_globs = ["**/*.md", "**/*.rs", "**/*.txt"]
 exclude_globs = ["**/target/**", "**/node_modules/**"]
+# Optional: add "**/*.pdf", "**/*.docx" to include_globs to index PDF/Office (extracted automatically)
 EOF
 ```
 

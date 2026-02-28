@@ -61,6 +61,7 @@ impl Connector for InMemoryConnector {
                 body: body.clone(),
                 metadata_json: "{}".to_string(),
                 raw_json: None,
+                raw_bytes: None,
             })
             .collect())
     }

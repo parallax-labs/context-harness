@@ -383,6 +383,7 @@ fn file_to_source_item(
         body,
         metadata_json: metadata.to_string(),
         raw_json: None,
+        raw_bytes: None,
     })
 }
 

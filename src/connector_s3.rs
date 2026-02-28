@@ -201,6 +201,7 @@ pub async fn scan_s3(name: &str, s3_config: &S3ConnectorConfig) -> Result<Vec<So
             body,
             metadata_json: metadata.to_string(),
             raw_json: None,
+            raw_bytes: None,
         });
     }
 

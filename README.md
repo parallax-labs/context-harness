@@ -17,6 +17,7 @@ Context Harness ingests external knowledge (files, Git repos, S3, Lua scripts) i
 ## Features
 
 - **Connector-driven ingestion** — plug in any source (filesystem, Git repos, S3 buckets, Lua scripts)
+- **Multi-format file support** — plain text (e.g. Markdown, `.txt`) plus **PDF**, **Word** (`.docx`), **PowerPoint** (`.pptx`), and **Excel** (`.xlsx`) with automatic text extraction when you include those extensions in `include_globs`
 - **Extension registries** — install community connectors, tools, and agents from Git-backed repos
 - **Local-first storage** — SQLite with FTS5 for keyword search
 - **Embedding pipeline** — local (fastembed or tract), Ollama, and OpenAI embeddings with automatic batching, retry, and staleness detection
@@ -213,12 +214,15 @@ All connector types support **named instances** — configure multiple of each. 
 
 ### Filesystem Connector
 
+Scans a local directory. **Supported formats:** plain text (e.g. `.md`, `.txt`, `.rs`) are always ingested as UTF-8. To also index **PDF**, **Word** (`.docx`), **PowerPoint** (`.pptx`), and **Excel** (`.xlsx`), add those extensions to `include_globs` (e.g. `"**/*.pdf"`, `"**/*.docx"`); they are read as binary and extracted automatically.
+
 ```toml
 [connectors.filesystem.docs]
 root = "./docs"
-include_globs = ["**/*.md", "**/*.txt"]
+include_globs = ["**/*.md", "**/*.txt", "**/*.pdf", "**/*.docx"]
 exclude_globs = ["**/drafts/**"]
 follow_symlinks = false
+max_extract_bytes = 50_000_000 # skip files larger than this (default: 50MB)
 
 [connectors.filesystem.notes]
 root = "./notes"

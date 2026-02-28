@@ -37,12 +37,25 @@ Documents are tagged with `source = "type:name"` (e.g. `"git:platform"`, `"files
 
 Scans a local directory tree. Each file becomes a Document with its content as the body, path as the source ID, and modification time as the timestamp.
 
+#### Supported file formats
+
+| Format | Extensions | How it's handled |
+|--------|------------|-------------------|
+| **Plain text** | `.md`, `.txt`, `.rs`, etc. | Always: read as UTF-8 and indexed. |
+| **PDF** | `.pdf` | If included in `include_globs`: read as binary and text is extracted and indexed. |
+| **Word** | `.docx` | If included in `include_globs`: text from `word/document.xml` is extracted and indexed. |
+| **PowerPoint** | `.pptx` | If included in `include_globs`: text from slides is extracted and indexed. |
+| **Excel** | `.xlsx` | If included in `include_globs`: cell text (shared strings) is extracted and indexed. |
+
+Add the desired extensions to `include_globs` (e.g. `"**/*.pdf"`, `"**/*.docx"`) to index PDF and Office files; they are read as binary and extracted automatically. Very large files can be skipped via `max_extract_bytes`.
+
 ```toml
 [connectors.filesystem.docs]
 root = "./docs"                        # Directory to scan (required)
-include_globs = ["**/*.md", "**/*.rs"] # Glob patterns to include
+include_globs = ["**/*.md", "**/*.rs", "**/*.pdf", "**/*.docx"]  # Include PDF/Office to index them
 exclude_globs = ["**/target/**"]       # Glob patterns to exclude
 follow_symlinks = false                # Follow symbolic links
+max_extract_bytes = 50_000_000         # Skip files larger than this in bytes (default: 50MB)
 ```
 
 ```bash

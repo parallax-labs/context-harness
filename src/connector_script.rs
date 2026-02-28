@@ -424,6 +424,7 @@ fn lua_table_to_source_items(table: LuaTable, connector_name: &str) -> Result<Ve
             body,
             metadata_json,
             raw_json: None,
+            raw_bytes: None,
         });
     }
 
