@@ -77,10 +77,7 @@ fn minimal_docx_with_text(phrase: &str) -> Vec<u8> {
     buf
 }
 
-fn setup_file_support_env(
-    include_pdf: bool,
-    include_docx: bool,
-) -> (TempDir, std::path::PathBuf) {
+fn setup_file_support_env(include_pdf: bool, include_docx: bool) -> (TempDir, std::path::PathBuf) {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path().to_path_buf();
 
