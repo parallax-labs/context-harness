@@ -90,6 +90,7 @@ pub struct ScoreExplanation {
 /// * `since` — Optional: only return documents updated after this date (`YYYY-MM-DD`).
 /// * `params` — Retrieval tuning parameters.
 /// * `explain` — If true, populate [`ScoreExplanation`] on each result.
+#[allow(clippy::too_many_arguments)]
 pub async fn search<S: Store>(
     store: &S,
     query: &str,

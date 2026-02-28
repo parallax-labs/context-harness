@@ -19,6 +19,7 @@
 use anyhow::{bail, Result};
 
 use context_harness_core::store::Store;
+#[allow(unused_imports)]
 pub use context_harness_core::store::{ChunkResponse, DocumentResponse};
 
 use crate::config::Config;

@@ -14,9 +14,11 @@
 
 use anyhow::{bail, Result};
 
+#[allow(unused_imports)]
 pub use context_harness_core::search::{
     normalize_scores, ScoreExplanation, SearchParams, SearchResultItem,
 };
+#[allow(unused_imports)]
 pub use context_harness_core::store::ChunkCandidate;
 
 use crate::config::Config;

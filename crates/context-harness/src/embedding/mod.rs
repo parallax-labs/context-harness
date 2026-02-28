@@ -40,6 +40,7 @@ use std::time::Duration;
 
 use crate::config::EmbeddingConfig;
 
+#[allow(unused_imports)]
 pub use context_harness_core::embedding::{
     blob_to_vec, cosine_similarity, vec_to_blob, EmbeddingProvider,
 };
