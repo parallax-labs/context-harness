@@ -1,6 +1,6 @@
 # Context Harness
 
-> Context Harness is an open-source, local-first context engine for AI tools. It ingests documents and knowledge from any source, indexes them in a local SQLite database with FTS5 and vector embeddings, and exposes hybrid search (keyword + semantic) via a CLI and MCP-compatible HTTP server. Built in Rust by Parallax Labs. MIT licensed.
+> Context Harness is an open-source, local-first context engine for AI tools. It ingests documents and knowledge from any source, indexes them in a local SQLite database with FTS5 and vector embeddings, and exposes hybrid search (keyword + semantic) via a CLI and MCP-compatible HTTP server. Built in Rust by Parallax Labs. AGPL-3.0 licensed.
 
 Context Harness solves the problem of giving AI agents (Cursor, Claude, custom agents) access to your project's documentation, code, runbooks, and knowledge — without sending data to the cloud. It runs as a single binary (`ctx`) that syncs content from filesystem, Git, S3, or custom Lua connectors, chunks it intelligently, and serves it to any MCP-compatible tool.
 

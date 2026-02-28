@@ -37,7 +37,7 @@ The [docs](https://parallax-labs.github.io/context-harness/) have a full quick s
 
 Recent releases ship **local** embeddings on all six targets (Linux glibc/musl, macOS Intel/Apple Silicon, Windows). No ONNX Runtime install—primary platforms use fastembed with bundled ORT; musl and Intel Mac use a pure-Rust tract backend. Same `provider = "local"` in config; models download on first use.
 
-If you're already using MCP with Cursor or Claude and have a pile of internal docs or code, Context Harness might be worth a try. It's MIT-licensed and the repo has a [demo](https://parallax-labs.github.io/context-harness/demo/) you can click through without installing anything.
+If you're already using MCP with Cursor or Claude and have a pile of internal docs or code, Context Harness might be worth a try. It's AGPL-3.0 licensed and the repo has a [demo](https://parallax-labs.github.io/context-harness/demo/) you can click through without installing anything.
 
 **Repo:** [github.com/parallax-labs/context-harness](https://github.com/parallax-labs/context-harness)  
 **Docs:** [parallax-labs.github.io/context-harness](https://parallax-labs.github.io/context-harness/)

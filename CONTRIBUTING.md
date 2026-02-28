@@ -55,6 +55,12 @@ See the [docs/](docs/) directory for design documents:
 - `SCHEMAS.md` — JSON response schemas
 - `PHASE_1_ACCEPTANCE.md` — Phase 1 acceptance criteria
 
+## License
+
+Context Harness is licensed under the [GNU Affero General Public License v3.0
+(AGPL-3.0)](LICENSE). By submitting a pull request, you agree that your
+contributions will be licensed under the same license.
+
 ## Reporting Issues
 
 Please include:
