@@ -2,15 +2,15 @@
    Variables: show_search (bool), link_class (string), brand_slash (label after "/"), brand_slash_url (if set, label is a link) #}
 <div class="flex items-center gap-4">
   {% if show_menu_btn | default(value=false) %}
-<button class="menu-btn" onclick="document.querySelector('.doc-sidebar').classList.toggle('open')" aria-label="Menu">☰</button>
+<button class="menu-btn" aria-label="Toggle sidebar">☰</button>
 {% endif %}
   <a href="{{ get_url(path='/') }}" class="flex items-center gap-2 text-gray-200 font-bold text-base hover:text-gray-200 no-underline">⚡ Context Harness</a>
   {% if brand_slash %}
-  <span class="text-muted text-lg font-light">/</span>
+  <span class="text-muted text-lg font-light hidden sm:inline">/</span>
   {% if brand_slash_url %}
-  <a href="{{ brand_slash_url }}" class="text-dim text-sm font-medium hover:text-gray-200 no-underline">{{ brand_slash }}</a>
+  <a href="{{ brand_slash_url }}" class="text-dim text-sm font-medium hover:text-gray-200 no-underline hidden sm:inline">{{ brand_slash }}</a>
   {% else %}
-  <span class="text-dim text-sm font-medium">{{ brand_slash }}</span>
+  <span class="text-dim text-sm font-medium hidden sm:inline">{{ brand_slash }}</span>
   {% endif %}
   {% endif %}
 </div>
@@ -18,15 +18,85 @@
   {% if show_search %}
   <button class="header-search" id="search-trigger">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/></svg>
-    Search
-    <kbd>⌘K</kbd>
+    <span class="hidden sm:inline">Search</span>
+    <kbd class="hidden sm:inline">⌘K</kbd>
   </button>
   {% endif %}
-  <a href="{{ get_url(path='/') }}" class="{{ link_class | default(value='text-dim text-[13px] font-medium hover:text-gray-200 no-underline') }}">Home</a>
-  <a href="{{ get_url(path='@/docs/_index.md') }}" class="{{ link_class | default(value='text-dim text-[13px] font-medium hover:text-gray-200 no-underline') }}">Docs</a>
-  <a href="{{ get_url(path='@/blog/_index.md') }}" class="{{ link_class | default(value='text-dim text-[13px] font-medium hover:text-gray-200 no-underline') }}">Blog</a>
-  <a href="{{ get_url(path='demo/') }}" class="{{ link_class | default(value='text-dim text-[13px] font-medium hover:text-gray-200 no-underline') }}">Demo</a>
-  <a href="{{ config.extra.github_url }}" class="flex items-center opacity-70 hover:opacity-100" target="_blank" rel="noopener">
+  <a href="{{ get_url(path='/') }}" class="{{ link_class | default(value='text-dim text-[13px] font-medium hover:text-gray-200 no-underline') }} hidden md:inline">Home</a>
+  <a href="{{ get_url(path='@/docs/_index.md') }}" class="{{ link_class | default(value='text-dim text-[13px] font-medium hover:text-gray-200 no-underline') }} hidden md:inline">Docs</a>
+  <a href="{{ get_url(path='@/blog/_index.md') }}" class="{{ link_class | default(value='text-dim text-[13px] font-medium hover:text-gray-200 no-underline') }} hidden md:inline">Blog</a>
+  <a href="{{ get_url(path='demo/') }}" class="{{ link_class | default(value='text-dim text-[13px] font-medium hover:text-gray-200 no-underline') }} hidden md:inline">Demo</a>
+  <a href="{{ config.extra.github_url }}" class="flex items-center opacity-70 hover:opacity-100 hidden md:flex" target="_blank" rel="noopener">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
   </a>
+  <button class="site-mobile-menu-btn md:hidden" aria-label="Open menu" aria-expanded="false" onclick="(function(b){var d=document.getElementById('site-mobile-dropdown');var open=d.classList.toggle('open');b.setAttribute('aria-expanded',open);if(open){document.body.style.overflow='hidden'}else{document.body.style.overflow=''}})(this)">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+  </button>
 </div>
+
+<div class="site-mobile-dropdown" id="site-mobile-dropdown">
+  <a href="{{ get_url(path='/') }}">Home</a>
+  <a href="{{ get_url(path='@/docs/_index.md') }}">Docs</a>
+  <a href="{{ get_url(path='@/blog/_index.md') }}">Blog</a>
+  <a href="{{ get_url(path='demo/') }}">Demo</a>
+  <a href="{{ config.extra.github_url }}" target="_blank" rel="noopener">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="display:inline;vertical-align:middle;margin-right:8px"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+    GitHub
+  </a>
+</div>
+
+<style>
+.site-mobile-menu-btn {
+  display: none;
+  background: none; border: none; color: #e4e4ec;
+  cursor: pointer; padding: 10px;
+  min-width: 44px; min-height: 44px;
+  align-items: center; justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+.site-mobile-dropdown {
+  display: none;
+  position: absolute; top: 100%; left: 0; right: 0;
+  background: #0e0e16;
+  border-bottom: 1px solid #1e1e2e;
+  flex-direction: column;
+  z-index: 100;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.site-mobile-dropdown.open { display: flex; }
+.site-mobile-dropdown a {
+  display: flex; align-items: center;
+  padding: 14px 24px; min-height: 48px;
+  font-size: 15px; font-weight: 500;
+  color: #8888a0; transition: background 0.15s, color 0.15s;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.site-mobile-dropdown a:hover { color: #e4e4ec; background: rgba(255,255,255,0.04); }
+@media (max-width: 767px) {
+  .site-mobile-menu-btn { display: flex; }
+}
+</style>
+
+<script>
+(function() {
+  var dd = document.getElementById('site-mobile-dropdown');
+  if (!dd) return;
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && dd.classList.contains('open')) {
+      dd.classList.remove('open');
+      document.body.style.overflow = '';
+      var btn = document.querySelector('.site-mobile-menu-btn');
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+    }
+  });
+  dd.querySelectorAll('a').forEach(function(a) {
+    a.addEventListener('click', function() {
+      dd.classList.remove('open');
+      document.body.style.overflow = '';
+      var btn = document.querySelector('.site-mobile-menu-btn');
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+    });
+  });
+})();
+</script>

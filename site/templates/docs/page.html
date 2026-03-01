@@ -59,6 +59,7 @@
         font-size: 13px; color: #55556a;
         border-left: 2px solid transparent;
         transition: all 0.15s;
+        -webkit-tap-highlight-color: transparent;
     }
     .nav-link:hover { color: #e4e4ec; background: rgba(255,255,255,0.02); text-decoration: none; }
     .nav-link.active { color: #4f8fff; border-left-color: #4f8fff; background: rgba(79, 143, 255, 0.06); }
@@ -68,6 +69,7 @@
         font-size: 12px; color: #44445a;
         border-left: 2px solid transparent;
         transition: all 0.15s;
+        -webkit-tap-highlight-color: transparent;
     }
     .nav-heading:hover { color: #8888a0; text-decoration: none; }
     .nav-heading.active { color: #4f8fff; border-left-color: #4f8fff; }
@@ -163,15 +165,44 @@
         background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
     }
 
-    .menu-btn { display: none; background: none; border: none; color: #e4e4ec; font-size: 22px; cursor: pointer; padding: 4px; }
+    .menu-btn {
+        display: none; background: none; border: none; color: #e4e4ec;
+        font-size: 22px; cursor: pointer;
+        padding: 10px; min-width: 44px; min-height: 44px;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    .sidebar-close {
+        display: none; background: none; border: none; color: #8888a0;
+        cursor: pointer; padding: 10px; min-width: 44px; min-height: 44px;
+        align-items: center; justify-content: center;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .sidebar-close:hover { color: #e4e4ec; }
+
+    .sidebar-backdrop {
+        display: none; position: fixed; inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 80;
+    }
 
     @media (max-width: 900px) {
-        .doc-sidebar { transform: translateX(-100%); transition: transform 0.25s ease; z-index: 90; }
+        .doc-sidebar {
+            transform: translateX(-100%); transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 90; width: min(300px, 85vw);
+        }
         .doc-sidebar.open { transform: translateX(0); }
+        .sidebar-backdrop.open { display: block; }
+        .sidebar-close { display: flex; }
         .doc-content { margin-left: 0; padding: 32px 20px 80px; }
         .menu-btn { display: block; }
+        .nav-link { padding: 10px 16px 10px 28px; min-height: 44px; display: flex; align-items: center; }
+        .nav-heading { padding: 8px 16px 8px 42px; min-height: 40px; display: flex; align-items: center; }
+        .header-search { min-height: 44px; padding: 8px 12px; }
         .page-nav { flex-direction: column; }
         .page-nav .next { text-align: left; margin-left: 0; }
+        .page-nav a { min-width: 0; min-height: 48px; }
+        .doc-content pre { -webkit-overflow-scrolling: touch; }
     }
 </style>
 {% endblock %}
@@ -182,14 +213,23 @@
 {% set show_menu_btn = true %}
 {% set brand_slash = "Docs" %}
 {% set brand_slash_url = get_url(path='@/docs/_index.md') %}
-<header class="fixed top-0 left-0 right-0 z-50 h-14 bg-bg/90 backdrop-blur-xl border-b border-border flex items-center px-6">
-    <div class="w-full max-w-[1400px] mx-auto flex items-center justify-between">
+<header class="fixed top-0 left-0 right-0 z-50 bg-bg/90 backdrop-blur-xl border-b border-border">
+    <div class="relative h-14 flex items-center px-6 w-full max-w-[1400px] mx-auto justify-between">
         {% include "partials/site_header.html" %}
     </div>
 </header>
 
+{# ── Sidebar backdrop ── #}
+<div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+
 {# ── Sidebar ── #}
 <nav class="doc-sidebar" id="sidebar">
+    <div style="display: flex; align-items: center; justify-content: space-between; padding: 4px 8px 8px 16px;">
+        <span style="font-size: 13px; font-weight: 700; color: #8888a0;">Navigation</span>
+        <button class="sidebar-close" id="sidebar-close" aria-label="Close sidebar">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+    </div>
     {% set docs = get_section(path="docs/_index.md") %}
     {% for sub_path in docs.subsections %}
         {% set sub = get_section(path=sub_path) %}
@@ -276,30 +316,58 @@
 
 <script src="{{ get_url(path='ctx-search.js') }}" data-json="{{ get_url(path='docs/data.json') }}" data-site-index="{{ get_url(path='site-index.json') }}" data-trigger="#search-trigger" data-placeholder="Search docs and site…"></script>
 <script>
-document.querySelector('.doc-sidebar').addEventListener('click', e => {
-    if (e.target.classList.contains('nav-link') || e.target.classList.contains('nav-heading')) {
-        document.getElementById('sidebar').classList.remove('open');
+(function() {
+    var sidebar = document.getElementById('sidebar');
+    var backdrop = document.getElementById('sidebar-backdrop');
+    var closeBtn = document.getElementById('sidebar-close');
+    var menuBtn = document.querySelector('.menu-btn');
+
+    function openSidebar() {
+        sidebar.classList.add('open');
+        backdrop.classList.add('open');
+        document.body.style.overflow = 'hidden';
     }
-});
+    function closeSidebar() {
+        sidebar.classList.remove('open');
+        backdrop.classList.remove('open');
+        document.body.style.overflow = '';
+    }
+
+    if (menuBtn) {
+        menuBtn.addEventListener('click', function() {
+            if (sidebar.classList.contains('open')) closeSidebar();
+            else openSidebar();
+        });
+    }
+    if (closeBtn) closeBtn.addEventListener('click', closeSidebar);
+    if (backdrop) backdrop.addEventListener('click', closeSidebar);
+    document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeSidebar(); });
+
+    sidebar.addEventListener('click', function(e) {
+        if (e.target.classList.contains('nav-link') || e.target.classList.contains('nav-heading')) {
+            closeSidebar();
+        }
+    });
+})();
 
 // Scroll-spy: highlight current heading in sidebar
 (function() {
-    const headings = document.querySelectorAll('.doc-content h3[id]');
-    const navHeadings = document.querySelectorAll('.nav-heading');
+    var headings = document.querySelectorAll('.doc-content h3[id]');
+    var navHeadings = document.querySelectorAll('.nav-heading');
     if (!headings.length || !navHeadings.length) return;
 
-    const observer = new IntersectionObserver(entries => {
-        entries.forEach(entry => {
+    var observer = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
             if (entry.isIntersecting) {
-                const id = entry.target.id;
-                navHeadings.forEach(a => {
+                var id = entry.target.id;
+                navHeadings.forEach(function(a) {
                     a.classList.toggle('active', a.getAttribute('href').endsWith('#' + id));
                 });
             }
         });
     }, { rootMargin: '-80px 0px -70% 0px', threshold: 0 });
 
-    headings.forEach(h => observer.observe(h));
+    headings.forEach(function(h) { observer.observe(h); });
 })();
 </script>
 {% endblock %}

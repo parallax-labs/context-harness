@@ -71,6 +71,7 @@ mod server;
 mod sources;
 mod sqlite_store;
 mod stats;
+mod telemetry;
 mod tool_script;
 #[allow(dead_code)]
 mod traits;
@@ -463,6 +464,8 @@ enum ServeService {
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
+    telemetry::show_notice_if_needed();
+
     // Commands that don't require config
     match &cli.command {
         Commands::Completions { shell } => {
@@ -543,8 +546,11 @@ async fn main() -> anyhow::Result<()> {
 
     let cfg = config::load_config(&cli.config)?;
 
+    let mut telemetry_guard: Option<telemetry::TelemetryGuard> = None;
+
     match cli.command {
         Commands::Init => {
+            telemetry_guard = telemetry::track("ctx_init", serde_json::json!({}));
             migrate::run_migrations(&cfg).await?;
             println!("Database initialized successfully.");
 
@@ -578,6 +584,8 @@ async fn main() -> anyhow::Result<()> {
             progress,
             no_progress,
         } => {
+            telemetry_guard =
+                telemetry::track("ctx_sync", serde_json::json!({ "connector": &connector }));
             let progress_mode = if no_progress {
                 progress::ProgressMode::Off
             } else if let Some(ref mode) = progress {
@@ -609,6 +617,7 @@ async fn main() -> anyhow::Result<()> {
             limit,
             explain,
         } => {
+            telemetry_guard = telemetry::track("ctx_search", serde_json::json!({ "mode": &mode }));
             search::run_search(&cfg, &query, &mode, source, since, limit, explain).await?;
         }
         Commands::Get { id } => {
@@ -628,6 +637,7 @@ async fn main() -> anyhow::Result<()> {
         },
         Commands::Serve { service } => match service {
             ServeService::Mcp => {
+                telemetry_guard = telemetry::track("ctx_serve", serde_json::json!({}));
                 server::run_server(&cfg).await?;
             }
         },
@@ -694,6 +704,10 @@ async fn main() -> anyhow::Result<()> {
                 unreachable!()
             }
         },
+    }
+
+    if let Some(guard) = telemetry_guard {
+        guard.wait();
     }
 
     Ok(())
