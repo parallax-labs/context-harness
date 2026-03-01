@@ -70,3 +70,15 @@ Please include:
 - Actual behavior
 - OS and Rust version
 
+## Where to Start
+
+If you're new to the project, a great way to begin is by working on issues labeled:
+
+- [Good first issue](https://github.com/rabia-sarfaraz/context-harness/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+- [Help wanted](https://github.com/rabia-sarfaraz/context-harness/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22)
+
+These issues are beginner-friendly and well-scoped to help you get familiar with the codebase.
+
+You can also check out this current good-first issue:
+
+- https://github.com/rabia-sarfaraz/context-harness/issues/7
