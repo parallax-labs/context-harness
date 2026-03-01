@@ -87,7 +87,7 @@ pub fn is_enabled() -> bool {
     if env_opted_out() {
         return false;
     }
-    load_state().map_or(true, |s| s.enabled)
+    load_state().is_none_or(|s| s.enabled)
 }
 
 // ─── First-run notice ────────────────────────────────────────────────

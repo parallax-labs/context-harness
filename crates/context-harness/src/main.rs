@@ -584,10 +584,8 @@ async fn main() -> anyhow::Result<()> {
             progress,
             no_progress,
         } => {
-            telemetry_guard = telemetry::track(
-                "ctx_sync",
-                serde_json::json!({ "connector": &connector }),
-            );
+            telemetry_guard =
+                telemetry::track("ctx_sync", serde_json::json!({ "connector": &connector }));
             let progress_mode = if no_progress {
                 progress::ProgressMode::Off
             } else if let Some(ref mode) = progress {
@@ -619,10 +617,7 @@ async fn main() -> anyhow::Result<()> {
             limit,
             explain,
         } => {
-            telemetry_guard = telemetry::track(
-                "ctx_search",
-                serde_json::json!({ "mode": &mode }),
-            );
+            telemetry_guard = telemetry::track("ctx_search", serde_json::json!({ "mode": &mode }));
             search::run_search(&cfg, &query, &mode, source, since, limit, explain).await?;
         }
         Commands::Get { id } => {
