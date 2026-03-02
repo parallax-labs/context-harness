@@ -30,7 +30,7 @@
       "operatingSystem": "macOS, Linux, Windows",
       "description": "A local-first context engine for AI tools. Ingest, index, and retrieve context from any source. Expose it to Cursor, Claude, and MCP-compatible agents via hybrid keyword and semantic search.",
       "url": "{{ config.base_url | safe }}",
-      "downloadUrl": "https://github.com/parallax-labs/context-harness",
+      "downloadUrl": "https://github.com/parallax-labs/context-harness/releases/latest",
       "softwareVersion": "0.3.0",
       "license": "https://www.gnu.org/licenses/agpl-3.0.html",
       "programmingLanguage": "Rust",
@@ -136,6 +136,10 @@
         </button>
     </div>
     <div class="mobile-nav-links">
+        <a href="https://github.com/parallax-labs/context-harness/releases/latest" id="mobile-download-link" class="mobile-nav-download">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download
+        </a>
         <a href="#features">Features</a>
         <a href="#architecture">Architecture</a>
         <a href="{{ get_url(path='@/docs/_index.md') }}">Docs</a>
@@ -164,8 +168,52 @@
             Give your AI agents the memory they deserve.
         </p>
         <div class="hero-actions">
-            <a href="#quickstart" class="btn btn-primary">Get Started</a>
-            <a href="{{ config.extra.github_url }}" class="btn btn-secondary" target="_blank" rel="noopener">View on GitHub</a>
+            <div class="download-cta">
+                <a href="https://github.com/parallax-labs/context-harness/releases/latest" class="btn btn-primary btn-download" id="download-btn">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Download for <span id="platform-label">your platform</span>
+                </a>
+                <div class="platform-select">
+                    <button type="button" class="platform-toggle" id="platform-toggle" aria-expanded="false" aria-controls="platform-dropdown">
+                        <span>Other platforms</span>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                    <div class="platform-dropdown" id="platform-dropdown" role="listbox" aria-label="Select platform">
+                        <a href="https://github.com/parallax-labs/context-harness/releases/latest/download/ctx-macos-aarch64.tar.gz" class="platform-option" data-platform="macos-aarch64">
+                            <svg class="platform-os-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+                            <span class="platform-name">macOS <span class="platform-arch">Apple Silicon</span></span>
+                        </a>
+                        <a href="https://github.com/parallax-labs/context-harness/releases/latest/download/ctx-macos-x86_64.tar.gz" class="platform-option" data-platform="macos-x86_64">
+                            <svg class="platform-os-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+                            <span class="platform-name">macOS <span class="platform-arch">Intel</span></span>
+                        </a>
+                        <a href="https://github.com/parallax-labs/context-harness/releases/latest/download/ctx-linux-x86_64.tar.gz" class="platform-option" data-platform="linux-x86_64">
+                            <svg class="platform-os-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12.504 0c-.155 0-.311.015-.466.046-1.837.378-2.87 2.166-3.18 3.677-.31 1.51-.14 3.073.2 4.395a8.63 8.63 0 0 0-2.15 1.09c-.63.46-1.18 1.03-1.49 1.77-.31.74-.38 1.63-.08 2.54.6 1.83 2.1 3.15 3.59 4.07.29.18.58.34.88.49-.18.47-.29.98-.29 1.51 0 2.21 1.79 4 4 4s4-1.79 4-4c0-.53-.11-1.04-.29-1.51.3-.15.59-.31.88-.49 1.49-.92 2.99-2.24 3.59-4.07.3-.91.23-1.8-.08-2.54-.31-.74-.86-1.31-1.49-1.77a8.63 8.63 0 0 0-2.15-1.09c.34-1.32.51-2.89.2-4.4-.31-1.51-1.34-3.3-3.18-3.67A3.3 3.3 0 0 0 12.504 0z"/></svg>
+                            <span class="platform-name">Linux <span class="platform-arch">x86_64</span></span>
+                        </a>
+                        <a href="https://github.com/parallax-labs/context-harness/releases/latest/download/ctx-linux-x86_64-musl.tar.gz" class="platform-option" data-platform="linux-x86_64-musl">
+                            <svg class="platform-os-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12.504 0c-.155 0-.311.015-.466.046-1.837.378-2.87 2.166-3.18 3.677-.31 1.51-.14 3.073.2 4.395a8.63 8.63 0 0 0-2.15 1.09c-.63.46-1.18 1.03-1.49 1.77-.31.74-.38 1.63-.08 2.54.6 1.83 2.1 3.15 3.59 4.07.29.18.58.34.88.49-.18.47-.29.98-.29 1.51 0 2.21 1.79 4 4 4s4-1.79 4-4c0-.53-.11-1.04-.29-1.51.3-.15.59-.31.88-.49 1.49-.92 2.99-2.24 3.59-4.07.3-.91.23-1.8-.08-2.54-.31-.74-.86-1.31-1.49-1.77a8.63 8.63 0 0 0-2.15-1.09c.34-1.32.51-2.89.2-4.4-.31-1.51-1.34-3.3-3.18-3.67A3.3 3.3 0 0 0 12.504 0z"/></svg>
+                            <span class="platform-name">Linux <span class="platform-arch">x86_64 (musl)</span></span>
+                        </a>
+                        <a href="https://github.com/parallax-labs/context-harness/releases/latest/download/ctx-linux-aarch64.tar.gz" class="platform-option" data-platform="linux-aarch64">
+                            <svg class="platform-os-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12.504 0c-.155 0-.311.015-.466.046-1.837.378-2.87 2.166-3.18 3.677-.31 1.51-.14 3.073.2 4.395a8.63 8.63 0 0 0-2.15 1.09c-.63.46-1.18 1.03-1.49 1.77-.31.74-.38 1.63-.08 2.54.6 1.83 2.1 3.15 3.59 4.07.29.18.58.34.88.49-.18.47-.29.98-.29 1.51 0 2.21 1.79 4 4 4s4-1.79 4-4c0-.53-.11-1.04-.29-1.51.3-.15.59-.31.88-.49 1.49-.92 2.99-2.24 3.59-4.07.3-.91.23-1.8-.08-2.54-.31-.74-.86-1.31-1.49-1.77a8.63 8.63 0 0 0-2.15-1.09c.34-1.32.51-2.89.2-4.4-.31-1.51-1.34-3.3-3.18-3.67A3.3 3.3 0 0 0 12.504 0z"/></svg>
+                            <span class="platform-name">Linux <span class="platform-arch">aarch64</span></span>
+                        </a>
+                        <a href="https://github.com/parallax-labs/context-harness/releases/latest/download/ctx-windows-x86_64.zip" class="platform-option" data-platform="windows-x86_64">
+                            <svg class="platform-os-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
+                            <span class="platform-name">Windows <span class="platform-arch">x86_64</span></span>
+                        </a>
+                        <div class="platform-divider"></div>
+                        <a href="https://github.com/parallax-labs/context-harness/releases/latest" class="platform-option platform-all-releases">
+                            All releases
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="hero-actions-row">
+                <a href="#quickstart" class="btn btn-secondary">Get Started</a>
+                <a href="{{ config.extra.github_url }}" class="btn btn-secondary" target="_blank" rel="noopener">View on GitHub</a>
+            </div>
         </div>
 
         <div class="terminal">
@@ -401,7 +449,12 @@ include_globs = ["**/*.md"]</code></pre>
                 <div class="step-num">1</div>
                 <div class="step-content">
                     <h3>Install</h3>
-                    <pre><code><span class="prompt">$</span> cargo install --git https://github.com/parallax-labs/context-harness</code></pre>
+                    <pre><code><span class="comment"># Download a pre-built binary (macOS, Linux, Windows)</span>
+<span class="prompt">$</span> curl -L https://github.com/parallax-labs/context-harness/releases/latest/download/ctx-<span class="placeholder">PLATFORM</span>.tar.gz | tar xz
+<span class="prompt">$</span> sudo mv ctx /usr/local/bin/
+
+<span class="comment"># Or install from source</span>
+<span class="prompt">$</span> cargo install --git https://github.com/parallax-labs/context-harness</code></pre>
                 </div>
             </div>
             <div class="step">
@@ -479,6 +532,93 @@ const terminalLines = document.querySelectorAll('.terminal-line');
 terminalLines.forEach(line => { line.style.animationDelay = `${parseFloat(line.style.getPropertyValue('--delay')) || 0}s`; });
 const nav = document.querySelector('.nav');
 window.addEventListener('scroll', () => { nav.classList.toggle('scrolled', window.scrollY > 50); });
+
+// Platform detection & download CTA
+(function() {
+    var BASE = 'https://github.com/parallax-labs/context-harness/releases/latest/download/';
+    var RELEASES = 'https://github.com/parallax-labs/context-harness/releases/latest';
+
+    var platforms = {
+        'macos-aarch64':  { label: 'macOS (Apple Silicon)', file: 'ctx-macos-aarch64.tar.gz' },
+        'macos-x86_64':   { label: 'macOS (Intel)',         file: 'ctx-macos-x86_64.tar.gz' },
+        'linux-x86_64':   { label: 'Linux (x86_64)',        file: 'ctx-linux-x86_64.tar.gz' },
+        'linux-aarch64':  { label: 'Linux (aarch64)',       file: 'ctx-linux-aarch64.tar.gz' },
+        'windows-x86_64': { label: 'Windows (x86_64)',     file: 'ctx-windows-x86_64.zip' }
+    };
+
+    function detectPlatform() {
+        var ua = navigator.userAgent || '';
+        var plat = navigator.platform || '';
+
+        var isMac = /Mac/.test(plat) || /Macintosh/.test(ua);
+        var isWin = /Win/.test(plat) || /Windows/.test(ua);
+        var isLinux = /Linux/.test(plat) || /Linux/.test(ua);
+        var isARM = /aarch64|arm64/i.test(ua) || /aarch64|arm64/i.test(plat);
+
+        if (isMac) {
+            // Chrome/Safari on Apple Silicon still report "Intel" in the UA string.
+            // Use the WebGL renderer to check for Apple GPU (M1/M2/M3/M4), and
+            // fall back to aarch64 since Apple stopped selling Intel Macs in 2022.
+            if (isARM) return 'macos-aarch64';
+            try {
+                var canvas = document.createElement('canvas');
+                var gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+                if (gl) {
+                    var dbg = gl.getExtension('WEBGL_debug_renderer_info');
+                    if (dbg) {
+                        var renderer = gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) || '';
+                        if (/Apple M/i.test(renderer)) return 'macos-aarch64';
+                    }
+                }
+            } catch(e) {}
+            return 'macos-aarch64';
+        }
+        if (isWin) return 'windows-x86_64';
+        if (isLinux) return isARM ? 'linux-aarch64' : 'linux-x86_64';
+        return null;
+    }
+
+    var detected = detectPlatform();
+    var btn = document.getElementById('download-btn');
+    var label = document.getElementById('platform-label');
+    var toggle = document.getElementById('platform-toggle');
+    var dropdown = document.getElementById('platform-dropdown');
+    var mobileLink = document.getElementById('mobile-download-link');
+
+    if (detected && platforms[detected]) {
+        var p = platforms[detected];
+        btn.href = BASE + p.file;
+        label.textContent = p.label;
+        if (mobileLink) mobileLink.href = BASE + p.file;
+
+        var active = dropdown.querySelector('[data-platform="' + detected + '"]');
+        if (active) active.classList.add('active');
+    } else {
+        btn.href = RELEASES;
+        label.textContent = 'your platform';
+        dropdown.classList.add('open');
+    }
+
+    toggle.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var isOpen = dropdown.classList.toggle('open');
+        toggle.setAttribute('aria-expanded', isOpen);
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!dropdown.contains(e.target) && e.target !== toggle) {
+            dropdown.classList.remove('open');
+            toggle.setAttribute('aria-expanded', 'false');
+        }
+    });
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            dropdown.classList.remove('open');
+            toggle.setAttribute('aria-expanded', 'false');
+        }
+    });
+})();
 
 // Mobile nav
 (function() {
