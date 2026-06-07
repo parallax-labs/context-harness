@@ -150,7 +150,7 @@ pub struct ResolvedConfig {
 /// parent directories are created automatically on first use.
 #[derive(Debug, Deserialize, Clone)]
 pub struct DbConfig {
-/// Path to the SQLite database file (e.g. `".ctx/data/ctx.sqlite"`).
+    /// Path to the SQLite database file (e.g. `".ctx/data/ctx.sqlite"`).
     pub path: PathBuf,
 }
 

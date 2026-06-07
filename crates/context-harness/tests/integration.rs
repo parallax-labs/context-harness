@@ -283,8 +283,7 @@ path = "{}"
     assert!(
         !success,
         "explicit config should not merge with global config: stdout={}, stderr={}",
-        stdout,
-        stderr
+        stdout, stderr
     );
     assert!(stderr.contains("missing field"));
 }

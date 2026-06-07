@@ -279,17 +279,14 @@ mod tests {
 
     #[test]
     fn explicit_and_env_config_bypass_discovery() {
-        with_env(
-            &[("CTX_CONFIG", Some("/tmp/from-env.toml"))],
-            |_| {
-                let source = config_paths(Some(PathBuf::from("/tmp/explicit.toml"))).resolve();
-                assert_eq!(source.kind, ConfigSourceKind::Explicit);
-                assert_eq!(source.path, Some(PathBuf::from("/tmp/explicit.toml")));
+        with_env(&[("CTX_CONFIG", Some("/tmp/from-env.toml"))], |_| {
+            let source = config_paths(Some(PathBuf::from("/tmp/explicit.toml"))).resolve();
+            assert_eq!(source.kind, ConfigSourceKind::Explicit);
+            assert_eq!(source.path, Some(PathBuf::from("/tmp/explicit.toml")));
 
-                let source = config_paths(None).resolve();
-                assert_eq!(source.kind, ConfigSourceKind::Env);
-                assert_eq!(source.path, Some(PathBuf::from("/tmp/from-env.toml")));
-            },
-        );
+            let source = config_paths(None).resolve();
+            assert_eq!(source.kind, ConfigSourceKind::Env);
+            assert_eq!(source.path, Some(PathBuf::from("/tmp/from-env.toml")));
+        });
     }
 }

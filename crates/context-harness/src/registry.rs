@@ -912,7 +912,10 @@ pub fn cmd_init_community(config_path: &Path) -> Result<()> {
     let mut content = std::fs::read_to_string(config_path)
         .with_context(|| format!("Failed to read config: {}", config_path.display()))?;
     if content.contains("[registries.community]") {
-        println!("[registries.community] already exists in {}", config_path.display());
+        println!(
+            "[registries.community] already exists in {}",
+            config_path.display()
+        );
         return Ok(());
     }
     content.push_str(&registry_section);
