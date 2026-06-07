@@ -27,6 +27,8 @@ including the context, alternatives considered, and consequences of each decisio
 | [0017](0017-rustls-over-openssl.md) | rustls Over OpenSSL | Accepted |
 | [0018](0018-store-abstraction-and-workspace-split.md) | Store Abstraction and Workspace Split | Accepted |
 | [0019](0019-agpl3-license.md) | AGPL-3.0 License | Accepted |
+| [0000](0000-adr-policy.md) | ADR Policy | Accepted |
+| [0020](0020-cross-platform-framework-selection.md) | Cross-Platform Framework Selection | Accepted |
 
 ## Creating a New ADR
 
@@ -62,11 +64,22 @@ What else was evaluated and why it was rejected.
 What follows from this decision — both positive tradeoffs and accepted downsides.
 ```
 
-## Relationship to Specs
+## Relationship to Other Docs
 
-ADRs record *why* a decision was made. Specs (in `docs/`) define *what* the
-system does as an authoritative contract. See [SPEC_POLICY.md](../SPEC_POLICY.md)
-for the distinction between specs, design docs, and planning docs.
+| Layer | Purpose | Authority |
+|-------|---------|-----------|
+| **PRD** (`docs/prd/`) | What we build and why (user perspective) | Product intent |
+| **ADR** (`docs/adr/`) | Why we chose a specific approach | Architectural rationale |
+| **Spec** (`docs/spec/`) | Exactly how the system behaves | Behavioral contract |
+| **Design** (`docs/design/`) | Exploration, planning, implementation guides | Not authoritative |
+| **Runbook** (`docs/runbook/`) | Step-by-step operational procedures | Operational reference |
+
+See [ADR-0000](0000-adr-policy.md) for the full policy.
+
+ADRs record *why* a decision was made. Specs (in `docs/spec/`) define *what*
+the system does as an authoritative contract. See
+[SPEC-0000](../spec/0000-spec-policy.md) for the distinction between specs,
+design docs, and planning docs.
 
 An ADR may reference one or more specs. When a spec changes in a way that
 reverses an ADR, the ADR should be marked **Superseded** with a link to the

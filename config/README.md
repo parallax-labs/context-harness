@@ -9,10 +9,10 @@ This config indexes:
 
 | Connector   | Path            | Contents                    |
 |------------|-----------------|-----------------------------|
-| `docs`     | `./docs`        | Design, usage, AGENTS, etc. |
+| `docs`     | `./docs`        | PRDs, ADRs, specs, design, runbooks |
 | `site`     | `./site/content`| Published docs + blog       |
 | `root`     | `.`             | README, CONTRIBUTING, CHANGELOG |
-| `src`      | `./src`         | Rust source                 |
+| `src`      | `./crates`      | Rust source                 |
 
 **From repo root:**
 

@@ -101,7 +101,7 @@ The Store trait SHALL support at least the following operations. Exact method na
 4. **Get document by id**  
    Input: document id.  
    Output: full document metadata, body, and ordered list of chunks (each with index and text), or "not found".  
-   The shape SHALL be equivalent to the current `DocumentResponse` (see `get.rs` / SCHEMAS.md) so that CLI and MCP behavior are unchanged.
+   The shape SHALL be equivalent to the current `DocumentResponse` (see `get.rs` / [SPEC-0006](0006-json-schemas.md)) so that CLI and MCP behavior are unchanged.
 
 5. **Get document metadata by id**  
    Input: document id.  
@@ -149,7 +149,7 @@ Core SHALL define a single chunk-candidate type (e.g. `ChunkCandidate`) used for
 
 - The hybrid search algorithm (keyword + vector candidates -> min-max normalization -> weighted merge -> document-level aggregation -> sort and limit) SHALL live in core.
 - It SHALL take: a Store (trait), an optional way to obtain a query embedding (trait or callback), query string, mode (keyword | semantic | hybrid), filters (source, since), limit, explain flag, and retrieval tuning parameters (hybrid_alpha, candidate_k_keyword, candidate_k_vector).
-- It SHALL return a list of search results in the same shape as today's `SearchResultItem` (id, score, title, source, source_id, updated_at, snippet, source_url, optional explain). Scores SHALL be in [0.0, 1.0]; ordering and aggregation rules SHALL match the current behavior (see docs/HYBRID_SCORING.md if present).
+- It SHALL return a list of search results in the same shape as today's `SearchResultItem` (id, score, title, source, source_id, updated_at, snippet, source_url, optional explain). Scores SHALL be in [0.0, 1.0]; ordering and aggregation rules SHALL match the current behavior (see [SPEC-0003](0003-hybrid-scoring.md)).
 - The app SHALL call this core function with SqliteStore (and the app's embedder for query embedding when in semantic/hybrid mode) and SHALL expose the result as the existing `search_documents(config, ...)` API.
 
 ### 5.2 Document metadata lookup after scoring
@@ -290,7 +290,7 @@ The Store trait is designed so that additional backends (e.g. Qdrant, Weaviate) 
 
 ## 13. References
 
-- **SPEC_POLICY.md** -- Spec structure and normative language.
+- [SPEC-0000](0000-spec-policy.md) -- Spec structure and normative language.
 - **Context Harness WASM Client Design** (Obsidian) -- Section 10 "Workspace refactoring"; source of the workspace and Store design.
 - **Current codebase** -- `src/lib.rs`, `src/traits.rs`, `src/search.rs`, `src/chunk.rs`, `src/embedding/`, `src/db.rs`, `src/ingest.rs`, `src/get.rs`, `src/models.rs` (pre-refactor).
-- **HYBRID_SCORING.md** (if present) -- Scoring and aggregation behavior that core's search algorithm SHALL preserve.
+- [SPEC-0003](0003-hybrid-scoring.md) -- Scoring and aggregation behavior that core's search algorithm SHALL preserve.

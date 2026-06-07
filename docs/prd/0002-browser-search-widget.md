@@ -93,5 +93,5 @@ semantic search results without any API keys or backend servers.
 - **PRDs:** [PRD-0001](0001-core-context-engine.md) (core engine that
   produces the index), [PRD-0007](0007-wasm-client-and-browser-rag.md)
   (future: full browser RAG supersedes the simple widget)
-- **Specs:** [USAGE.md](../USAGE.md) (`ctx export` command),
-  [DEPLOYMENT.md](../DEPLOYMENT.md) (CI pipeline documentation)
+- **Specs:** [SPEC-0005](../spec/0005-usage-contract.md) (`ctx export` command)
+- **Design:** [DESIGN-0005](../design/0005-deployment-guide.md) (CI pipeline documentation)

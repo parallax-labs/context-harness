@@ -113,9 +113,9 @@ completion for all commands, subcommands, and flags.
 
 ## Related Documents
 
-- **Specs:** [USAGE.md](../USAGE.md) (command documentation),
-  [DEPLOYMENT.md](../DEPLOYMENT.md) (Docker and deployment guide),
-  [HYBRID_SCORING.md](../HYBRID_SCORING.md) (scoring details
+- **Specs:** [SPEC-0005](../spec/0005-usage-contract.md) (command documentation),
+  [SPEC-0003](../spec/0003-hybrid-scoring.md) (scoring details
+- **Design:** [DESIGN-0005](../design/0005-deployment-guide.md) (Docker and deployment guide
   surfaced by `--explain`)
 - **PRDs:** [PRD-0001](0001-core-context-engine.md) (core engine),
   [PRD-0002](0002-browser-search-widget.md) (`ctx export` feeds the

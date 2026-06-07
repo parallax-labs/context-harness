@@ -169,10 +169,10 @@ Jira setup. Their version takes precedence over the community version.
   [0008](../adr/0008-lua-for-runtime-extensibility.md),
   [0013](../adr/0013-git-backed-extension-registries.md),
   [0014](../adr/0014-stateless-agent-architecture.md)
-- **Specs:** [REGISTRY.md](../REGISTRY.md),
-  [AGENTS.md](../AGENTS.md),
-  [RUST_TRAITS.md](../RUST_TRAITS.md),
-  [LUA_TOOLS.md](../LUA_TOOLS.md),
-  [LUA_CONNECTORS.md](../LUA_CONNECTORS.md)
+- **Specs:** [SPEC-0007](../spec/0007-extension-registries.md),
+  [SPEC-0011](../spec/0011-mcp-agents.md),
+  [SPEC-0010](../spec/0010-rust-extension-traits.md),
+  [SPEC-0009](../spec/0009-lua-tools.md),
+  [SPEC-0008](../spec/0008-lua-connectors.md)
 - **PRDs:** [PRD-0001](0001-core-context-engine.md) (core engine these
   extensions plug into)

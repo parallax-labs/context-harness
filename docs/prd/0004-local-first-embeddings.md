@@ -129,7 +129,7 @@ but embeddings are skipped. `ctx search --mode keyword` works normally.
 
 - **ADRs:** [0011](../adr/0011-local-first-embedding-providers.md),
   [0017](../adr/0017-rustls-over-openssl.md)
-- **Specs:** [USAGE.md](../USAGE.md) (`[embedding]` config and
+- **Specs:** [SPEC-0005](../spec/0005-usage-contract.md) (`[embedding]` config and
   `ctx embed` command)
 - **PRDs:** [PRD-0001](0001-core-context-engine.md) (core engine that
   uses embeddings for semantic search),

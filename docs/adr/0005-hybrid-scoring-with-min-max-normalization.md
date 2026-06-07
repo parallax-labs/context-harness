@@ -17,7 +17,7 @@ excels at exact-match queries (error codes, function names) while semantic
 search handles conceptual queries (questions, paraphrases). The challenge is
 combining scores from incompatible scales into a single ranked list.
 
-The full specification is in `docs/HYBRID_SCORING.md`.
+The full specification is in [SPEC-0003](../spec/0003-hybrid-scoring.md).
 
 ## Decision
 

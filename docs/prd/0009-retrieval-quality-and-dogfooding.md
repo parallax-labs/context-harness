@@ -120,7 +120,7 @@ during dogfooding.
 
 ## Related Documents
 
-- **Specs:** [HYBRID_SCORING.md](../HYBRID_SCORING.md) (scoring
+- **Specs:** [SPEC-0003](../spec/0003-hybrid-scoring.md) (scoring
   algorithm being evaluated)
 - **PRDs:** [PRD-0001](0001-core-context-engine.md) (core engine),
   [PRD-0004](0004-local-first-embeddings.md) (embedding quality),
