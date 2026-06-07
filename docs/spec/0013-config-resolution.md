@@ -128,7 +128,7 @@ This ensures the database is not committed while allowing `config.toml` to be ve
 
 ### R9: CLI Resolution
 
-When the CLI is invoked without `--config`, it SHALL search for a config file in this order:
+The CLI SHALL resolve configuration sources in this priority order:
 
 | Priority | Source | Path |
 |----------|--------|------|

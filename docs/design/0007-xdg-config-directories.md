@@ -85,7 +85,7 @@ The CLI SHALL resolve configuration using a layered fallback:
 6. Built-in defaults                   (compiled-in minimal config)
 ```
 
-Each layer is merged, not replaced. A workspace-local config inherits global defaults and overrides only the keys it specifies. The `--config` flag bypasses the merge chain entirely (current behavior preserved).
+Workspace-local config is merged with global defaults when both exist; the workspace file overrides only the keys it specifies. Explicit path sources (`--config` and `$CTX_CONFIG`) bypass the merge chain entirely (current behavior preserved).
 
 ### Workspace-Local Config: `.ctx/` Directory
 
@@ -145,14 +145,17 @@ Migrations:
 | Variable | Purpose | Default |
 |----------|---------|---------|
 | `CTX_CONFIG` | Override config file path | (none — use resolution chain) |
+| `CTX_CONFIG_DIR` | Override config directory | `$XDG_CONFIG_HOME/ctx` |
 | `CTX_DATA_DIR` | Override data directory | `$XDG_DATA_HOME/ctx` |
 | `CTX_CACHE_DIR` | Override cache directory | `$XDG_CACHE_HOME/ctx` |
+| `CTX_STATE_DIR` | Override state directory | `$XDG_STATE_HOME/ctx` |
+| `FASTEMBED_CACHE_DIR` | Override fastembed model cache | `$CTX_CACHE_DIR/models/fastembed` |
 | `XDG_CONFIG_HOME` | XDG config base | `~/.config` |
 | `XDG_DATA_HOME` | XDG data base | `~/.local/share` |
 | `XDG_CACHE_HOME` | XDG cache base | `~/.cache` |
 | `XDG_STATE_HOME` | XDG state base | `~/.local/state` |
 
-`CTX_*` variables take precedence over `XDG_*` variables, which take precedence over defaults. This allows Docker containers and CI to override everything with a single env var.
+`CTX_*` variables take precedence over `XDG_*` variables, which take precedence over defaults. This allows Docker containers and CI to override the relevant path categories directly.
 
 ## Alternatives Considered
 
