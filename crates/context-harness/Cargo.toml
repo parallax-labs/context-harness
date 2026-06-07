@@ -60,10 +60,8 @@ default = ["local-embeddings-fastembed"]
 local-embeddings-fastembed = ["dep:fastembed"]
 # Fallback: tract + tokenizers for musl and Intel Mac.
 local-embeddings-tract = ["dep:tract-onnx", "dep:tokenizers", "dep:ndarray"]
-# Experimental vector index bake-off. `zvec-bundled` exercises zvec's zero-setup
-# build path; `zvec-system` links against an installed libzvec_c_api.
+# Experimental vector index bake-off. Exercises zvec's zero-setup bundled build path.
 zvec-bundled = ["dep:zvec", "zvec/bundled"]
-zvec-system = ["dep:zvec"]
 
 [dev-dependencies]
 tempfile = "3"

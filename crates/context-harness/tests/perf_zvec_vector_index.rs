@@ -4,7 +4,7 @@
 //! current exact SQLite vector scan against a zvec sidecar index using the same
 //! synthetic corpus shape as the SQLite performance probe.
 
-#[cfg(any(feature = "zvec-bundled", feature = "zvec-system"))]
+#[cfg(feature = "zvec-bundled")]
 mod zvec_bench {
     use std::collections::HashSet;
     use std::env;
@@ -892,12 +892,11 @@ mod zvec_bench {
     }
 }
 
-#[cfg(not(any(feature = "zvec-bundled", feature = "zvec-system")))]
+#[cfg(not(feature = "zvec-bundled"))]
 #[test]
-#[ignore = "enable `--features zvec-bundled` or `--features zvec-system` to compile and run the zvec bake-off"]
+#[ignore = "enable `--features zvec-bundled` to compile and run the zvec bake-off"]
 fn perf_zvec_vector_index_bakeoff_requires_feature() {
     eprintln!(
-        "Run with: cargo test -p context-harness --features zvec-bundled --test perf_zvec_vector_index -- --ignored --nocapture\n\
-         Or use --features zvec-system when libzvec_c_api is installed and discoverable."
+        "Run with: cargo test -p context-harness --features zvec-bundled --test perf_zvec_vector_index -- --ignored --nocapture"
     );
 }

@@ -310,7 +310,7 @@ Resolved questions:
    - Add `ctx vector-index rebuild` or equivalent if the index is sidecar-backed.
 
 5. **Bake off zvec.**
-   - Add zvec behind optional `zvec-bundled` and `zvec-system` Cargo features.
+   - Add zvec behind an optional `zvec-bundled` Cargo feature.
    - Add an ignored benchmark that builds a zvec sidecar from SQLite vectors and compares latency, index build time, sidecar size, and top-k overlap against the exact SQLite scan.
    - Run the feature in CI/release target jobs to prove native packaging.
    - Implement HNSW first and Flat mode if the Rust API exposes it cleanly.
