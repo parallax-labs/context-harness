@@ -66,6 +66,7 @@ See [RUNBOOK-0000](0000-runbook-policy.md) for the full policy.
 | Runbook | Title | Status |
 |---------|-------|--------|
 | [0017](0017-common-errors.md) | Common Errors Reference | Active |
+| [0018](0018-chat-via-cli.md) | Chat via CLI | Draft |
 
 ## Creating a New Runbook
 
