@@ -261,7 +261,7 @@ impl AppStore for SqliteAppStore {
                 PendingChunk {
                     chunk_id: row.get("chunk_id"),
                     document_id: row.get("document_id"),
-                    text_hash: hash_text(&text),
+                    text_hash: row.get("chunk_hash"),
                     text,
                 }
             })

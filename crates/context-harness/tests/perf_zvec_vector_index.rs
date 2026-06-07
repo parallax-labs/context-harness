@@ -4,7 +4,7 @@
 //! current exact SQLite vector scan against a zvec sidecar index using the same
 //! synthetic corpus shape as the SQLite performance probe.
 
-#[cfg(feature = "zvec-bundled")]
+#[cfg(any(feature = "zvec-bundled", feature = "zvec-system"))]
 mod zvec_bench {
     use std::collections::HashSet;
     use std::env;
@@ -33,7 +33,7 @@ mod zvec_bench {
     const DEFAULT_REPEAT: usize = 5;
     const DEFAULT_CANDIDATE_K: i64 = 80;
     const DEFAULT_MAX_TOKENS: usize = 700;
-    const DEFAULT_CORPUS_ROOT: &str = "/Users/pjones/dev/rithum/Rithum";
+    const DEFAULT_CORPUS_ROOT: &str = ".";
     const ZVEC_BATCH_SIZE: usize = 512;
 
     #[tokio::test]
@@ -52,7 +52,7 @@ mod zvec_bench {
     }
 
     #[tokio::test]
-    #[ignore = "real-corpus zvec bake-off; set CTX_PERF_CORPUS_ROOT or use the default Rithum path"]
+    #[ignore = "real-corpus zvec bake-off; set CTX_PERF_CORPUS_ROOT to the corpus path"]
     async fn perf_zvec_vector_index_real_corpus() {
         let scenario = CorpusScenario {
             root: PathBuf::from(
@@ -892,11 +892,12 @@ mod zvec_bench {
     }
 }
 
-#[cfg(not(feature = "zvec-bundled"))]
+#[cfg(not(any(feature = "zvec-bundled", feature = "zvec-system")))]
 #[test]
-#[ignore = "enable `--features zvec-bundled` to compile and run the zvec bake-off"]
+#[ignore = "enable `--features zvec-bundled` or `--features zvec-system` to compile and run the zvec bake-off"]
 fn perf_zvec_vector_index_bakeoff_requires_feature() {
     eprintln!(
-        "Run with: cargo test -p context-harness --features zvec-bundled --test perf_zvec_vector_index -- --ignored --nocapture"
+        "Run with: cargo test -p context-harness --features zvec-bundled --test perf_zvec_vector_index -- --ignored --nocapture\n\
+         Or use --features zvec-system when libzvec_c_api is installed and discoverable."
     );
 }
