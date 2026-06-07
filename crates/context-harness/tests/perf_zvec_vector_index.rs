@@ -10,9 +10,10 @@ mod zvec_bench {
     use std::env;
     use std::fmt;
     use std::fs;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use std::time::{Duration, Instant};
 
+    use context_harness::chunk::chunk_text;
     use context_harness::config::Config;
     use context_harness::db;
     use context_harness::migrate;
@@ -20,8 +21,10 @@ mod zvec_bench {
     use context_harness_core::embedding::{blob_to_vec, vec_to_blob};
     use context_harness_core::store::{ChunkCandidate, Store};
     use serde::Serialize;
+    use sha2::{Digest, Sha256};
     use sqlx::{Row, SqlitePool};
     use tempfile::TempDir;
+    use walkdir::{DirEntry, WalkDir};
     use zvec::{Collection, CollectionSchema, Doc, FieldSchema, MetricType, VectorQuery};
 
     const DEFAULT_DOCS: usize = 1_000;
@@ -29,6 +32,8 @@ mod zvec_bench {
     const DEFAULT_DIMS: usize = 384;
     const DEFAULT_REPEAT: usize = 5;
     const DEFAULT_CANDIDATE_K: i64 = 80;
+    const DEFAULT_MAX_TOKENS: usize = 700;
+    const DEFAULT_CORPUS_ROOT: &str = "/Users/pjones/dev/rithum/Rithum";
     const ZVEC_BATCH_SIZE: usize = 512;
 
     #[tokio::test]
@@ -44,6 +49,27 @@ mod zvec_bench {
 
         let report = run_zvec_bakeoff(scenario).await;
         print_report(&report);
+    }
+
+    #[tokio::test]
+    #[ignore = "real-corpus zvec bake-off; set CTX_PERF_CORPUS_ROOT or use the default Rithum path"]
+    async fn perf_zvec_vector_index_real_corpus() {
+        let scenario = CorpusScenario {
+            root: PathBuf::from(
+                env::var("CTX_PERF_CORPUS_ROOT")
+                    .unwrap_or_else(|_| DEFAULT_CORPUS_ROOT.to_string()),
+            ),
+            dims: env_usize("CTX_PERF_DIMS", DEFAULT_DIMS),
+            repeat: env_usize("CTX_PERF_REPEAT", DEFAULT_REPEAT),
+            candidate_k: env_i64("CTX_PERF_CANDIDATE_K", DEFAULT_CANDIDATE_K),
+            max_tokens: env_usize("CTX_PERF_MAX_TOKENS", DEFAULT_MAX_TOKENS),
+            max_files: env::var("CTX_PERF_MAX_FILES")
+                .ok()
+                .and_then(|value| value.parse().ok()),
+        };
+
+        let report = run_real_corpus_bakeoff(scenario).await;
+        print_corpus_report(&report);
     }
 
     async fn run_zvec_bakeoff(scenario: Scenario) -> ZvecBakeoffReport {
@@ -109,6 +135,79 @@ mod zvec_bench {
         let report = ZvecBakeoffReport {
             scenario,
             chunks: scenario.docs * scenario.chunks_per_doc,
+            populate_sqlite_ms,
+            zvec_build_ms: build_ms,
+            zvec_optimize_ms: optimize_ms,
+            zvec_storage_bytes: dir_size(&zvec_path),
+            sqlite_vector_search: sqlite.summary(),
+            zvec_vector_search: zvec.summary(),
+            topk_overlap,
+        };
+
+        pool.close().await;
+        report
+    }
+
+    async fn run_real_corpus_bakeoff(scenario: CorpusScenario) -> CorpusBakeoffReport {
+        let tmp = TempDir::new().unwrap();
+        let sqlite_path = tmp.path().join("ctx.sqlite");
+        let zvec_path = tmp.path().join("vector-index");
+        let mut cfg = Config::minimal();
+        cfg.db.path = sqlite_path;
+        cfg.chunking.max_tokens = scenario.max_tokens;
+
+        migrate::run_migrations(&cfg).await.unwrap();
+        let pool = db::connect(&cfg).await.unwrap();
+
+        let mut corpus_shape = CorpusShape::default();
+        let populate_sqlite_ms = ms(timed(|| async {
+            corpus_shape = populate_real_corpus_sqlite(&pool, &scenario).await.unwrap();
+        })
+        .await);
+
+        let collection = create_collection(&zvec_path, scenario.dims);
+        let build_ms = ms(timed(|| async {
+            populate_zvec_from_sqlite(&pool, &collection).await.unwrap();
+        })
+        .await);
+        let optimize_ms = ms(timed(|| async {
+            collection.optimize().unwrap();
+            collection.flush().unwrap();
+        })
+        .await);
+
+        let store = SqliteStore::new(pool.clone());
+        let query_vec = middle_query_vector(&pool).await.unwrap();
+
+        let _ = store
+            .vector_search(&query_vec, scenario.candidate_k, None, None)
+            .await
+            .unwrap();
+        let _ = zvec_search(&collection, &query_vec, scenario.candidate_k).unwrap();
+
+        let sqlite = measure_repeat(scenario.repeat, || async {
+            store
+                .vector_search(&query_vec, scenario.candidate_k, None, None)
+                .await
+                .unwrap()
+        })
+        .await;
+
+        let zvec = measure_repeat(scenario.repeat, || async {
+            zvec_search(&collection, &query_vec, scenario.candidate_k).unwrap()
+        })
+        .await;
+
+        let sqlite_top = store
+            .vector_search(&query_vec, scenario.candidate_k, None, None)
+            .await
+            .unwrap();
+        let zvec_top = zvec_search(&collection, &query_vec, scenario.candidate_k).unwrap();
+        let topk_overlap = topk_overlap(&sqlite_top, &zvec_top);
+
+        let report = CorpusBakeoffReport {
+            scenario,
+            corpus_shape,
             populate_sqlite_ms,
             zvec_build_ms: build_ms,
             zvec_optimize_ms: optimize_ms,
@@ -310,6 +409,226 @@ mod zvec_bench {
         Ok(())
     }
 
+    async fn populate_real_corpus_sqlite(
+        pool: &SqlitePool,
+        scenario: &CorpusScenario,
+    ) -> anyhow::Result<CorpusShape> {
+        let mut tx = pool.begin().await?;
+        let now = chrono::Utc::now().timestamp();
+        let mut shape = CorpusShape::default();
+
+        for entry in corpus_entries(&scenario.root) {
+            if scenario
+                .max_files
+                .is_some_and(|max_files| shape.documents >= max_files)
+            {
+                break;
+            }
+
+            let path = entry.path();
+            if !is_text_like(path) {
+                shape.skipped_files += 1;
+                continue;
+            }
+
+            let Ok(body) = fs::read_to_string(path) else {
+                shape.skipped_files += 1;
+                continue;
+            };
+
+            if body.trim().is_empty() {
+                shape.skipped_files += 1;
+                continue;
+            }
+
+            let rel_path = path
+                .strip_prefix(&scenario.root)
+                .unwrap_or(path)
+                .to_string_lossy()
+                .to_string();
+            let doc_idx = shape.documents;
+            let doc_id = format!("doc-{doc_idx:06}");
+            let title = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or(&rel_path)
+                .to_string();
+            let dedup_hash = hash_hex(body.as_bytes());
+
+            sqlx::query(
+                r#"
+                INSERT INTO documents (
+                    id, source, source_id, source_url, title, author, created_at,
+                    updated_at, content_type, body, metadata_json, raw_json, dedup_hash
+                )
+                VALUES (?, 'perf:real-corpus', ?, NULL, ?, 'perf', ?, ?, 'text/plain', ?, '{}', NULL, ?)
+                "#,
+            )
+            .bind(&doc_id)
+            .bind(&rel_path)
+            .bind(&title)
+            .bind(now)
+            .bind(now + doc_idx as i64)
+            .bind(&body)
+            .bind(&dedup_hash)
+            .execute(&mut *tx)
+            .await?;
+
+            let chunks = chunk_text(&doc_id, &body, scenario.max_tokens);
+            for chunk in chunks {
+                sqlx::query(
+                    "INSERT INTO chunks (id, document_id, chunk_index, text, hash) VALUES (?, ?, ?, ?, ?)",
+                )
+                .bind(&chunk.id)
+                .bind(&chunk.document_id)
+                .bind(chunk.chunk_index)
+                .bind(&chunk.text)
+                .bind(&chunk.hash)
+                .execute(&mut *tx)
+                .await?;
+
+                sqlx::query(
+                    "INSERT INTO chunks_fts (chunk_id, document_id, text) VALUES (?, ?, ?)",
+                )
+                .bind(&chunk.id)
+                .bind(&chunk.document_id)
+                .bind(&chunk.text)
+                .execute(&mut *tx)
+                .await?;
+
+                let vector = synthetic_vector(text_seed(&chunk.text), scenario.dims);
+                let blob = vec_to_blob(&vector);
+                sqlx::query(
+                    r#"
+                    INSERT INTO embeddings (chunk_id, model, dims, created_at, hash)
+                    VALUES (?, 'perf-model', ?, ?, ?)
+                    "#,
+                )
+                .bind(&chunk.id)
+                .bind(scenario.dims as i64)
+                .bind(now)
+                .bind(&chunk.hash)
+                .execute(&mut *tx)
+                .await?;
+
+                sqlx::query(
+                    "INSERT INTO chunk_vectors (chunk_id, document_id, embedding) VALUES (?, ?, ?)",
+                )
+                .bind(&chunk.id)
+                .bind(&chunk.document_id)
+                .bind(&blob)
+                .execute(&mut *tx)
+                .await?;
+
+                shape.chunks += 1;
+            }
+
+            shape.documents += 1;
+            shape.bytes += body.len() as u64;
+        }
+
+        tx.commit().await?;
+        Ok(shape)
+    }
+
+    async fn middle_query_vector(pool: &SqlitePool) -> anyhow::Result<Vec<f32>> {
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM chunk_vectors")
+            .fetch_one(pool)
+            .await?;
+        anyhow::ensure!(count > 0, "corpus produced no vectors");
+
+        let blob: Vec<u8> = sqlx::query_scalar(
+            "SELECT embedding FROM chunk_vectors ORDER BY chunk_id LIMIT 1 OFFSET ?",
+        )
+        .bind(count / 2)
+        .fetch_one(pool)
+        .await?;
+
+        Ok(blob_to_vec(&blob))
+    }
+
+    fn corpus_entries(root: &Path) -> Vec<DirEntry> {
+        let mut entries: Vec<DirEntry> = WalkDir::new(root)
+            .into_iter()
+            .filter_entry(|entry| !is_excluded_entry(entry))
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_type().is_file())
+            .collect();
+        entries.sort_by(|left, right| left.path().cmp(right.path()));
+        entries
+    }
+
+    fn is_excluded_entry(entry: &DirEntry) -> bool {
+        let name = entry.file_name().to_string_lossy();
+        matches!(
+            name.as_ref(),
+            ".git"
+                | ".hg"
+                | ".svn"
+                | "target"
+                | "node_modules"
+                | ".next"
+                | ".turbo"
+                | "dist"
+                | "build"
+                | "vendor"
+                | ".venv"
+                | "__pycache__"
+        )
+    }
+
+    fn is_text_like(path: &Path) -> bool {
+        let Some(ext) = path.extension().and_then(|ext| ext.to_str()) else {
+            return false;
+        };
+        matches!(
+            ext.to_ascii_lowercase().as_str(),
+            "adoc"
+                | "c"
+                | "cfg"
+                | "clj"
+                | "conf"
+                | "cpp"
+                | "cs"
+                | "css"
+                | "go"
+                | "h"
+                | "hpp"
+                | "html"
+                | "java"
+                | "js"
+                | "json"
+                | "jsx"
+                | "kt"
+                | "lua"
+                | "md"
+                | "py"
+                | "rb"
+                | "rs"
+                | "scala"
+                | "sh"
+                | "sql"
+                | "swift"
+                | "toml"
+                | "ts"
+                | "tsx"
+                | "txt"
+                | "xml"
+                | "yaml"
+                | "yml"
+        )
+    }
+
+    fn text_seed(text: &str) -> u64 {
+        let digest = Sha256::digest(text.as_bytes());
+        u64::from_le_bytes(digest[0..8].try_into().unwrap())
+    }
+
+    fn hash_hex(bytes: &[u8]) -> String {
+        let digest = Sha256::digest(bytes);
+        format!("{digest:x}")
+    }
+
     fn synthetic_vector(seed: u64, dims: usize) -> Vec<f32> {
         (0..dims)
             .map(|i| {
@@ -345,10 +664,41 @@ mod zvec_bench {
         }
     }
 
+    #[derive(Debug, Clone, Serialize)]
+    struct CorpusScenario {
+        root: PathBuf,
+        dims: usize,
+        repeat: usize,
+        candidate_k: i64,
+        max_tokens: usize,
+        max_files: Option<usize>,
+    }
+
+    #[derive(Debug, Clone, Default, Serialize)]
+    struct CorpusShape {
+        documents: usize,
+        chunks: usize,
+        bytes: u64,
+        skipped_files: usize,
+    }
+
     #[derive(Debug, Serialize)]
     struct ZvecBakeoffReport {
         scenario: Scenario,
         chunks: usize,
+        populate_sqlite_ms: f64,
+        zvec_build_ms: f64,
+        zvec_optimize_ms: f64,
+        zvec_storage_bytes: u64,
+        sqlite_vector_search: MeasurementSummary,
+        zvec_vector_search: MeasurementSummary,
+        topk_overlap: f64,
+    }
+
+    #[derive(Debug, Serialize)]
+    struct CorpusBakeoffReport {
+        scenario: CorpusScenario,
+        corpus_shape: CorpusShape,
         populate_sqlite_ms: f64,
         zvec_build_ms: f64,
         zvec_optimize_ms: f64,
@@ -368,6 +718,34 @@ mod zvec_bench {
         println!("zvec_vector_index_bakeoff");
         println!("  scenario:          {}", report.scenario);
         println!("  chunks:            {}", report.chunks);
+        println!("  populate_sqlite_ms:{:.2}", report.populate_sqlite_ms);
+        println!("  zvec_build_ms:     {:.2}", report.zvec_build_ms);
+        println!("  zvec_optimize_ms:  {:.2}", report.zvec_optimize_ms);
+        println!("  zvec_storage_bytes:{}", report.zvec_storage_bytes);
+        println!("  topk_overlap:      {:.3}", report.topk_overlap);
+        print_measurement("sqlite_vector", &report.sqlite_vector_search);
+        print_measurement("zvec_vector", &report.zvec_vector_search);
+        println!();
+    }
+
+    fn print_corpus_report(report: &CorpusBakeoffReport) {
+        if env::var("CTX_PERF_OUTPUT").as_deref() == Ok("jsonl") {
+            println!("{}", serde_json::to_string(report).unwrap());
+            return;
+        }
+
+        println!();
+        println!("zvec_vector_index_real_corpus");
+        println!("  root:              {}", report.scenario.root.display());
+        println!("  docs:              {}", report.corpus_shape.documents);
+        println!("  chunks:            {}", report.corpus_shape.chunks);
+        println!("  bytes:             {}", report.corpus_shape.bytes);
+        println!("  skipped_files:     {}", report.corpus_shape.skipped_files);
+        println!("  dims:              {}", report.scenario.dims);
+        println!("  repeat:            {}", report.scenario.repeat);
+        println!("  candidate_k:       {}", report.scenario.candidate_k);
+        println!("  max_tokens:        {}", report.scenario.max_tokens);
+        println!("  max_files:         {:?}", report.scenario.max_files);
         println!("  populate_sqlite_ms:{:.2}", report.populate_sqlite_ms);
         println!("  zvec_build_ms:     {:.2}", report.zvec_build_ms);
         println!("  zvec_optimize_ms:  {:.2}", report.zvec_optimize_ms);
