@@ -22,6 +22,7 @@ See [RUNBOOK-0000](0000-runbook-policy.md) for the full policy.
 |---------|-------|--------|
 | [0001](0001-local-dev-setup.md) | Local Development Setup | Active |
 | [0002](0002-build-cli.md) | Build the CLI | Active |
+| [0003](0003-build-tauri-app.md) | Build the Tauri Desktop App | Active |
 | [0004](0004-run-tests.md) | Run Tests and Checks | Active |
 
 ### Release and CI/CD

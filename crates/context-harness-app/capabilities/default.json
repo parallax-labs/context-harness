@@ -1,0 +1,12 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicegui-org/nicegui/main/tauri_config_schema.json",
+  "identifier": "default",
+  "description": "Default permissions for Context Harness app",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:allow-open",
+    "dialog:allow-open",
+    "dialog:allow-save"
+  ]
+}
