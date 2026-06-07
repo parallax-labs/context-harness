@@ -26,7 +26,7 @@ See [DESIGN-0000](0000-design-policy.md) for the full policy.
 | [0003](0003-file-support-implementation-plan.md) | File Support Implementation Plan | Reference |
 | [0004](0004-phase-1-acceptance.md) | Phase 1 Acceptance Criteria | Delivered |
 | [0005](0005-deployment-guide.md) | Deployment Guide | Reference |
-| [0006](0006-zvec-storage-migration.md) | Zvec Storage Migration | Draft |
+| [0006](0006-vector-index-acceleration.md) | Vector Index Acceleration | Draft |
 
 ## Creating a New Design Doc
 
