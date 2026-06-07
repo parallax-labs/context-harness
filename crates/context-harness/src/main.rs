@@ -54,6 +54,7 @@ mod connector_fs;
 mod connector_git;
 mod connector_s3;
 mod connector_script;
+mod ctx_dirs;
 mod db;
 mod embed_cmd;
 mod embedding;
@@ -100,10 +101,10 @@ use crate::app_store::SqliteAppStore;
 struct Cli {
     /// Path to configuration file (TOML).
     ///
-    /// Defaults to `./config/ctx.toml`. All connector, database, embedding,
-    /// and server settings are read from this file.
-    #[arg(long, global = true, default_value = "./config/ctx.toml")]
-    config: PathBuf,
+    /// When omitted, ctx checks CTX_CONFIG, ./.ctx/config.toml,
+    /// ./config/ctx.toml, and the XDG global config.
+    #[arg(long, global = true)]
+    config: Option<PathBuf>,
 
     #[command(subcommand)]
     command: Commands,
@@ -486,8 +487,9 @@ async fn main() -> anyhow::Result<()> {
             action: ConnectorAction::Test { path, source },
         } => {
             // Use config if available, otherwise a minimal default
-            let cfg =
-                config::load_config(&cli.config).unwrap_or_else(|_| config::Config::minimal());
+            let cfg = config::load_config_for_cli(cli.config.clone())
+                .map(|resolved| resolved.config)
+                .unwrap_or_else(|_| config::Config::minimal());
             connector_script::test_script(path, &cfg, source.as_deref()).await?;
             return Ok(());
         }
@@ -506,22 +508,26 @@ async fn main() -> anyhow::Result<()> {
         Commands::Registry {
             action: RegistryAction::Init,
         } => {
-            registry::cmd_init_community(&cli.config)?;
+            let config_path = config::ensure_workspace_config_for_init(cli.config.as_deref())?
+                .ok_or_else(|| anyhow::anyhow!("No config path available for registry init"))?;
+            registry::cmd_init_community(&config_path)?;
             return Ok(());
         }
         Commands::Registry {
             action: RegistryAction::Install { ref name },
         } => {
-            let cfg =
-                config::load_config(&cli.config).unwrap_or_else(|_| config::Config::minimal());
+            let cfg = config::load_config_for_cli(cli.config.clone())
+                .map(|resolved| resolved.config)
+                .unwrap_or_else(|_| config::Config::minimal());
             registry::cmd_install(&cfg, name.as_deref())?;
             return Ok(());
         }
         Commands::Registry {
             action: RegistryAction::Update { ref name },
         } => {
-            let cfg =
-                config::load_config(&cli.config).unwrap_or_else(|_| config::Config::minimal());
+            let cfg = config::load_config_for_cli(cli.config.clone())
+                .map(|resolved| resolved.config)
+                .unwrap_or_else(|_| config::Config::minimal());
             registry::cmd_update(&cfg, name.as_deref())?;
             return Ok(());
         }
@@ -529,8 +535,9 @@ async fn main() -> anyhow::Result<()> {
             action: ToolAction::Test { path, source, .. },
         } if source.is_none() => {
             // Without --source, use minimal config
-            let cfg =
-                config::load_config(&cli.config).unwrap_or_else(|_| config::Config::minimal());
+            let cfg = config::load_config_for_cli(cli.config.clone())
+                .map(|resolved| resolved.config)
+                .unwrap_or_else(|_| config::Config::minimal());
             if let Commands::Tool {
                 action:
                     ToolAction::Test {
@@ -547,7 +554,12 @@ async fn main() -> anyhow::Result<()> {
         _ => {}
     }
 
-    let cfg = config::load_config(&cli.config)?;
+    if matches!(&cli.command, Commands::Init) {
+        config::ensure_workspace_config_for_init(cli.config.as_deref())?;
+    }
+    let resolved_config = config::load_config_for_cli(cli.config.clone())?;
+    let config_path = resolved_config.path.clone();
+    let cfg = resolved_config.config;
 
     let mut telemetry_guard: Option<telemetry::TelemetryGuard> = None;
 
@@ -564,7 +576,11 @@ async fn main() -> anyhow::Result<()> {
                 if std::io::stdin().read_line(&mut input).is_ok() {
                     let answer = input.trim().to_lowercase();
                     if answer.is_empty() || answer == "y" || answer == "yes" {
-                        if let Err(e) = registry::cmd_init_community(&cli.config) {
+                        let registry_result = config_path
+                            .as_deref()
+                            .ok_or_else(|| anyhow::anyhow!("No config path available"))
+                            .and_then(registry::cmd_init_community);
+                        if let Err(e) = registry_result {
                             eprintln!("Warning: failed to install community registry: {}", e);
                         }
                     }
@@ -683,7 +699,10 @@ async fn main() -> anyhow::Result<()> {
                 registry::cmd_info(&cfg, &extension)?;
             }
             RegistryAction::Add { extension } => {
-                registry::cmd_add(&cfg, &extension, &cli.config)?;
+                let path = config_path
+                    .as_deref()
+                    .ok_or_else(|| anyhow::anyhow!("No config file available for registry add"))?;
+                registry::cmd_add(&cfg, &extension, path)?;
             }
             RegistryAction::Override { extension } => {
                 registry::cmd_override(&cfg, &extension)?;

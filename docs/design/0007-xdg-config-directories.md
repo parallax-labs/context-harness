@@ -113,32 +113,17 @@ my-project/
 
 ### Backward Compatibility
 
-The migration is fully backward-compatible:
+The default layout is backward-compatible:
 
 1. **`./config/ctx.toml` is still found.** The resolution chain checks both `.ctx/config.toml` and `config/ctx.toml`. The old location works indefinitely.
 
 2. **`--config` flag unchanged.** Explicit paths work exactly as before.
 
-3. **`~/.ctx/registries/` still works.** If `$XDG_DATA_HOME/ctx/registries/` doesn't exist but `~/.ctx/registries/` does, the latter is used. A one-time migration can be offered via `ctx migrate`.
+3. **`~/.ctx/registries/` still works as a read fallback.** New installs use `$XDG_DATA_HOME/ctx/registries/`, but existing legacy registry trees are still found when the XDG registry directory does not exist.
 
 4. **No breaking changes to `ctx.toml` format.** The TOML schema is unchanged. Only the search paths for finding the config file change.
 
 5. **`ctx init` creates `.ctx/` for new workspaces.** Existing workspaces with `config/ctx.toml` continue to work.
-
-### Migration Path
-
-An optional `ctx migrate` command:
-
-```bash
-ctx migrate    # Interactive: detects old locations, offers to move them
-ctx migrate --dry-run   # Show what would change
-```
-
-Migrations:
-- `config/ctx.toml` → `.ctx/config.toml` (if `.ctx/` doesn't exist)
-- `data/` → `.ctx/data/` (if `.ctx/data/` doesn't exist)
-- `~/.ctx/registries/` → `$XDG_DATA_HOME/ctx/registries/`
-- Create `~/.config/ctx/config.toml` with global defaults (if it doesn't exist)
 
 ### Environment Variables
 
@@ -149,7 +134,6 @@ Migrations:
 | `CTX_DATA_DIR` | Override data directory | `$XDG_DATA_HOME/ctx` |
 | `CTX_CACHE_DIR` | Override cache directory | `$XDG_CACHE_HOME/ctx` |
 | `CTX_STATE_DIR` | Override state directory | `$XDG_STATE_HOME/ctx` |
-| `FASTEMBED_CACHE_DIR` | Override fastembed model cache | `$CTX_CACHE_DIR/models/fastembed` |
 | `XDG_CONFIG_HOME` | XDG config base | `~/.config` |
 | `XDG_DATA_HOME` | XDG data base | `~/.local/share` |
 | `XDG_CACHE_HOME` | XDG cache base | `~/.cache` |
@@ -177,7 +161,7 @@ Migrations:
 
 ## Implementation Plan
 
-1. **Add `ctx_dirs` module to `context-harness-core`.** Exposes functions: `config_dir()`, `data_dir()`, `cache_dir()`, `state_dir()`, `workspace_config_path(workspace_root)`. Checks env vars, applies XDG defaults. (~50 lines)
+1. **Add `ctx_dirs` module to the app crate.** Exposes functions for workspace `.ctx/` paths and XDG config/data/cache/state paths. Checks env vars, applies XDG defaults.
 
 2. **Update `load_config` in `config.rs`.** When no `--config` flag is provided, use the resolution chain instead of the hardcoded `./config/ctx.toml` default.
 
@@ -185,22 +169,22 @@ Migrations:
 
 4. **Update registry path.** Change `~/.ctx/registries/` to `data_dir()/registries/` with fallback to the old location.
 
-5. **Update fastembed cache.** Change to `cache_dir()/models/fastembed/` with env var fallback.
+5. **Update local model cache.** Change fastembed and tract local model caches to `cache_dir()/models/` with env var fallback.
 
-6. **Add `ctx migrate` command.** Detects old locations, offers migration.
+6. **Update telemetry state.** Change telemetry state to `state_dir()/telemetry.json`.
 
-7. **Update Tauri app `workspace_create` and `workspace_open`.** Create `.ctx/` instead of `config/` for new workspaces; detect both for existing workspaces.
+7. **Keep desktop/native path handling as follow-up.** This PR enforces CLI/app-crate defaults; any desktop-specific workspace creation should adopt the same `.ctx/` layout later.
 
 8. **Update docs, runbooks, and example configs.**
 
 9. **Write SPEC-0013 and ADR-0022.** Lock down the behavior and record the decision.
 
-## Open Questions
+## Resolved Decisions
 
-1. **Should global config be auto-created on first run?** Current proposal: yes, `ctx init` without a workspace creates `~/.config/ctx/config.toml` with commented defaults. Alternative: only create when the user explicitly runs `ctx config init`.
+1. **Global config is not auto-created on first run.** `ctx init` bootstraps workspace-local `.ctx/config.toml` for new workspaces.
 
-2. **Should workspace-local `.ctx/` be gitignored by default?** Proposal: yes, `.ctx/data/` should be gitignored (contains the database). `.ctx/config.toml` should be committed (project config). We could auto-create a `.ctx/.gitignore` that ignores `data/`.
+2. **Workspace-local `.ctx/` gets its own `.gitignore`.** Generated workspaces ignore `.ctx/data/` and `.ctx/cache/`; `.ctx/config.toml` remains visible for versioning if desired.
 
-3. **Config merge semantics.** When a workspace config inherits from global, should it be a deep merge (nested tables are merged) or a shallow merge (top-level keys override)? Proposal: deep merge — a workspace that sets only `[embedding]` inherits the global `[chunking]`, `[retrieval]`, etc.
+3. **Config merge semantics are deep for tables.** Workspace config inherits global config and overrides only specified keys. Arrays are replaced.
 
-4. **Docker behavior.** Docker images currently use `/app/config/ctx.toml`. Should they switch to `/app/.ctx/config.toml`? The env var override (`CTX_CONFIG=/app/config/ctx.toml`) preserves backward compat regardless.
+4. **Docker and explicit paths remain supported.** `--config`, `CTX_CONFIG`, and legacy `config/ctx.toml` preserve existing scripted/test usage.

@@ -15,6 +15,7 @@ use std::path::PathBuf;
 use tract_onnx::prelude::*;
 
 use crate::config::EmbeddingConfig;
+use crate::ctx_dirs;
 
 const ALL_MINILM_REPO: &str = "sentence-transformers/all-MiniLM-L6-v2";
 const ALL_MINILM_DIMS: usize = 384;
@@ -32,11 +33,7 @@ fn model_manifest(model_name: &str) -> Result<(&'static str, &'static str, usize
 }
 
 fn cache_dir() -> Result<PathBuf> {
-    let base = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    let dir = PathBuf::from(base)
-        .join(".cache")
-        .join("context-harness")
-        .join("models");
+    let dir = ctx_dirs::models_dir();
     std::fs::create_dir_all(&dir).map_err(|e| anyhow::anyhow!("Create cache dir: {}", e))?;
     Ok(dir)
 }

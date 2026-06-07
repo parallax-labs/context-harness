@@ -83,6 +83,212 @@ fn run_ctx(config_path: &Path, args: &[&str]) -> (String, String, bool) {
     (stdout, stderr, success)
 }
 
+fn run_ctx_in_dir(root: &Path, args: &[&str], envs: &[(&str, &str)]) -> (String, String, bool) {
+    let binary = ctx_binary();
+    let mut command = Command::new(&binary);
+    command
+        .current_dir(root)
+        .env("CTXH_DO_NOT_TRACK", "1")
+        .env_remove("CTX_CONFIG")
+        .env_remove("CTX_CONFIG_DIR")
+        .env_remove("CTX_DATA_DIR")
+        .env_remove("CTX_CACHE_DIR")
+        .env_remove("CTX_STATE_DIR")
+        .args(args);
+    for (key, value) in envs {
+        command.env(key, value);
+    }
+    let output = command
+        .output()
+        .unwrap_or_else(|e| panic!("Failed to run ctx binary at {:?}: {}", binary, e));
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let success = output.status.success();
+    (stdout, stderr, success)
+}
+
+#[test]
+fn test_init_without_config_bootstraps_ctx_directory() {
+    let tmp = TempDir::new().unwrap();
+
+    let (stdout, stderr, success) = run_ctx_in_dir(tmp.path(), &["init"], &[]);
+    assert!(success, "init failed: stdout={}, stderr={}", stdout, stderr);
+
+    assert!(tmp.path().join(".ctx/config.toml").exists());
+    assert!(tmp.path().join(".ctx/data").is_dir());
+    assert!(tmp.path().join(".ctx/cache").is_dir());
+    assert!(tmp.path().join(".ctx/.gitignore").exists());
+    assert!(tmp.path().join(".ctx/data/ctx.sqlite").exists());
+
+    let config = fs::read_to_string(tmp.path().join(".ctx/config.toml")).unwrap();
+    assert!(config.contains("path = \".ctx/data/ctx.sqlite\""));
+    let gitignore = fs::read_to_string(tmp.path().join(".ctx/.gitignore")).unwrap();
+    assert!(gitignore.contains("data/"));
+    assert!(gitignore.contains("cache/"));
+    assert!(!gitignore.contains("state/"));
+}
+
+#[test]
+fn test_workspace_ctx_config_wins_over_legacy_config() {
+    let tmp = TempDir::new().unwrap();
+    fs::create_dir_all(tmp.path().join(".ctx")).unwrap();
+    fs::create_dir_all(tmp.path().join("config")).unwrap();
+
+    let ctx_config = format!(
+        r#"[db]
+path = "{}"
+
+[chunking]
+max_tokens = 700
+
+[retrieval]
+final_limit = 12
+
+[server]
+bind = "127.0.0.1:7331"
+"#,
+        tmp.path().join(".ctx/data/ctx.sqlite").display()
+    );
+    let legacy_config = format!(
+        r#"[db]
+path = "{}"
+
+[chunking]
+max_tokens = 700
+
+[retrieval]
+final_limit = 12
+
+[server]
+bind = "127.0.0.1:7331"
+"#,
+        tmp.path().join("data/legacy.sqlite").display()
+    );
+    fs::write(tmp.path().join(".ctx/config.toml"), ctx_config).unwrap();
+    fs::write(tmp.path().join("config/ctx.toml"), legacy_config).unwrap();
+
+    let (stdout, stderr, success) = run_ctx_in_dir(tmp.path(), &["init"], &[]);
+    assert!(success, "init failed: stdout={}, stderr={}", stdout, stderr);
+    assert!(tmp.path().join(".ctx/data/ctx.sqlite").exists());
+    assert!(!tmp.path().join("data/legacy.sqlite").exists());
+}
+
+#[test]
+fn test_legacy_config_still_loads_when_ctx_config_absent() {
+    let tmp = TempDir::new().unwrap();
+    fs::create_dir_all(tmp.path().join("config")).unwrap();
+    let legacy_config = format!(
+        r#"[db]
+path = "{}"
+
+[chunking]
+max_tokens = 700
+
+[retrieval]
+final_limit = 12
+
+[server]
+bind = "127.0.0.1:7331"
+"#,
+        tmp.path().join("data/legacy.sqlite").display()
+    );
+    fs::write(tmp.path().join("config/ctx.toml"), legacy_config).unwrap();
+
+    let (stdout, stderr, success) = run_ctx_in_dir(tmp.path(), &["init"], &[]);
+    assert!(success, "init failed: stdout={}, stderr={}", stdout, stderr);
+    assert!(tmp.path().join("data/legacy.sqlite").exists());
+    assert!(!tmp.path().join(".ctx/config.toml").exists());
+}
+
+#[test]
+fn test_workspace_config_merges_with_global_config() {
+    let tmp = TempDir::new().unwrap();
+    let xdg_config_home = tmp.path().join("xdg-config");
+    fs::create_dir_all(xdg_config_home.join("ctx")).unwrap();
+    fs::create_dir_all(tmp.path().join(".ctx")).unwrap();
+
+    fs::write(
+        xdg_config_home.join("ctx/config.toml"),
+        r#"[db]
+path = "unused.sqlite"
+
+[chunking]
+max_tokens = 700
+
+[retrieval]
+final_limit = 12
+
+[server]
+bind = "127.0.0.1:7331"
+"#,
+    )
+    .unwrap();
+    fs::write(
+        tmp.path().join(".ctx/config.toml"),
+        format!(
+            r#"[db]
+path = "{}"
+"#,
+            tmp.path().join(".ctx/data/ctx.sqlite").display()
+        ),
+    )
+    .unwrap();
+
+    let (stdout, stderr, success) = run_ctx_in_dir(
+        tmp.path(),
+        &["init"],
+        &[("XDG_CONFIG_HOME", xdg_config_home.to_str().unwrap())],
+    );
+    assert!(success, "init failed: stdout={}, stderr={}", stdout, stderr);
+    assert!(tmp.path().join(".ctx/data/ctx.sqlite").exists());
+}
+
+#[test]
+fn test_explicit_config_does_not_merge_with_global_config() {
+    let tmp = TempDir::new().unwrap();
+    let xdg_config_home = tmp.path().join("xdg-config");
+    fs::create_dir_all(xdg_config_home.join("ctx")).unwrap();
+
+    fs::write(
+        xdg_config_home.join("ctx/config.toml"),
+        r#"[chunking]
+max_tokens = 700
+
+[retrieval]
+final_limit = 12
+
+[server]
+bind = "127.0.0.1:7331"
+"#,
+    )
+    .unwrap();
+    let explicit = tmp.path().join("explicit.toml");
+    fs::write(
+        &explicit,
+        format!(
+            r#"[db]
+path = "{}"
+"#,
+            tmp.path().join("explicit.sqlite").display()
+        ),
+    )
+    .unwrap();
+
+    let (stdout, stderr, success) = run_ctx_in_dir(
+        tmp.path(),
+        &["--config", explicit.to_str().unwrap(), "init"],
+        &[("XDG_CONFIG_HOME", xdg_config_home.to_str().unwrap())],
+    );
+    assert!(
+        !success,
+        "explicit config should not merge with global config: stdout={}, stderr={}",
+        stdout,
+        stderr
+    );
+    assert!(stderr.contains("missing field"));
+}
+
 #[test]
 fn test_init_creates_database() {
     let (_tmp, config_path) = setup_test_env();
@@ -742,10 +948,12 @@ fn create_test_git_repo(tmp: &Path) -> PathBuf {
     let repo_dir = tmp.join("test-repo");
     fs::create_dir_all(&repo_dir).unwrap();
 
-    // Initialize a git repo with explicit 'main' branch
-    run_git(&repo_dir, &["init", "-b", "main"]);
-    run_git(&repo_dir, &["config", "user.email", "test@example.com"]);
-    run_git(&repo_dir, &["config", "user.name", "Test User"]);
+    // Initialize a git repo and force the committed branch to be `main`.
+    // Some local git versions/configs ignore or do not support `init -b`.
+    run_git_checked(&repo_dir, &["init"]);
+    run_git_checked(&repo_dir, &["config", "user.email", "test@example.com"]);
+    run_git_checked(&repo_dir, &["config", "user.name", "Test User"]);
+    run_git_checked(&repo_dir, &["config", "commit.gpgsign", "false"]);
 
     // Create docs directory with test files
     let docs_dir = repo_dir.join("docs");
@@ -774,8 +982,9 @@ fn create_test_git_repo(tmp: &Path) -> PathBuf {
     .unwrap();
 
     // Commit everything
-    run_git(&repo_dir, &["add", "."]);
-    run_git(&repo_dir, &["commit", "-m", "initial commit"]);
+    run_git_checked(&repo_dir, &["add", "."]);
+    run_git_checked(&repo_dir, &["commit", "-m", "initial commit"]);
+    run_git_checked(&repo_dir, &["branch", "-M", "main"]);
 
     repo_dir
 }
@@ -786,6 +995,17 @@ fn run_git(dir: &Path, args: &[&str]) -> Output {
         .current_dir(dir)
         .output()
         .unwrap_or_else(|e| panic!("Failed to run git {:?}: {}", args, e))
+}
+
+fn run_git_checked(dir: &Path, args: &[&str]) {
+    let output = run_git(dir, args);
+    assert!(
+        output.status.success(),
+        "git {:?} failed: stdout={}, stderr={}",
+        args,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 fn setup_git_test_env(repo_path: &Path, root: &str) -> (TempDir, PathBuf) {

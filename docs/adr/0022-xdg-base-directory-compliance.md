@@ -76,7 +76,7 @@ A single file for global config is simple but doesn't address data, cache, or st
 
 - **Global defaults.** Users configure embedding providers, API keys, and retrieval tuning once in `~/.config/ctx/config.toml` and every workspace inherits those settings.
 - **Standard locations.** `~/.cache/ctx/` can be cleared without affecting config. `~/.config/ctx/` can be synced via dotfile managers. Docker can mount specific directories.
-- **Discoverability.** `ctx config path` can print where config is loaded from. Users don't need to guess.
+- **Discoverability.** `ctx init` creates a predictable `.ctx/` workspace layout, and XDG paths provide standard user-level locations.
 - **Clean workspaces.** `.ctx/` is hidden by default and follows the `.git/`, `.vscode/`, `.cursor/` convention. Projects with their own `config/` directory won't conflict.
 
 ### Negative

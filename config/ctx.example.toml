@@ -1,5 +1,5 @@
 [db]
-path = "./data/ctx.sqlite"
+path = ".ctx/data/ctx.sqlite"
 
 [chunking]
 max_tokens = 700
@@ -83,7 +83,7 @@ follow_symlinks = false
 # include_globs = ["**/*.md", "**/*.rst"]
 # exclude_globs = []
 # shallow = true                                  # --depth 1 to save space
-# cache_dir = "./data/.git-cache/platform"        # optional, defaults to data/.git-cache/<hash>
+# cache_dir = ".ctx/cache/git/platform"           # optional, defaults to .ctx/cache/git/<hash>
 
 # You can add more git repos:
 # [connectors.git.auth-service]
@@ -126,6 +126,6 @@ follow_symlinks = false
 # [registries.community]
 # url = "https://github.com/parallax-labs/ctx-registry.git"
 # branch = "main"
-# path = "~/.ctx/registries/community"
+# path = "~/.local/share/ctx/registries/community"
 # readonly = true
 # auto_update = true

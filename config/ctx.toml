@@ -3,7 +3,7 @@
 # MCP/Cursor: point at http://127.0.0.1:7332
 
 [db]
-path = "./data/ctx.sqlite"
+path = ".ctx/data/ctx.sqlite"
 
 [chunking]
 max_tokens = 700
@@ -92,6 +92,6 @@ search_limit = "8"
 [registries.community]
 url = "https://github.com/parallax-labs/ctx-registry.git"
 branch = "main"
-path = "~/.ctx/registries/community"
+path = "~/.local/share/ctx/registries/community"
 readonly = true
 auto_update = true

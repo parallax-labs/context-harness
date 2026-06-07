@@ -511,7 +511,9 @@ async fn embed_local_fastembed(
 
     tokio::task::spawn_blocking(move || {
         let mut model = fastembed::TextEmbedding::try_new(
-            fastembed::InitOptions::new(fastembed_model).with_show_download_progress(true),
+            fastembed::InitOptions::new(fastembed_model)
+                .with_cache_dir(crate::ctx_dirs::models_dir())
+                .with_show_download_progress(true),
         )
         .map_err(|e| anyhow::anyhow!("Failed to initialize local embedding model: {}", e))?;
 

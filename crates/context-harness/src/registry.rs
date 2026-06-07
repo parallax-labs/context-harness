@@ -37,6 +37,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::config::Config;
+use crate::ctx_dirs;
 
 const COMMUNITY_REGISTRY_URL: &str = "https://github.com/parallax-labs/ctx-registry.git";
 const DEFAULT_BRANCH: &str = "main";
@@ -866,33 +867,39 @@ pub fn cmd_override(config: &Config, extension_id: &str) -> Result<()> {
 
 /// `ctx registry init` — interactive first-run community registry setup.
 pub fn cmd_init_community(config_path: &Path) -> Result<()> {
-    let default_path = default_registries_dir().join("community");
+    let xdg_path = ctx_dirs::registries_dir().join("community");
+    let legacy_path = ctx_dirs::legacy_registries_dir().join("community");
+    let default_path = if !xdg_path.exists() && legacy_path.exists() {
+        legacy_path
+    } else {
+        xdg_path
+    };
 
-    if default_path.exists() {
+    let already_installed = default_path.exists();
+    if already_installed {
         println!(
             "Community registry already installed at {}",
             default_path.display()
         );
-        return Ok(());
-    }
+    } else {
+        println!("Cloning community extension registry...");
+        clone_registry(COMMUNITY_REGISTRY_URL, Some(DEFAULT_BRANCH), &default_path)?;
 
-    println!("Cloning community extension registry...");
-    clone_registry(COMMUNITY_REGISTRY_URL, Some(DEFAULT_BRANCH), &default_path)?;
-
-    // Report what was installed
-    match load_manifest(&default_path) {
-        Ok(m) => {
-            println!(
-                "Installed: {} connectors, {} tools, {} agents",
-                m.connectors.len(),
-                m.tools.len(),
-                m.agents.len()
-            );
+        // Report what was installed
+        match load_manifest(&default_path) {
+            Ok(m) => {
+                println!(
+                    "Installed: {} connectors, {} tools, {} agents",
+                    m.connectors.len(),
+                    m.tools.len(),
+                    m.agents.len()
+                );
+            }
+            Err(_) => {
+                println!("Installed (directory scan mode — no registry.toml).");
+            }
         }
-        Err(_) => {
-            println!("Installed (directory scan mode — no registry.toml).");
-        }
-    }
+    };
 
     // Append registry config to ctx.toml
     let registry_section = format!(
@@ -904,6 +911,10 @@ pub fn cmd_init_community(config_path: &Path) -> Result<()> {
 
     let mut content = std::fs::read_to_string(config_path)
         .with_context(|| format!("Failed to read config: {}", config_path.display()))?;
+    if content.contains("[registries.community]") {
+        println!("[registries.community] already exists in {}", config_path.display());
+        return Ok(());
+    }
     content.push_str(&registry_section);
     std::fs::write(config_path, &content)
         .with_context(|| format!("Failed to write config: {}", config_path.display()))?;
@@ -932,14 +943,6 @@ fn expand_tilde(path: &Path) -> PathBuf {
 /// Get the user's home directory.
 fn home_dir() -> Option<PathBuf> {
     std::env::var_os("HOME").map(PathBuf::from)
-}
-
-/// Default directory for storing registries.
-fn default_registries_dir() -> PathBuf {
-    home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".ctx")
-        .join("registries")
 }
 
 /// Recursively copy a directory and all its contents.

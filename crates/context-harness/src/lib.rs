@@ -103,6 +103,7 @@ pub mod agents;
 pub mod app_store;
 pub mod chunk;
 pub mod config;
+pub mod ctx_dirs;
 pub mod connector_fs;
 pub mod connector_git;
 pub mod connector_s3;

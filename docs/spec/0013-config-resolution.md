@@ -120,9 +120,10 @@ When `ctx init` creates a `.ctx/` directory, it SHALL create a `.ctx/.gitignore`
 
 ```
 data/
+cache/
 ```
 
-This ensures the database is not committed while allowing `config.toml` to be version-controlled.
+This ensures generated local state is not committed while allowing `config.toml` to be version-controlled.
 
 ## 4. Config File Resolution Chain
 
@@ -139,7 +140,7 @@ The CLI SHALL resolve configuration sources in this priority order:
 | 5 | Global config | `$XDG_CONFIG_HOME/ctx/config.toml` |
 | 6 | Built-in defaults | Compiled-in minimal config |
 
-The search stops at the first file that exists and is readable. Priorities 1 and 2 are absolute — they bypass all auto-detection.
+The first existing source becomes the primary config source. Priorities 1 and 2 are absolute — they bypass all auto-detection and merging.
 
 ### R10: Config Merge Semantics
 
@@ -152,20 +153,9 @@ When a workspace config is found (priorities 3 or 4) AND a global config exists 
 
 When `--config` or `CTX_CONFIG` is used (priorities 1 or 2), no merge occurs. The specified file is the sole config source (current behavior preserved).
 
-### R11: Config Path Reporting
-
-The CLI SHALL support `ctx config path` which prints the resolved config file path and the merge sources:
-
-```
-$ ctx config path
-Workspace config: /home/user/my-project/.ctx/config.toml
-Global config:    /home/user/.config/ctx/config.toml
-Effective:        (merged)
-```
-
 ## 5. Environment Variables
 
-### R12: Environment Variable Summary
+### R11: Environment Variable Summary
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
@@ -174,11 +164,10 @@ Effective:        (merged)
 | `CTX_DATA_DIR` | Override data directory | `$XDG_DATA_HOME/ctx` |
 | `CTX_CACHE_DIR` | Override cache directory | `$XDG_CACHE_HOME/ctx` |
 | `CTX_STATE_DIR` | Override state directory | `$XDG_STATE_HOME/ctx` |
-| `FASTEMBED_CACHE_DIR` | Override fastembed model cache | `$CTX_CACHE_DIR/models/fastembed` |
 
 `CTX_*` variables take precedence over `XDG_*` variables. This allows Docker containers and CI environments to override all paths with a single prefix.
 
-### R13: Env Var Validation
+### R12: Env Var Validation
 
 All path environment variables SHALL be validated:
 
@@ -204,17 +193,6 @@ The `--config` flag SHALL continue to accept any path and bypass all automatic r
 
 If `$XDG_DATA_HOME/ctx/registries/` does not exist but `~/.ctx/registries/` does, the latter SHALL be used as a fallback. This preserves compatibility with existing registry installations.
 
-### R17: Migration Command
-
-The CLI SHALL provide `ctx migrate` which:
-
-1. Detects `config/ctx.toml` and offers to move it to `.ctx/config.toml`
-2. Detects `data/` and offers to move it to `.ctx/data/`
-3. Detects `~/.ctx/registries/` and offers to move it to `$XDG_DATA_HOME/ctx/registries/`
-4. Creates `~/.config/ctx/config.toml` with commented defaults if it doesn't exist
-
-The command SHALL be interactive by default and support `--dry-run` and `--yes` flags.
-
 ## 7. Init Command Changes
 
 ### R18: `ctx init` Behavior
@@ -223,11 +201,11 @@ When `ctx init` is run in a directory without `--config`:
 
 1. If `.ctx/config.toml` exists, use it.
 2. If `config/ctx.toml` exists, use it.
-3. Otherwise, create `.ctx/config.toml` and `.ctx/data/` (new workspace).
+3. Otherwise, create `.ctx/config.toml`, `.ctx/data/`, `.ctx/cache/`, and `.ctx/.gitignore` (new workspace).
 
-### R19: `ctx init --global`
+### R19: No Automatic Migration
 
-`ctx init --global` SHALL create `$XDG_CONFIG_HOME/ctx/config.toml` with commented defaults if it doesn't exist.
+The CLI SHALL NOT move existing legacy config, data, or registry files automatically. Legacy paths remain readable fallbacks.
 
 ## Acceptance Criteria
 
@@ -236,8 +214,8 @@ When `ctx init` is run in a directory without `--config`:
 3. Running `ctx sync all` from a workspace with `.ctx/config.toml` uses that file.
 4. Running `ctx sync all` from a workspace with only `config/ctx.toml` uses that file.
 5. Global config at `~/.config/ctx/config.toml` provides defaults for workspace configs.
-6. `ctx config path` prints the resolved config source(s).
-7. `ctx migrate --dry-run` detects old locations and reports planned moves.
-8. Registries in `~/.ctx/registries/` are found when `$XDG_DATA_HOME/ctx/registries/` doesn't exist.
-9. Fastembed models are cached in `$XDG_CACHE_HOME/ctx/models/fastembed/` by default.
+6. `ctx init` with no config creates `.ctx/config.toml`, `.ctx/data/`, `.ctx/cache/`, and `.ctx/.gitignore`.
+7. Registries in `~/.ctx/registries/` are found when `$XDG_DATA_HOME/ctx/registries/` doesn't exist.
+8. Local embedding models are cached in `$XDG_CACHE_HOME/ctx/models/` by default.
+9. Telemetry state is stored in `$XDG_STATE_HOME/ctx/telemetry.json`.
 10. Docker deployments using `--config /app/config/ctx.toml` work without changes.
