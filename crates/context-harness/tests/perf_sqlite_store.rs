@@ -5,6 +5,8 @@
 //! print timing data that can be compared against future storage backends.
 
 use std::env;
+use std::fmt;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use context_harness::config::Config;
@@ -14,6 +16,7 @@ use context_harness::sqlite_store::SqliteStore;
 use context_harness_core::embedding::vec_to_blob;
 use context_harness_core::search::{self, SearchParams, SearchRequest};
 use context_harness_core::store::Store;
+use serde::Serialize;
 use sqlx::{Row, SqlitePool};
 use tempfile::TempDir;
 
@@ -21,71 +24,116 @@ const DEFAULT_DOCS: usize = 1_000;
 const DEFAULT_CHUNKS_PER_DOC: usize = 10;
 const DEFAULT_DIMS: usize = 384;
 const DEFAULT_REPEAT: usize = 5;
+const DEFAULT_CANDIDATE_K: i64 = 80;
 
 #[tokio::test]
 #[ignore = "performance probe; run with `cargo test -p context-harness --test perf_sqlite_store -- --ignored --nocapture`"]
 async fn perf_sqlite_keyword_vector_and_hybrid_search() {
-    let docs = env_usize("CTX_PERF_DOCS", DEFAULT_DOCS);
-    let chunks_per_doc = env_usize("CTX_PERF_CHUNKS_PER_DOC", DEFAULT_CHUNKS_PER_DOC);
-    let dims = env_usize("CTX_PERF_DIMS", DEFAULT_DIMS);
-    let repeat = env_usize("CTX_PERF_REPEAT", DEFAULT_REPEAT);
-    let total_chunks = docs * chunks_per_doc;
+    let scenario = Scenario {
+        docs: env_usize("CTX_PERF_DOCS", DEFAULT_DOCS),
+        chunks_per_doc: env_usize("CTX_PERF_CHUNKS_PER_DOC", DEFAULT_CHUNKS_PER_DOC),
+        dims: env_usize("CTX_PERF_DIMS", DEFAULT_DIMS),
+        repeat: env_usize("CTX_PERF_REPEAT", DEFAULT_REPEAT),
+        candidate_k: env_i64("CTX_PERF_CANDIDATE_K", DEFAULT_CANDIDATE_K),
+    };
 
+    let report = run_sqlite_benchmark(scenario).await;
+    print_report(&report);
+}
+
+#[tokio::test]
+#[ignore = "scaling performance probe; set CTX_PERF_SCENARIOS, or use the small defaults"]
+async fn perf_sqlite_scaling_profile() {
+    let repeat = env_usize("CTX_PERF_REPEAT", DEFAULT_REPEAT);
+    let candidate_k = env_i64("CTX_PERF_CANDIDATE_K", DEFAULT_CANDIDATE_K);
+    let scenarios = env::var("CTX_PERF_SCENARIOS")
+        .ok()
+        .map(|value| parse_scenarios(&value, repeat, candidate_k))
+        .unwrap_or_else(|| {
+            vec![
+                Scenario {
+                    docs: 100,
+                    chunks_per_doc: 5,
+                    dims: 64,
+                    repeat,
+                    candidate_k,
+                },
+                Scenario {
+                    docs: DEFAULT_DOCS,
+                    chunks_per_doc: DEFAULT_CHUNKS_PER_DOC,
+                    dims: DEFAULT_DIMS,
+                    repeat,
+                    candidate_k,
+                },
+            ]
+        });
+
+    for scenario in scenarios {
+        let report = run_sqlite_benchmark(scenario).await;
+        print_report(&report);
+    }
+}
+
+async fn run_sqlite_benchmark(scenario: Scenario) -> BenchmarkReport {
+    let total_chunks = scenario.docs * scenario.chunks_per_doc;
     let tmp = TempDir::new().unwrap();
     let mut cfg = Config::minimal();
     cfg.db.path = tmp.path().join("ctx.sqlite");
-    cfg.retrieval.candidate_k_keyword = 80;
-    cfg.retrieval.candidate_k_vector = 80;
+    cfg.retrieval.candidate_k_keyword = scenario.candidate_k;
+    cfg.retrieval.candidate_k_vector = scenario.candidate_k;
     cfg.retrieval.final_limit = 12;
 
     migrate::run_migrations(&cfg).await.unwrap();
     let pool = db::connect(&cfg).await.unwrap();
 
     let populate_elapsed = timed(|| async {
-        populate_synthetic_corpus(&pool, docs, chunks_per_doc, dims)
+        populate_synthetic_corpus(&pool, scenario.docs, scenario.chunks_per_doc, scenario.dims)
             .await
             .unwrap();
     })
     .await;
 
     let store = SqliteStore::new(pool.clone());
-    let query_vec = synthetic_vector(chunk_seed(docs / 2, chunks_per_doc / 2), dims);
+    let query_vec = synthetic_vector(
+        chunk_seed(scenario.docs / 2, scenario.chunks_per_doc / 2),
+        scenario.dims,
+    );
     let params = SearchParams {
         hybrid_alpha: 0.6,
-        candidate_k_keyword: 80,
-        candidate_k_vector: 80,
+        candidate_k_keyword: scenario.candidate_k,
+        candidate_k_vector: scenario.candidate_k,
         final_limit: 12,
     };
 
     // Warm the OS and SQLite page cache before collecting timings.
     let _ = store
-        .keyword_search("needle", 80, None, None)
+        .keyword_search("needle", scenario.candidate_k, None, None)
         .await
         .unwrap();
     let _ = store
-        .vector_search(&query_vec, 80, None, None)
+        .vector_search(&query_vec, scenario.candidate_k, None, None)
         .await
         .unwrap();
 
-    let keyword = measure_repeat(repeat, || async {
+    let keyword = measure_repeat(scenario.repeat, || async {
         store
-            .keyword_search("needle", 80, None, None)
+            .keyword_search("needle", scenario.candidate_k, None, None)
             .await
             .unwrap()
             .len()
     })
     .await;
 
-    let vector = measure_repeat(repeat, || async {
+    let vector = measure_repeat(scenario.repeat, || async {
         store
-            .vector_search(&query_vec, 80, None, None)
+            .vector_search(&query_vec, scenario.candidate_k, None, None)
             .await
             .unwrap()
             .len()
     })
     .await;
 
-    let hybrid = measure_repeat(repeat, || async {
+    let hybrid = measure_repeat(scenario.repeat, || async {
         let req = SearchRequest {
             query: "needle",
             query_vec: Some(&query_vec),
@@ -99,32 +147,97 @@ async fn perf_sqlite_keyword_vector_and_hybrid_search() {
     })
     .await;
 
-    let db_size = std::fs::metadata(&cfg.db.path)
-        .map(|m| m.len())
-        .unwrap_or(0);
-    let vector_bytes = total_chunks * dims * std::mem::size_of::<f32>();
+    let storage_size = sqlite_storage_size(&cfg.db.path);
+    let vector_bytes = total_chunks * scenario.dims * std::mem::size_of::<f32>();
     let counts = corpus_counts(&pool).await.unwrap();
+
+    let report = BenchmarkReport {
+        scenario,
+        chunks: total_chunks,
+        sqlite_file_bytes: storage_size.sqlite_file_bytes,
+        sqlite_wal_bytes: storage_size.sqlite_wal_bytes,
+        sqlite_shm_bytes: storage_size.sqlite_shm_bytes,
+        sqlite_storage_bytes: storage_size.total_bytes(),
+        vector_bytes_raw: vector_bytes,
+        populate_ms: ms(populate_elapsed),
+        documents_count: counts.documents,
+        chunks_count: counts.chunks,
+        vectors_count: counts.vectors,
+        keyword_search: keyword.summary(),
+        vector_search: vector.summary(),
+        hybrid_search: hybrid.summary(),
+    };
+
+    pool.close().await;
+    report
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+struct Scenario {
+    docs: usize,
+    chunks_per_doc: usize,
+    dims: usize,
+    repeat: usize,
+    candidate_k: i64,
+}
+
+impl fmt::Display for Scenario {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}x{}x{} repeat={} k={}",
+            self.docs, self.chunks_per_doc, self.dims, self.repeat, self.candidate_k
+        )
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct BenchmarkReport {
+    scenario: Scenario,
+    chunks: usize,
+    sqlite_file_bytes: u64,
+    sqlite_wal_bytes: u64,
+    sqlite_shm_bytes: u64,
+    sqlite_storage_bytes: u64,
+    vector_bytes_raw: usize,
+    populate_ms: f64,
+    documents_count: i64,
+    chunks_count: i64,
+    vectors_count: i64,
+    keyword_search: MeasurementSummary,
+    vector_search: MeasurementSummary,
+    hybrid_search: MeasurementSummary,
+}
+
+fn print_report(report: &BenchmarkReport) {
+    if env::var("CTX_PERF_OUTPUT").as_deref() == Ok("jsonl") {
+        println!("{}", serde_json::to_string(report).unwrap());
+        return;
+    }
 
     println!();
     println!("sqlite_store_perf");
-    println!("  docs:              {}", docs);
-    println!("  chunks_per_doc:    {}", chunks_per_doc);
-    println!("  chunks:            {}", total_chunks);
-    println!("  dims:              {}", dims);
-    println!("  repeat:            {}", repeat);
-    println!("  db_size_bytes:     {}", db_size);
-    println!("  vector_bytes_raw:  {}", vector_bytes);
-    println!("  populate_ms:       {:.2}", ms(populate_elapsed));
+    println!("  scenario:          {}", report.scenario);
+    println!("  docs:              {}", report.scenario.docs);
+    println!("  chunks_per_doc:    {}", report.scenario.chunks_per_doc);
+    println!("  chunks:            {}", report.chunks);
+    println!("  dims:              {}", report.scenario.dims);
+    println!("  repeat:            {}", report.scenario.repeat);
+    println!("  candidate_k:       {}", report.scenario.candidate_k);
+    println!("  sqlite_file_bytes: {}", report.sqlite_file_bytes);
+    println!("  sqlite_wal_bytes:  {}", report.sqlite_wal_bytes);
+    println!("  sqlite_shm_bytes:  {}", report.sqlite_shm_bytes);
+    println!("  sqlite_total_bytes:{}", report.sqlite_storage_bytes);
+    println!("  vector_bytes_raw:  {}", report.vector_bytes_raw);
+    println!("  populate_ms:       {:.2}", report.populate_ms);
     println!(
         "  counts:            documents={} chunks={} vectors={}",
-        counts.documents, counts.chunks, counts.vectors
+        report.documents_count, report.chunks_count, report.vectors_count
     );
-    print_measurement("keyword_search", &keyword);
-    print_measurement("vector_search", &vector);
-    print_measurement("hybrid_search", &hybrid);
+    print_measurement("keyword_search", &report.keyword_search);
+    print_measurement("vector_search", &report.vector_search);
+    print_measurement("hybrid_search", &report.hybrid_search);
     println!();
-
-    pool.close().await;
 }
 
 async fn populate_synthetic_corpus(
@@ -267,6 +380,42 @@ struct Measurement {
     durations: Vec<Duration>,
 }
 
+#[derive(Debug, Serialize)]
+struct MeasurementSummary {
+    result_count: usize,
+    min_ms: f64,
+    median_ms: f64,
+    avg_ms: f64,
+    max_ms: f64,
+}
+
+impl Measurement {
+    fn summary(&self) -> MeasurementSummary {
+        let mut samples = self.durations.clone();
+        samples.sort();
+        let min = samples.first().copied().unwrap_or_default();
+        let max = samples.last().copied().unwrap_or_default();
+        let median = samples
+            .get(samples.len().saturating_sub(1) / 2)
+            .copied()
+            .unwrap_or_default();
+        let total: Duration = samples.iter().copied().sum();
+        let avg = if samples.is_empty() {
+            Duration::default()
+        } else {
+            total / samples.len() as u32
+        };
+
+        MeasurementSummary {
+            result_count: self.result_count,
+            min_ms: ms(min),
+            median_ms: ms(median),
+            avg_ms: ms(avg),
+            max_ms: ms(max),
+        }
+    }
+}
+
 async fn measure_repeat<F, Fut>(repeat: usize, mut f: F) -> Measurement
 where
     F: FnMut() -> Fut,
@@ -297,22 +446,14 @@ where
     start.elapsed()
 }
 
-fn print_measurement(label: &str, measurement: &Measurement) {
-    let mut samples = measurement.durations.clone();
-    samples.sort();
-    let min = samples.first().copied().unwrap_or_default();
-    let max = samples.last().copied().unwrap_or_default();
-    let median = samples[samples.len() / 2];
-    let total: Duration = samples.iter().copied().sum();
-    let avg = total / samples.len() as u32;
-
+fn print_measurement(label: &str, measurement: &MeasurementSummary) {
     println!(
         "  {label:<18} results={:<4} min_ms={:>8.2} median_ms={:>8.2} avg_ms={:>8.2} max_ms={:>8.2}",
         measurement.result_count,
-        ms(min),
-        ms(median),
-        ms(avg),
-        ms(max)
+        measurement.min_ms,
+        measurement.median_ms,
+        measurement.avg_ms,
+        measurement.max_ms
     );
 }
 
@@ -325,4 +466,60 @@ fn env_usize(name: &str, default: usize) -> usize {
         .ok()
         .and_then(|value| value.parse().ok())
         .unwrap_or(default)
+}
+
+fn env_i64(name: &str, default: i64) -> i64 {
+    env::var(name)
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(default)
+}
+
+struct SqliteStorageSize {
+    sqlite_file_bytes: u64,
+    sqlite_wal_bytes: u64,
+    sqlite_shm_bytes: u64,
+}
+
+impl SqliteStorageSize {
+    fn total_bytes(&self) -> u64 {
+        self.sqlite_file_bytes + self.sqlite_wal_bytes + self.sqlite_shm_bytes
+    }
+}
+
+fn sqlite_storage_size(path: &Path) -> SqliteStorageSize {
+    SqliteStorageSize {
+        sqlite_file_bytes: file_size(path),
+        sqlite_wal_bytes: file_size(&sqlite_sidecar_path(path, "wal")),
+        sqlite_shm_bytes: file_size(&sqlite_sidecar_path(path, "shm")),
+    }
+}
+
+fn sqlite_sidecar_path(path: &Path, suffix: &str) -> PathBuf {
+    let mut name = path.as_os_str().to_os_string();
+    name.push(format!("-{suffix}"));
+    PathBuf::from(name)
+}
+
+fn file_size(path: &Path) -> u64 {
+    std::fs::metadata(path).map(|m| m.len()).unwrap_or(0)
+}
+
+fn parse_scenarios(value: &str, repeat: usize, candidate_k: i64) -> Vec<Scenario> {
+    value
+        .split(',')
+        .filter_map(|part| {
+            let mut fields = part.split('x');
+            let docs = fields.next()?.trim().parse().ok()?;
+            let chunks_per_doc = fields.next()?.trim().parse().ok()?;
+            let dims = fields.next()?.trim().parse().ok()?;
+            Some(Scenario {
+                docs,
+                chunks_per_doc,
+                dims,
+                repeat,
+                candidate_k,
+            })
+        })
+        .collect()
 }

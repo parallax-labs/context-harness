@@ -161,6 +161,22 @@ CTX_PERF_DOCS=5000 \
 CTX_PERF_CHUNKS_PER_DOC=20 \
 CTX_PERF_DIMS=384 \
 CTX_PERF_REPEAT=5 \
+CTX_PERF_CANDIDATE_K=80 \
+cargo test -p context-harness --test perf_sqlite_store -- --ignored --nocapture
+```
+
+Run a scaling profile with comma-separated `docs x chunks_per_doc x dims` scenarios:
+
+```bash
+CTX_PERF_SCENARIOS=1000x10x384,5000x20x384,10000x20x384 \
+CTX_PERF_REPEAT=5 \
+cargo test -p context-harness --test perf_sqlite_store perf_sqlite_scaling_profile -- --ignored --nocapture
+```
+
+Use `CTX_PERF_OUTPUT=jsonl` when the output should be captured and compared by scripts:
+
+```bash
+CTX_PERF_OUTPUT=jsonl \
 cargo test -p context-harness --test perf_sqlite_store -- --ignored --nocapture
 ```
 
@@ -171,6 +187,7 @@ Track at least:
 - `keyword_search` min/median/average/max
 - `vector_search` min/median/average/max
 - `hybrid_search` min/median/average/max
+- candidate count (`candidate_k`)
 
 Initial local baseline on 2026-06-07 with 1,000 documents, 10 chunks per document, 384 dimensions, and 5 repeats:
 
