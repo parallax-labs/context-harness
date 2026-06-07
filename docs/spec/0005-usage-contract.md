@@ -178,7 +178,7 @@ Required behavior:
 - Show document id
 - `--mode keyword`: FTS5 only
 - `--mode semantic`: vector only (requires embeddings enabled)
-- `--mode hybrid`: weighted merge per HYBRID_SCORING.md
+- `--mode hybrid`: weighted merge per [SPEC-0003](0003-hybrid-scoring.md)
 - Error cleanly if semantic/hybrid requested with embeddings disabled
 
 ---
@@ -315,12 +315,12 @@ ctx serve mcp
 Required behavior:
 - Bind to `[server].bind` address
 - Expose MCP Streamable HTTP endpoint at `/mcp` (JSON-RPC for Cursor, Claude, etc.)
-- Expose REST endpoints per SCHEMAS.md:
+- Expose REST endpoints per [SPEC-0006](0006-json-schemas.md):
   - `POST /tools/search` — context.search
   - `POST /tools/get` — context.get
   - `GET /tools/sources` — context.sources
   - `GET /health` — health check
-- All REST responses must match SCHEMAS.md exactly
+- All REST responses must match [SPEC-0006](0006-json-schemas.md) exactly
 - All errors must follow error schema
 - CORS enabled for cross-origin requests
 
@@ -394,7 +394,7 @@ Connectors from registries require explicit activation via `ctx registry add` be
 
 ## HTTP Endpoints
 
-See [SCHEMAS.md](SCHEMAS.md) for complete request/response schemas.
+See [SPEC-0006](0006-json-schemas.md) for complete request/response schemas.
 
 | Method | Path | Description |
 |--------|------|-------------|

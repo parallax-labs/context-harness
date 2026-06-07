@@ -53,10 +53,41 @@ follow_symlinks = false
 # ── Rust source (for implementation reference) ───────────────────
 
 [connectors.filesystem.src]
-root = "./src"
+root = "./crates"
 include_globs = ["**/*.rs"]
-exclude_globs = []
+exclude_globs = ["**/target/**"]
 follow_symlinks = false
+
+# ── Documentation Agents (the "doc company") ─────────────────────
+#
+# A coordinated team of agents that manage the five-layer doc
+# hierarchy: PRD → ADR → Spec → Design → Runbook.
+
+[agents.script.doc-coordinator]
+path = "agents/doc-coordinator.lua"
+search_limit = "12"
+
+[agents.script.prd-writer]
+path = "agents/prd-writer.lua"
+search_limit = "8"
+
+[agents.script.adr-writer]
+path = "agents/adr-writer.lua"
+search_limit = "8"
+
+[agents.script.spec-writer]
+path = "agents/spec-writer.lua"
+search_limit = "10"
+
+[agents.script.design-writer]
+path = "agents/design-writer.lua"
+search_limit = "8"
+
+[agents.script.runbook-writer]
+path = "agents/runbook-writer.lua"
+search_limit = "8"
+
+# ── Registry ──────────────────────────────────────────────────────
 
 [registries.community]
 url = "https://github.com/parallax-labs/ctx-registry.git"

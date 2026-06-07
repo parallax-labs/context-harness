@@ -150,10 +150,10 @@ body, metadata, and chunk list.
   [0012](../adr/0012-pure-rust-s3-client.md),
   [0016](../adr/0016-nix-for-builds.md),
   [0017](../adr/0017-rustls-over-openssl.md)
-- **Specs:** [HYBRID_SCORING.md](../HYBRID_SCORING.md),
-  [FILE_SUPPORT.md](../FILE_SUPPORT.md),
-  [SYNC_PROGRESS.md](../SYNC_PROGRESS.md),
-  [SCHEMAS.md](../SCHEMAS.md),
-  [USAGE.md](../USAGE.md)
-- **Design:** [DESIGN.md](../DESIGN.md),
-  [DEPLOYMENT.md](../DEPLOYMENT.md)
+- **Specs:** [SPEC-0003](../spec/0003-hybrid-scoring.md),
+  [SPEC-0004](../spec/0004-file-support.md),
+  [SPEC-0006](../spec/0006-json-schemas.md),
+  [SPEC-0005](../spec/0005-usage-contract.md)
+- **Design:** [DESIGN-0001](../design/0001-implementation-design.md),
+  [DESIGN-0002](../design/0002-sync-progress.md),
+  [DESIGN-0005](../design/0005-deployment-guide.md)

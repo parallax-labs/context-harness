@@ -91,3 +91,32 @@ follow_symlinks = false
 # include_globs = ["**/*.md", "**/*.json"]
 # exclude_globs = []
 # endpoint_url = "http://localhost:9000"           # optional, for MinIO/LocalStack
+
+# ── Agents ──────────────────────────────────────────────────
+# Agents are MCP personas that combine a system prompt with
+# scoped tools and optional dynamic context injection.
+
+# Inline agent (static system prompt):
+# [agents.inline.code-reviewer]
+# description = "Reviews code against project conventions"
+# tools = ["search", "get"]
+# system_prompt = """
+# You are a senior code reviewer for this project.
+# Use `search` to find conventions and `get` to read docs.
+# """
+
+# Script agent (dynamic, Lua-powered):
+# [agents.script.doc-coordinator]
+# path = "agents/doc-coordinator.lua"
+# search_limit = "12"
+
+# ── Registries ──────────────────────────────────────────────
+# Git-backed extension registries for community connectors,
+# tools, and agents.
+
+# [registries.community]
+# url = "https://github.com/parallax-labs/ctx-registry.git"
+# branch = "main"
+# path = "~/.ctx/registries/community"
+# readonly = true
+# auto_update = true

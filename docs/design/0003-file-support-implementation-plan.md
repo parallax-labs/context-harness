@@ -1,12 +1,12 @@
 # Multi-Format File Support — Implementation Plan
 
-This plan implements the behavior specified in [FILE_SUPPORT.md](FILE_SUPPORT.md). The spec is authoritative; each task below maps to spec sections. Implementation SHALL conform to the spec, and tests SHALL assert the acceptance criteria in spec §8.
+This plan implements the behavior specified in [SPEC-0004](../spec/0004-file-support.md). The spec is authoritative; each task below maps to spec sections. Implementation SHALL conform to the spec, and tests SHALL assert the acceptance criteria in spec §8.
 
 ---
 
 ## 1. Authority and order of work
 
-- **Spec:** [docs/FILE_SUPPORT.md](FILE_SUPPORT.md) — all behavior is defined there. No new behavior; only code that satisfies the spec.
+- **Spec:** [SPEC-0004](../spec/0004-file-support.md) — all behavior is defined there. No new behavior; only code that satisfies the spec.
 - **Order:** Dependencies first (model + config + crates), then extraction module, then filesystem connector, then pipeline integration, then tests. Each phase leaves the crate building and existing tests passing.
 
 ---
@@ -150,7 +150,7 @@ Add tests that assert each acceptance criterion. Prefer integration tests that r
 
 | File | Action |
 |------|--------|
-| [docs/FILE_SUPPORT.md](FILE_SUPPORT.md) | No change; authority. |
+| [SPEC-0004](../spec/0004-file-support.md) | No change; authority. |
 | [docs/FILE_SUPPORT_IMPLEMENTATION_PLAN.md](FILE_SUPPORT_IMPLEMENTATION_PLAN.md) | This plan. |
 | [Cargo.toml](Cargo.toml) | Add pdf-extract, zip, quick-xml. |
 | [src/lib.rs](src/lib.rs) | Add `pub mod extract`. |

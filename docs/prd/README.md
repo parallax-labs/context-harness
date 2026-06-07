@@ -18,6 +18,7 @@ it. A spec references both for traceability from product intent to implementatio
 
 | PRD | Title | Status |
 |-----|-------|--------|
+| [0000](0000-prd-policy.md) | PRD Policy | Authoritative |
 | [0001](0001-core-context-engine.md) | Core Context Engine | Delivered |
 | [0002](0002-browser-search-widget.md) | Browser Search Widget | Delivered |
 | [0003](0003-extensibility-platform.md) | Extensibility Platform | Delivered |
@@ -85,7 +86,17 @@ What other work must land first? What could go wrong?
 Links to ADRs, specs, design docs, and other PRDs.
 ```
 
-## Relationship to Specs and ADRs
+## Relationship to Other Docs
+
+| Layer | Purpose | Authority |
+|-------|---------|-----------|
+| **PRD** (`docs/prd/`) | What we build and why (user perspective) | Product intent |
+| **ADR** (`docs/adr/`) | Why we chose a specific approach | Architectural rationale |
+| **Spec** (`docs/spec/`) | Exactly how the system behaves | Behavioral contract |
+| **Design** (`docs/design/`) | Exploration, planning, implementation guides | Not authoritative |
+| **Runbook** (`docs/runbook/`) | Step-by-step operational procedures | Operational reference |
+
+See [PRD-0000](0000-prd-policy.md) for the full policy.
 
 PRDs record *what* we are building and *why* from the user's perspective.
 ADRs record *why* a specific technical approach was chosen. Specs define
@@ -95,5 +106,5 @@ When a PRD is delivered, it should link to the specs and ADRs that implemented
 it. When a new PRD is created, it should reference any existing ADRs or specs
 that constrain or inform the design.
 
-See [SPEC_POLICY.md](../SPEC_POLICY.md) for the distinction between specs,
-design docs, and planning docs.
+See [SPEC-0000](../spec/0000-spec-policy.md) for the distinction between
+specs, design docs, and planning docs.

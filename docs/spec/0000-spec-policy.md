@@ -46,27 +46,37 @@ Do not publish a doc as a "spec" if it still contains options, recommendations, 
 
 - **Implementation** exists to satisfy the spec. Changes to behavior require updating the spec first (or in the same change); the spec is not retrofitted to match code without going through this policy.
 - **Tests** (unit, integration, or acceptance) should be written to assert spec compliance. The spec is the reference for what "correct" means.
-- **Existing authoritative specs** (e.g. `HYBRID_SCORING.md`) remain the contract. New features that touch the same area must conform to them or the spec must be updated with a clear rationale.
+- **Existing authoritative specs** (e.g. `spec/0003-hybrid-scoring.md`) remain the contract. New features that touch the same area must conform to them or the spec must be updated with a clear rationale.
 
 ---
 
 ## 6. Where docs live
 
-- **Specs:** `docs/` with names that indicate they are specs (e.g. `HYBRID_SCORING.md`, and future `FILE_SUPPORT.md` / `SYNC_PROGRESS.md` when rewritten as authoritative specs).
-- **Design / planning:** Also in `docs/`. Use a clear label in the doc (e.g. "Design & Specification" vs "Design & Planning", or a **Status:** line like "Status: Planning — authoritative spec to follow implementation").
+All documentation lives in subdirectories of `docs/`, each with its own policy and numbering:
+
+| Directory | Policy | Purpose |
+|-----------|--------|---------|
+| `docs/prd/` | [PRD-0000](../prd/0000-prd-policy.md) | Product requirements — what to build and why |
+| `docs/adr/` | [ADR-0000](../adr/0000-adr-policy.md) | Architecture decisions — why a specific approach was chosen |
+| `docs/spec/` | This document | Specifications — exactly how the system behaves |
+| `docs/design/` | [DESIGN-0000](../design/0000-design-policy.md) | Design docs — exploration, planning, implementation guides |
+| `docs/runbook/` | [RUNBOOK-0000](../runbook/0000-runbook-policy.md) | Runbooks — step-by-step operational procedures |
 
 When implementation of a new feature is complete, either:
 
-- Add or update an authoritative spec in `docs/` that describes the actual behavior, or  
-- Explicitly state in the doc that it remains a design/planning reference and that the authoritative spec is the code plus tests.
+- Add or update an authoritative spec in `docs/spec/` that describes the actual behavior, or
+- Explicitly state in the relevant design doc that it remains a planning reference and that the authoritative spec is the code plus tests.
 
 ---
 
 ## 7. Summary
 
-| Document type   | Purpose                          | Authority        | When to write        |
-|-----------------|----------------------------------|------------------|----------------------|
-| **Spec**        | Define behavior; contract for impl and tests | Authoritative; no options | After behavior is decided or implemented |
-| **Design / planning** | Explore options; plan work; contract-for-work | Not authoritative | Before or during implementation |
+| Document type | Purpose | Authority | When to write |
+|---------------|---------|-----------|---------------|
+| **PRD** | What to build and why (user perspective) | Product intent | Before or at start of new capability |
+| **ADR** | Why a specific approach was chosen | Architectural rationale | When a non-trivial decision is made |
+| **Spec** | Define behavior; contract for impl and tests | Authoritative; no options | After behavior is decided or implemented |
+| **Design** | Explore options; plan work | Not authoritative | Before or during implementation |
+| **Runbook** | Step-by-step operational procedure | Operational reference | When an operational task needs documentation |
 
-Specs are the source of truth. We program to the spec. Design and planning docs support the work but do not replace an authoritative spec for shipped behavior.
+Specs are the source of truth. We program to the spec. Other document types support the work but do not replace an authoritative spec for shipped behavior.

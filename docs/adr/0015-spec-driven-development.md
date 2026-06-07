@@ -22,7 +22,7 @@ source of truth for system behavior.
 
 ## Decision
 
-Adopt **spec-driven development** as documented in `docs/SPEC_POLICY.md`.
+Adopt **spec-driven development** as documented in [SPEC-0000](../spec/0000-spec-policy.md).
 
 Core principles:
 
@@ -60,14 +60,14 @@ Core principles:
 
 The following documents define the public contract:
 
-- `USAGE.md` — CLI interface and commands
-- `SCHEMAS.md` — HTTP API request/response schemas
-- `HYBRID_SCORING.md` — Hybrid retrieval algorithm
-- `LUA_CONNECTORS.md` — Lua connector scripting interface
-- `LUA_TOOLS.md` — Lua tool scripting interface
-- `RUST_TRAITS.md` — Rust extension traits
-- `AGENTS.md` — Agent system
-- `REGISTRY.md` — Extension registry system
+- [SPEC-0005](../spec/0005-usage-contract.md) — CLI interface and commands
+- [SPEC-0006](../spec/0006-json-schemas.md) — HTTP API request/response schemas
+- [SPEC-0003](../spec/0003-hybrid-scoring.md) — Hybrid retrieval algorithm
+- [SPEC-0008](../spec/0008-lua-connectors.md) — Lua connector scripting interface
+- [SPEC-0009](../spec/0009-lua-tools.md) — Lua tool scripting interface
+- [SPEC-0010](../spec/0010-rust-extension-traits.md) — Rust extension traits
+- [SPEC-0011](../spec/0011-mcp-agents.md) — Agent system
+- [SPEC-0007](../spec/0007-extension-registries.md) — Extension registry system
 
 ## Alternatives Considered
 
