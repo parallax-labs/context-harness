@@ -100,6 +100,7 @@
 
 pub mod agent_script;
 pub mod agents;
+pub mod app_store;
 pub mod chunk;
 pub mod config;
 pub mod connector_fs;
@@ -126,6 +127,7 @@ pub mod sqlite_store;
 pub mod stats;
 pub mod tool_script;
 pub mod traits;
+pub mod vector_index;
 
 pub use agents::{Agent, AgentPrompt, AgentRegistry, TomlAgent};
 pub use context_harness_core::store;

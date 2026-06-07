@@ -19,6 +19,15 @@ provider = "disabled"
 # max_retries = 5
 # timeout_secs = 30
 
+# Optional vector-index acceleration.
+# Auto uses zvec when the binary supports it and falls back to SQLite otherwise.
+[vector_index]
+backend = "auto"
+path = "auto"
+metric = "cosine"
+index = "hnsw"
+fallback = "sqlite"
+
 # ── OpenAI example ──
 # [embedding]
 # provider = "openai"
