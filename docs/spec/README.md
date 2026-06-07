@@ -30,6 +30,7 @@ See [SPEC-0000](0000-spec-policy.md) for the full policy.
 | [0009](0009-lua-tools.md) | Lua MCP Tool Extensions | Authoritative |
 | [0010](0010-rust-extension-traits.md) | Rust Extension Traits | Authoritative |
 | [0011](0011-mcp-agents.md) | MCP Agents | Authoritative |
+| [0013](0013-direct-llm-inference-chat.md) | Direct LLM Inference Chat | Draft |
 
 ## Creating a New Spec
 

@@ -10,6 +10,7 @@
 *.swp
 *.swo
 *~
+.specstory/
 
 # Nix build output
 /result
@@ -22,4 +23,3 @@
 /site/static/api/
 /site/static/site-index.json
 /site/docs/ctx-docs.sqlite
-

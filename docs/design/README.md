@@ -26,6 +26,8 @@ See [DESIGN-0000](0000-design-policy.md) for the full policy.
 | [0003](0003-file-support-implementation-plan.md) | File Support Implementation Plan | Reference |
 | [0004](0004-phase-1-acceptance.md) | Phase 1 Acceptance Criteria | Delivered |
 | [0005](0005-deployment-guide.md) | Deployment Guide | Reference |
+| [0007](0007-direct-inference-chat-implementation-plan.md) | Direct Inference Chat Implementation Plan | Planning |
+| [0008](0008-graph-benchmark-protocol.md) | Graph Retrieval Benchmark Protocol | Draft |
 
 ## Creating a New Design Doc
 
