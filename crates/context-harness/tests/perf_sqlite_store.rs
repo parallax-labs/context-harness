@@ -99,7 +99,9 @@ async fn perf_sqlite_keyword_vector_and_hybrid_search() {
     })
     .await;
 
-    let db_size = std::fs::metadata(&cfg.db.path).map(|m| m.len()).unwrap_or(0);
+    let db_size = std::fs::metadata(&cfg.db.path)
+        .map(|m| m.len())
+        .unwrap_or(0);
     let vector_bytes = total_chunks * dims * std::mem::size_of::<f32>();
     let counts = corpus_counts(&pool).await.unwrap();
 
