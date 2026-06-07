@@ -107,6 +107,7 @@ pub mod connector_fs;
 pub mod connector_git;
 pub mod connector_s3;
 pub mod connector_script;
+pub mod ctx_dirs;
 pub mod db;
 pub mod embed_cmd;
 pub mod embedding;

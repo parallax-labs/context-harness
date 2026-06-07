@@ -19,7 +19,8 @@
 //! # Cache Directory
 //!
 //! Cloned repos are cached locally (default: alongside the SQLite DB in
-//! `data/.git-cache/<url-hash>/`). Subsequent syncs do `git fetch && reset`.
+//! `.ctx/cache/git/<url-hash>/` for workspace-default configs). Subsequent
+//! syncs do `git fetch && reset`.
 //!
 //! # Metadata Extraction
 //!
@@ -51,6 +52,7 @@ use std::process::Command;
 use walkdir::WalkDir;
 
 use crate::config::GitConnectorConfig;
+use crate::ctx_dirs;
 use crate::models::SourceItem;
 use crate::traits::Connector;
 
@@ -134,10 +136,14 @@ pub fn scan_git(
     let cache_dir = match &git_config.cache_dir {
         Some(dir) => dir.clone(),
         None => {
-            // Default: sibling to the DB file
-            let db_parent = db_path.parent().unwrap_or_else(|| Path::new("."));
             let url_hash = short_hash(&git_config.url);
-            db_parent.join(".git-cache").join(url_hash)
+            if ctx_dirs::is_default_workspace_db_path(db_path) {
+                ctx_dirs::workspace_git_cache_dir().join(url_hash)
+            } else {
+                // Legacy fallback: sibling to the DB file.
+                let db_parent = db_path.parent().unwrap_or_else(|| Path::new("."));
+                db_parent.join(".git-cache").join(url_hash)
+            }
         }
     };
 

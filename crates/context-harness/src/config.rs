@@ -8,7 +8,7 @@
 //!
 //! ```toml
 //! [db]
-//! path = "./data/ctx.sqlite"
+//! path = ".ctx/data/ctx.sqlite"
 //!
 //! [chunking]
 //! max_tokens = 700
@@ -64,6 +64,8 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use crate::ctx_dirs::{self, ConfigSourceKind};
+
 /// Top-level configuration structure.
 ///
 /// Deserialized from the TOML config file. All sections are required
@@ -106,7 +108,7 @@ impl Config {
     pub fn minimal() -> Self {
         Self {
             db: DbConfig {
-                path: PathBuf::from("./data/ctx.sqlite"),
+                path: ctx_dirs::workspace_db_path(),
             },
             chunking: ChunkingConfig {
                 max_tokens: 700,
@@ -134,13 +136,21 @@ impl Config {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ResolvedConfig {
+    pub config: Config,
+    pub path: Option<PathBuf>,
+    #[allow(dead_code)]
+    pub source: ConfigSourceKind,
+}
+
 /// Database configuration.
 ///
 /// Specifies the path to the SQLite database file. The file and its
 /// parent directories are created automatically on first use.
 #[derive(Debug, Deserialize, Clone)]
 pub struct DbConfig {
-    /// Path to the SQLite database file (e.g. `"./data/ctx.sqlite"`).
+    /// Path to the SQLite database file (e.g. `".ctx/data/ctx.sqlite"`).
     pub path: PathBuf,
 }
 
@@ -587,7 +597,7 @@ fn default_agent_timeout() -> u64 {
 /// [registries.community]
 /// url = "https://github.com/parallax-labs/ctx-registry.git"
 /// branch = "main"
-/// path = "~/.ctx/registries/community"
+/// path = "~/.local/share/ctx/registries/community"
 /// readonly = true
 /// auto_update = true
 /// ```
@@ -678,7 +688,8 @@ pub struct GitConnectorConfig {
     /// Use shallow clone (`--depth 1`) to save disk space. Default: `true`.
     #[serde(default = "default_true")]
     pub shallow: bool,
-    /// Directory to cache cloned repos. Default: `&lt;db-dir&gt;/.git-cache/&lt;url-hash&gt;/`.
+    /// Directory to cache cloned repos. Default: `.ctx/cache/git/<url-hash>/`
+    /// when using the workspace DB, otherwise `<db-dir>/.git-cache/<url-hash>/`.
     #[serde(default)]
     pub cache_dir: Option<PathBuf>,
 }
@@ -772,12 +783,96 @@ impl EmbeddingConfig {
 /// - `retrieval.hybrid_alpha` is outside `[0.0, 1.0]`
 /// - Embedding provider is enabled but `model` or `dims` is missing/zero
 /// - Unknown embedding provider name
+#[allow(dead_code)]
 pub fn load_config(path: &Path) -> Result<Config> {
+    load_config_file(path)
+}
+
+pub fn load_config_for_cli(explicit_path: Option<PathBuf>) -> Result<ResolvedConfig> {
+    let paths = ctx_dirs::config_paths(explicit_path);
+    let source = paths.resolve();
+
+    match source.kind {
+        ConfigSourceKind::Explicit | ConfigSourceKind::Env | ConfigSourceKind::Global => {
+            let path = source
+                .path
+                .clone()
+                .expect("path-backed config source must include path");
+            let config = load_config_file(&path)?;
+            Ok(ResolvedConfig {
+                config,
+                path: Some(path),
+                source: source.kind,
+            })
+        }
+        ConfigSourceKind::Workspace | ConfigSourceKind::LegacyWorkspace => {
+            let workspace_path = source
+                .path
+                .clone()
+                .expect("path-backed config source must include path");
+            let workspace_value = load_config_value(&workspace_path)?;
+            let merged_value = if paths.global.exists() {
+                let mut global_value = load_config_value(&paths.global)?;
+                merge_toml(&mut global_value, workspace_value);
+                global_value
+            } else {
+                workspace_value
+            };
+            let config = config_from_value(merged_value)?;
+            Ok(ResolvedConfig {
+                config,
+                path: Some(workspace_path),
+                source: source.kind,
+            })
+        }
+        ConfigSourceKind::BuiltIn => Ok(ResolvedConfig {
+            config: Config::minimal(),
+            path: None,
+            source: ConfigSourceKind::BuiltIn,
+        }),
+    }
+}
+
+pub fn ensure_workspace_config_for_init(explicit_path: Option<&Path>) -> Result<Option<PathBuf>> {
+    let paths = ctx_dirs::config_paths(explicit_path.map(Path::to_path_buf));
+    if paths.has_explicit_source() || paths.has_workspace_source() {
+        return Ok(paths.resolve().path);
+    }
+
+    let ctx_dir = ctx_dirs::workspace_dir();
+    std::fs::create_dir_all(ctx_dirs::workspace_data_dir())?;
+    std::fs::create_dir_all(ctx_dirs::workspace_cache_dir())?;
+    std::fs::write(ctx_dir.join(".gitignore"), "data/\ncache/\n")?;
+
+    let config_path = ctx_dirs::workspace_config_path();
+    if !config_path.exists() {
+        std::fs::write(&config_path, default_workspace_config_toml())?;
+    }
+    Ok(Some(config_path))
+}
+
+fn load_config_file(path: &Path) -> Result<Config> {
     let content = std::fs::read_to_string(path)
         .with_context(|| format!("Failed to read config file: {}", path.display()))?;
 
     let config: Config = toml::from_str(&content).with_context(|| "Failed to parse config file")?;
+    validate_config(config)
+}
 
+fn load_config_value(path: &Path) -> Result<toml::Value> {
+    let content = std::fs::read_to_string(path)
+        .with_context(|| format!("Failed to read config file: {}", path.display()))?;
+    toml::from_str(&content).with_context(|| "Failed to parse config file")
+}
+
+fn config_from_value(value: toml::Value) -> Result<Config> {
+    let config: Config = value
+        .try_into()
+        .with_context(|| "Failed to parse config file")?;
+    validate_config(config)
+}
+
+fn validate_config(config: Config) -> Result<Config> {
     // Validate chunking
     if config.chunking.max_tokens == 0 {
         anyhow::bail!("chunking.max_tokens must be > 0");
@@ -819,4 +914,38 @@ pub fn load_config(path: &Path) -> Result<Config> {
     }
 
     Ok(config)
+}
+
+fn merge_toml(base: &mut toml::Value, overlay: toml::Value) {
+    match (base, overlay) {
+        (toml::Value::Table(base_table), toml::Value::Table(overlay_table)) => {
+            for (key, overlay_value) in overlay_table {
+                match base_table.get_mut(&key) {
+                    Some(base_value) => merge_toml(base_value, overlay_value),
+                    None => {
+                        base_table.insert(key, overlay_value);
+                    }
+                }
+            }
+        }
+        (base_value, overlay_value) => {
+            *base_value = overlay_value;
+        }
+    }
+}
+
+pub fn default_workspace_config_toml() -> &'static str {
+    r#"[db]
+path = ".ctx/data/ctx.sqlite"
+
+[chunking]
+max_tokens = 700
+overlap_tokens = 0
+
+[retrieval]
+final_limit = 12
+
+[server]
+bind = "127.0.0.1:7331"
+"#
 }

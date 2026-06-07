@@ -31,6 +31,7 @@ See [SPEC-0000](0000-spec-policy.md) for the full policy.
 | [0010](0010-rust-extension-traits.md) | Rust Extension Traits | Authoritative |
 | [0011](0011-mcp-agents.md) | MCP Agents | Authoritative |
 | [0012](0012-storage-and-vector-index-interfaces.md) | Storage and Vector Index Interfaces | Authoritative |
+| [0013](0013-config-resolution.md) | Config Resolution and Directory Layout | Draft |
 
 ## Creating a New Spec
 

@@ -5,11 +5,13 @@
 //! - **Non-blocking**: events fire on a background OS thread with a 3-second HTTP timeout.
 //! - **Opt-out**: respects `DO_NOT_TRACK=1`, `CTX_TELEMETRY=off`, or a local state file flag.
 //!
-//! State is stored at `$XDG_DATA_HOME/ctx/telemetry.json` (default `~/.local/share/ctx/telemetry.json`).
+//! State is stored at `$XDG_STATE_HOME/ctx/telemetry.json` (default `~/.local/state/ctx/telemetry.json`).
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Duration;
+
+use crate::ctx_dirs;
 
 const POSTHOG_API_KEY: &str = "phc_yGGFTCyiKAJYRnVqn9yRUDWPYoKGIqJ71XNDPYIicOA";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
@@ -21,19 +23,8 @@ struct TelemetryState {
     noticed: bool,
 }
 
-// ─── XDG helpers ─────────────────────────────────────────────────────
-
-fn xdg_data_dir() -> PathBuf {
-    if let Some(val) = std::env::var_os("XDG_DATA_HOME") {
-        PathBuf::from(val)
-    } else {
-        let home = std::env::var_os("HOME").unwrap_or_default();
-        PathBuf::from(home).join(".local").join("share")
-    }
-}
-
 fn state_path() -> PathBuf {
-    xdg_data_dir().join("ctx").join("telemetry.json")
+    ctx_dirs::telemetry_state_path()
 }
 
 // ─── State file I/O ──────────────────────────────────────────────────
