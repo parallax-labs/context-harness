@@ -20,6 +20,7 @@ See [SPEC-0000](0000-spec-policy.md) for the full policy.
 | Spec | Title | Status |
 |------|-------|--------|
 | [0000](0000-spec-policy.md) | Spec Policy | Authoritative |
+| [0001](0001-native-app.md) | Native App | Draft |
 | [0002](0002-workspace-refactor.md) | Workspace Refactor | Authoritative |
 | [0003](0003-hybrid-scoring.md) | Hybrid Scoring | Authoritative |
 | [0004](0004-file-support.md) | Multi-Format File Support | Authoritative |
@@ -30,6 +31,7 @@ See [SPEC-0000](0000-spec-policy.md) for the full policy.
 | [0009](0009-lua-tools.md) | Lua MCP Tool Extensions | Authoritative |
 | [0010](0010-rust-extension-traits.md) | Rust Extension Traits | Authoritative |
 | [0011](0011-mcp-agents.md) | MCP Agents | Authoritative |
+| [0012](0012-config-resolution.md) | Config Resolution and Directory Layout | Draft |
 
 ## Creating a New Spec
 
