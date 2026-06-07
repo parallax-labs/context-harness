@@ -1,9 +1,9 @@
-# DESIGN-0006: XDG-Compliant Config and Data Directories
+# DESIGN-0007: XDG-Compliant Config and Data Directories
 
 **Status:** Planning
 **Date:** 2026-02-28
 **Author:** pjones
-**Related:** [PRD-0011](../prd/0011-native-app.md), [ADR-0010](../adr/0010-toml-configuration-with-env-expansion.md), [SPEC-0005](../spec/0005-usage-contract.md), [SPEC-0012](../spec/0012-config-resolution.md), [ADR-0021](../adr/0021-xdg-base-directory-compliance.md)
+**Related:** [PRD-0011](../prd/0011-native-app.md), [ADR-0010](../adr/0010-toml-configuration-with-env-expansion.md), [SPEC-0005](../spec/0005-usage-contract.md), [SPEC-0013](../spec/0013-config-resolution.md), [ADR-0022](../adr/0022-xdg-base-directory-compliance.md)
 
 ## Context
 
@@ -190,7 +190,7 @@ Migrations:
 
 8. **Update docs, runbooks, and example configs.**
 
-9. **Write SPEC-0012 and ADR-0021.** Lock down the behavior and record the decision.
+9. **Write SPEC-0013 and ADR-0022.** Lock down the behavior and record the decision.
 
 ## Open Questions
 

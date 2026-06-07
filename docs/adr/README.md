@@ -29,7 +29,8 @@ including the context, alternatives considered, and consequences of each decisio
 | [0019](0019-agpl3-license.md) | AGPL-3.0 License | Accepted |
 | [0000](0000-adr-policy.md) | ADR Policy | Accepted |
 | [0020](0020-cross-platform-framework-selection.md) | Cross-Platform Framework Selection | Accepted |
-| [0021](0021-xdg-base-directory-compliance.md) | XDG Base Directory Compliance | Proposed |
+| [0021](0021-vector-index-acceleration.md) | Vector Index Acceleration | Proposed |
+| [0022](0022-xdg-base-directory-compliance.md) | XDG Base Directory Compliance | Proposed |
 
 ## Creating a New ADR
 

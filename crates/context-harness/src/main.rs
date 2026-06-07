@@ -47,6 +47,7 @@
 
 mod agent_script;
 mod agents;
+mod app_store;
 mod chunk;
 mod config;
 mod connector_fs;
@@ -79,6 +80,8 @@ mod traits;
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{generate, Shell};
 use std::path::PathBuf;
+
+use crate::app_store::SqliteAppStore;
 
 /// Context Harness CLI — a local-first context ingestion and retrieval
 /// framework for AI tools.
@@ -551,7 +554,7 @@ async fn main() -> anyhow::Result<()> {
     match cli.command {
         Commands::Init => {
             telemetry_guard = telemetry::track("ctx_init", serde_json::json!({}));
-            migrate::run_migrations(&cfg).await?;
+            SqliteAppStore::initialize_config(&cfg).await?;
             println!("Database initialized successfully.");
 
             // Offer to install the community registry if not already configured

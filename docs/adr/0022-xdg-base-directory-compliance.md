@@ -1,4 +1,4 @@
-# ADR-0021: XDG Base Directory Compliance
+# ADR-0022: XDG Base Directory Compliance
 
 **Status:** Proposed
 **Date:** 2026-02-28
@@ -94,7 +94,7 @@ A single file for global config is simple but doesn't address data, cache, or st
 ## References
 
 - [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir-spec/latest/)
-- [DESIGN-0006](../design/0006-xdg-config-directories.md) — Design exploration and implementation plan
-- [SPEC-0012](../spec/0012-config-resolution.md) — Authoritative config resolution spec
+- [DESIGN-0007](../design/0007-xdg-config-directories.md) — Design exploration and implementation plan
+- [SPEC-0013](../spec/0013-config-resolution.md) — Authoritative config resolution spec
 - [SPEC-0005](../spec/0005-usage-contract.md) — Current usage contract
 - [ADR-0010](0010-toml-configuration-with-env-expansion.md) — TOML config with env expansion

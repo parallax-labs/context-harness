@@ -19,11 +19,10 @@
 //! provider. Failed batches are logged but don't abort the entire operation.
 
 use anyhow::{bail, Result};
-use sha2::{Digest, Sha256};
-use sqlx::{Row, SqlitePool};
+use context_harness_core::store::Store;
 
+use crate::app_store::{hash_text, AppStore, SqliteAppStore};
 use crate::config::Config;
-use crate::db;
 use crate::embedding;
 
 /// Backfill embeddings for chunks that are missing or have stale hashes.
@@ -54,11 +53,11 @@ pub async fn run_embed_pending(
 
     let provider = embedding::create_provider(&config.embedding)?;
     let model_name = provider.model_name().to_string();
-    let pool = db::connect(config).await?;
+    let store = SqliteAppStore::connect(config).await?;
     let batch_size = batch_size_override.unwrap_or(config.embedding.batch_size);
 
     // Find chunks missing embeddings or with stale hashes
-    let pending = find_pending_chunks(&pool, &model_name, limit).await?;
+    let pending = store.find_pending_chunks(&model_name, limit).await?;
 
     if dry_run {
         println!("embed pending (dry-run)");
@@ -82,17 +81,16 @@ pub async fn run_embed_pending(
         match embedding::embed_texts(provider.as_ref(), &config.embedding, &texts).await {
             Ok(vectors) => {
                 for (item, vec) in batch.iter().zip(vectors.iter()) {
-                    let blob = embedding::vec_to_blob(vec);
-                    upsert_embedding(
-                        &pool,
-                        &item.chunk_id,
-                        &item.document_id,
-                        &model_name,
-                        provider.dims(),
-                        &item.text_hash,
-                        &blob,
-                    )
-                    .await?;
+                    store
+                        .upsert_embedding(
+                            &item.chunk_id,
+                            &item.document_id,
+                            vec,
+                            &model_name,
+                            provider.dims(),
+                            &item.text_hash,
+                        )
+                        .await?;
                     embedded += 1;
                 }
             }
@@ -108,7 +106,7 @@ pub async fn run_embed_pending(
     println!("  embedded: {}", embedded);
     println!("  failed: {}", failed);
 
-    pool.close().await;
+    store.close().await;
     Ok(())
 }
 
@@ -132,23 +130,20 @@ pub async fn run_embed_rebuild(config: &Config, batch_size_override: Option<usiz
 
     let provider = embedding::create_provider(&config.embedding)?;
     let model_name = provider.model_name().to_string();
-    let pool = db::connect(config).await?;
+    let store = SqliteAppStore::connect(config).await?;
     let batch_size = batch_size_override.unwrap_or(config.embedding.batch_size);
 
     // Delete all existing embeddings
-    sqlx::query("DELETE FROM chunk_vectors")
-        .execute(&pool)
-        .await?;
-    sqlx::query("DELETE FROM embeddings").execute(&pool).await?;
+    store.clear_embeddings().await?;
 
     println!("embed rebuild — cleared existing embeddings");
 
     // Get all chunks
-    let all_chunks = find_pending_chunks(&pool, &model_name, None).await?;
+    let all_chunks = store.find_pending_chunks(&model_name, None).await?;
 
     if all_chunks.is_empty() {
         println!("  no chunks to embed");
-        pool.close().await;
+        store.close().await;
         return Ok(());
     }
 
@@ -162,17 +157,16 @@ pub async fn run_embed_rebuild(config: &Config, batch_size_override: Option<usiz
         match embedding::embed_texts(provider.as_ref(), &config.embedding, &texts).await {
             Ok(vectors) => {
                 for (item, vec) in batch.iter().zip(vectors.iter()) {
-                    let blob = embedding::vec_to_blob(vec);
-                    upsert_embedding(
-                        &pool,
-                        &item.chunk_id,
-                        &item.document_id,
-                        &model_name,
-                        provider.dims(),
-                        &item.text_hash,
-                        &blob,
-                    )
-                    .await?;
+                    store
+                        .upsert_embedding(
+                            &item.chunk_id,
+                            &item.document_id,
+                            vec,
+                            &model_name,
+                            provider.dims(),
+                            &item.text_hash,
+                        )
+                        .await?;
                     embedded += 1;
                 }
             }
@@ -188,7 +182,7 @@ pub async fn run_embed_rebuild(config: &Config, batch_size_override: Option<usiz
     println!("  embedded: {}", embedded);
     println!("  failed: {}", failed);
 
-    pool.close().await;
+    store.close().await;
     Ok(())
 }
 
@@ -205,7 +199,7 @@ pub async fn run_embed_rebuild(config: &Config, batch_size_override: Option<usiz
 /// - `pending` — number of chunks that failed to embed
 pub async fn embed_chunks_inline(
     config: &Config,
-    pool: &SqlitePool,
+    store: &impl AppStore,
     chunks: &[crate::models::Chunk],
 ) -> (u64, u64) {
     if !config.embedding.is_enabled() {
@@ -229,13 +223,10 @@ pub async fn embed_chunks_inline(
         let mut need_embedding = Vec::new();
         for chunk in batch {
             let text_hash = hash_text(&chunk.text);
-            let existing: Option<String> =
-                sqlx::query_scalar("SELECT hash FROM embeddings WHERE chunk_id = ? AND model = ?")
-                    .bind(&chunk.id)
-                    .bind(&model_name)
-                    .fetch_optional(pool)
-                    .await
-                    .unwrap_or(None);
+            let existing = store
+                .get_embedding_hash(&chunk.id, &model_name)
+                .await
+                .unwrap_or(None);
 
             if existing.as_deref() == Some(&text_hash) {
                 // Already up to date
@@ -255,17 +246,16 @@ pub async fn embed_chunks_inline(
         match embedding::embed_texts(provider.as_ref(), &config.embedding, &texts).await {
             Ok(vectors) => {
                 for ((chunk, text_hash), vec) in need_embedding.iter().zip(vectors.iter()) {
-                    let blob = embedding::vec_to_blob(vec);
-                    if let Err(e) = upsert_embedding(
-                        pool,
-                        &chunk.id,
-                        &chunk.document_id,
-                        &model_name,
-                        provider.dims(),
-                        text_hash,
-                        &blob,
-                    )
-                    .await
+                    if let Err(e) = store
+                        .upsert_embedding(
+                            &chunk.id,
+                            &chunk.document_id,
+                            vec,
+                            &model_name,
+                            provider.dims(),
+                            text_hash,
+                        )
+                        .await
                     {
                         eprintln!("Warning: failed to store embedding for {}: {}", chunk.id, e);
                         pending += 1;
@@ -282,119 +272,4 @@ pub async fn embed_chunks_inline(
     }
 
     (embedded, pending)
-}
-
-/// A chunk that needs embedding (missing or stale).
-struct PendingChunk {
-    chunk_id: String,
-    document_id: String,
-    text: String,
-    text_hash: String,
-}
-
-/// Find chunks that are missing embeddings or have stale hashes.
-///
-/// A chunk is "pending" if:
-/// 1. No row exists in `embeddings` for this chunk+model, or
-/// 2. The stored `hash` differs from the chunk's current `hash`.
-async fn find_pending_chunks(
-    pool: &SqlitePool,
-    model: &str,
-    limit: Option<usize>,
-) -> Result<Vec<PendingChunk>> {
-    let limit_val = limit.unwrap_or(usize::MAX) as i64;
-
-    // Chunks that either have no embedding or have a stale hash
-    let rows = sqlx::query(
-        r#"
-        SELECT c.id AS chunk_id, c.document_id, c.text, c.hash AS chunk_hash
-        FROM chunks c
-        LEFT JOIN embeddings e ON e.chunk_id = c.id AND e.model = ?
-        WHERE e.chunk_id IS NULL OR e.hash != c.hash
-        ORDER BY c.document_id, c.chunk_index
-        LIMIT ?
-        "#,
-    )
-    .bind(model)
-    .bind(limit_val)
-    .fetch_all(pool)
-    .await?;
-
-    let results: Vec<PendingChunk> = rows
-        .iter()
-        .map(|row| {
-            let text: String = row.get("text");
-            let text_hash = hash_text(&text);
-            PendingChunk {
-                chunk_id: row.get("chunk_id"),
-                document_id: row.get("document_id"),
-                text,
-                text_hash,
-            }
-        })
-        .collect();
-
-    Ok(results)
-}
-
-/// Upsert an embedding into both `embeddings` (metadata) and `chunk_vectors` (blob).
-///
-/// Uses `INSERT ... ON CONFLICT DO UPDATE` for idempotent writes.
-async fn upsert_embedding(
-    pool: &SqlitePool,
-    chunk_id: &str,
-    document_id: &str,
-    model: &str,
-    dims: usize,
-    text_hash: &str,
-    blob: &[u8],
-) -> Result<()> {
-    let now = chrono::Utc::now().timestamp();
-
-    sqlx::query(
-        r#"
-        INSERT INTO embeddings (chunk_id, model, dims, created_at, hash)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(chunk_id) DO UPDATE SET
-            model = excluded.model,
-            dims = excluded.dims,
-            created_at = excluded.created_at,
-            hash = excluded.hash
-        "#,
-    )
-    .bind(chunk_id)
-    .bind(model)
-    .bind(dims as i64)
-    .bind(now)
-    .bind(text_hash)
-    .execute(pool)
-    .await?;
-
-    sqlx::query(
-        r#"
-        INSERT INTO chunk_vectors (chunk_id, document_id, embedding)
-        VALUES (?, ?, ?)
-        ON CONFLICT(chunk_id) DO UPDATE SET
-            document_id = excluded.document_id,
-            embedding = excluded.embedding
-        "#,
-    )
-    .bind(chunk_id)
-    .bind(document_id)
-    .bind(blob)
-    .execute(pool)
-    .await?;
-
-    Ok(())
-}
-
-/// Compute SHA-256 hash of text content (hex-encoded).
-///
-/// Used for embedding staleness detection: if the hash of the current
-/// chunk text differs from the hash stored in the `embeddings` table,
-/// the embedding is stale and needs to be regenerated.
-fn hash_text(text: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(text.as_bytes());
-    format!("{:x}", hasher.finalize())
 }

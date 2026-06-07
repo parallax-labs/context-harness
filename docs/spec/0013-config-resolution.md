@@ -1,4 +1,4 @@
-# SPEC-0012: Config Resolution and Directory Layout
+# SPEC-0013: Config Resolution and Directory Layout
 
 **Status:** Draft
 **Date:** 2026-02-28
