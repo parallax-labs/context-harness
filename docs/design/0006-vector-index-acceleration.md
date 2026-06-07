@@ -3,7 +3,7 @@
 **Status:** Draft
 **Date:** 2026-06-07
 **Author:** pjones / Codex
-**Related:** [ADR-0002](../adr/0002-sqlite-as-embedded-storage.md), [ADR-0003](../adr/0003-fts5-for-keyword-search.md), [ADR-0004](../adr/0004-brute-force-vector-search.md), [ADR-0018](../adr/0018-store-abstraction-and-workspace-split.md), [ADR-0021](../adr/0021-vector-index-acceleration.md), [SPEC-0002](../spec/0002-workspace-refactor.md), [SPEC-0003](../spec/0003-hybrid-scoring.md), [SPEC-0005](../spec/0005-usage-contract.md)
+**Related:** [ADR-0002](../adr/0002-sqlite-as-embedded-storage.md), [ADR-0003](../adr/0003-fts5-for-keyword-search.md), [ADR-0004](../adr/0004-brute-force-vector-search.md), [ADR-0018](../adr/0018-store-abstraction-and-workspace-split.md), [ADR-0021](../adr/0021-vector-index-acceleration.md), [SPEC-0002](../spec/0002-workspace-refactor.md), [SPEC-0003](../spec/0003-hybrid-scoring.md), [SPEC-0005](../spec/0005-usage-contract.md), [SPEC-0012](../spec/0012-storage-and-vector-index-interfaces.md)
 
 ## Context
 
@@ -30,18 +30,47 @@ This design therefore narrows the previous "replace SQLite with zvec" idea into 
 
 ## Proposal
 
-Add a vector-index abstraction behind the existing store/search flow while preserving SQLite/FTS5 as the canonical store.
+Add two prerequisite boundaries behind the existing CLI/search flow while preserving SQLite/FTS5 as the canonical store.
 
 The intended shape is:
 
 1. SQLite remains the source of truth for documents, chunks, checkpoints, embedding metadata, and keyword search.
 2. The current `chunk_vectors` table remains a compatibility and migration source at first.
-3. A new optional vector index receives vector upserts/deletes during chunk replacement and embedding commands.
-4. `SqliteStore::vector_search` delegates to the configured vector index when enabled.
-5. If the vector index is unavailable, stale, or disabled, the system falls back to the current brute-force SQLite vector search.
-6. Hybrid scoring remains owned by `context-harness-core` and continues to follow [SPEC-0003](../spec/0003-hybrid-scoring.md).
+3. An app-level `AppStore` wraps native SQLite operations that are outside the reusable core search trait.
+4. A new optional `VectorIndex` owns only vector candidate retrieval.
+5. `SqliteStore::vector_search` remains functionally equivalent in the prerequisite PR and continues to use the exact brute-force SQLite scan by default.
+6. If a future vector accelerator is unavailable, stale, or disabled, the system falls back to the current brute-force SQLite vector search.
+7. Hybrid scoring remains owned by `context-harness-core` and continues to follow [SPEC-0003](../spec/0003-hybrid-scoring.md).
 
 This avoids a premature full storage migration while still testing the part of the architecture that appears slow.
+
+## Prerequisite Tracks
+
+The first implementation work is intentionally not zvec and not sqlite-vec. It creates stable seams so later acceleration work can be evaluated without changing public behavior.
+
+### Track A: AppStore
+
+`AppStore` is an app-crate boundary for native operational storage:
+
+- initialization/migrations;
+- connector checkpoints;
+- canonical document upserts from `SourceItem`;
+- canonical chunk replacement;
+- embedding metadata/vector maintenance;
+- stats aggregation;
+- export DTOs.
+
+`AppStore` starts as `SqliteAppStore` backed by the existing `SqlitePool` and delegates reusable retrieval methods to the existing `SqliteStore`. This makes SQLite ownership explicit without moving native details into `context-harness-core`.
+
+### Track B: VectorIndex
+
+`VectorIndex` is an optional candidate-retrieval boundary for semantic search:
+
+- `DisabledVectorIndex` reports disabled/unavailable and produces no candidates.
+- `BruteForceSqliteVectorIndex` wraps the current exact SQLite vector scan and establishes the compatibility baseline.
+- Later zvec or sqlite-vec backends must return `ChunkCandidate` values that core hybrid scoring can consume unchanged.
+
+The prerequisite PR wires this interface only where behavior remains identical. Enabling a non-SQLite vector backend is a later decision after benchmark, recall, packaging, and fallback evidence.
 
 ## Alternatives Considered
 
@@ -238,26 +267,32 @@ Open questions:
    - Run it on several corpus sizes: 10k, 50k, 100k chunks.
    - Capture local and CI-machine baselines if possible.
 
-2. **Add a vector index abstraction.**
+2. **Add the AppStore prerequisite.**
+   - Define `AppStore`, `PendingChunk`, `StoreStats`, `SourceStats`, `ExportData`, `ExportDocument`, and `ExportChunk`.
+   - Add `SqliteAppStore` over the existing SQLite pool.
+   - Move checkpoint, pending embedding, clear embedding, stats, export, and source-item write SQL behind it without changing output.
+
+3. **Add the VectorIndex prerequisite.**
    - Define `VectorIndex`, `VectorRecord`, `VectorSearchOptions`, and `VectorIndexHealth`.
    - Add a disabled/no-op backend and a brute-force SQLite adapter for parity.
+   - Keep `SqliteStore::vector_search` functionally equivalent.
 
-3. **Refactor vector writes through one path.**
+4. **Later: refactor vector writes through one path.**
    - Keep writing `chunk_vectors`.
    - Also upsert/delete into the configured vector index from `replace_chunks`, `upsert_embedding`, and `embed rebuild`.
    - Add `ctx vector-index rebuild` or equivalent if the index is sidecar-backed.
 
-4. **Prototype zvec backend.**
+5. **Later: prototype zvec backend.**
    - Add zvec behind an optional feature.
    - Implement HNSW and Flat modes.
    - Preserve source/date filtering.
    - Benchmark latency and recall against the brute-force baseline.
 
-5. **Prototype sqlite-vec backend if packaging looks better.**
+6. **Later: prototype sqlite-vec backend if packaging looks better.**
    - Compare against zvec on the same probe.
    - Prefer the backend with the best balance of latency, recall, packaging, and complexity.
 
-6. **Decide default behavior.**
+7. **Decide default behavior.**
    - Keep disabled/default brute force if no backend clears the targets.
    - Enable the accelerator only after release packaging and fallback behavior are solid.
 
@@ -266,6 +301,9 @@ Open questions:
 - The ignored SQLite performance probe compiles and can be run locally.
 - The probe prints corpus shape, storage size, populate time, and search timings.
 - Current normal CI behavior is unchanged because the probe is ignored.
+- `AppStore` wraps app-level SQLite operations while preserving sync, embed, stats, and export output.
+- `VectorIndex` exists with disabled and brute-force SQLite baseline implementations.
+- The top-level `[vector_index]` config defaults to disabled and existing configs that omit it continue to load.
 - A future zvec/sqlite-vec prototype can be compared against the same benchmark shape.
 - SQLite/FTS5 remains the canonical keyword store.
 - The design does not require changing the current usage contract unless later benchmarks justify a larger migration.

@@ -19,6 +19,15 @@ provider = "disabled"
 # max_retries = 5
 # timeout_secs = 30
 
+# Optional vector-index acceleration.
+# Disabled preserves canonical SQLite/FTS5 storage and brute-force vector scan behavior.
+[vector_index]
+backend = "disabled"
+path = "./data/vector-index"
+metric = "cosine"
+index = "flat"
+fallback = "sqlite"
+
 # ── OpenAI example ──
 # [embedding]
 # provider = "openai"

@@ -5,103 +5,35 @@
 //! confidence that syncs and embeddings are working as expected.
 
 use anyhow::Result;
-use sqlx::Row;
 
+use crate::app_store::{AppStore, SqliteAppStore};
 use crate::config::Config;
-use crate::db;
-
-/// Per-source breakdown of document and chunk counts.
-struct SourceStats {
-    source: String,
-    doc_count: i64,
-    chunk_count: i64,
-    embedded_count: i64,
-    last_sync_ts: Option<i64>,
-}
 
 /// Run the stats command: query the database and print a summary.
 pub async fn run_stats(config: &Config) -> Result<()> {
-    let pool = db::connect(config).await?;
-
-    let total_docs: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM documents")
-        .fetch_one(&pool)
-        .await?;
-
-    let total_chunks: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM chunks")
-        .fetch_one(&pool)
-        .await?;
-
-    let total_embedded: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM chunk_vectors")
-        .fetch_one(&pool)
-        .await?;
-
-    let db_size = std::fs::metadata(&config.db.path)
-        .map(|m| m.len())
-        .unwrap_or(0);
+    let store = SqliteAppStore::connect(config).await?;
+    let stats = store.stats().await?;
 
     println!("Context Harness — Database Stats");
     println!("================================");
     println!();
     println!("  Database:    {}", config.db.path.display());
-    println!("  Size:        {}", format_bytes(db_size));
+    println!("  Size:        {}", format_bytes(stats.db_size_bytes));
     println!();
-    println!("  Documents:   {}", total_docs);
-    println!("  Chunks:      {}", total_chunks);
+    println!("  Documents:   {}", stats.total_docs);
+    println!("  Chunks:      {}", stats.total_chunks);
     println!(
         "  Embedded:    {} / {} ({}%)",
-        total_embedded,
-        total_chunks,
-        if total_chunks > 0 {
-            (total_embedded * 100) / total_chunks
+        stats.total_embedded,
+        stats.total_chunks,
+        if stats.total_chunks > 0 {
+            (stats.total_embedded * 100) / stats.total_chunks
         } else {
             0
         }
     );
 
-    // Per-source breakdown
-    let source_rows = sqlx::query(
-        r#"
-        SELECT
-            d.source,
-            COUNT(DISTINCT d.id) AS doc_count,
-            COUNT(DISTINCT c.id) AS chunk_count,
-            COUNT(DISTINCT cv.chunk_id) AS embedded_count
-        FROM documents d
-        LEFT JOIN chunks c ON c.document_id = d.id
-        LEFT JOIN chunk_vectors cv ON cv.chunk_id = c.id
-        GROUP BY d.source
-        ORDER BY doc_count DESC
-        "#,
-    )
-    .fetch_all(&pool)
-    .await?;
-
-    // Fetch checkpoint timestamps per source
-    let checkpoint_rows = sqlx::query("SELECT source, updated_at FROM checkpoints")
-        .fetch_all(&pool)
-        .await?;
-
-    let mut source_stats: Vec<SourceStats> = Vec::new();
-    for row in &source_rows {
-        let source: String = row.get("source");
-        let last_sync_ts = checkpoint_rows
-            .iter()
-            .find(|cp| {
-                let cp_source: String = cp.get("source");
-                cp_source == source
-            })
-            .map(|cp| cp.get::<i64, _>("updated_at"));
-
-        source_stats.push(SourceStats {
-            source,
-            doc_count: row.get("doc_count"),
-            chunk_count: row.get("chunk_count"),
-            embedded_count: row.get("embedded_count"),
-            last_sync_ts,
-        });
-    }
-
-    if !source_stats.is_empty() {
+    if !stats.sources.is_empty() {
         println!();
         println!("  By source:");
         println!(
@@ -110,7 +42,7 @@ pub async fn run_stats(config: &Config) -> Result<()> {
         );
         println!("  {}", "-".repeat(76));
 
-        for s in &source_stats {
+        for s in &stats.sources {
             let sync_display = match s.last_sync_ts {
                 Some(ts) => format_ts_relative(ts),
                 None => "never".to_string(),
@@ -124,7 +56,7 @@ pub async fn run_stats(config: &Config) -> Result<()> {
 
     println!();
 
-    pool.close().await;
+    store.close().await;
     Ok(())
 }
 

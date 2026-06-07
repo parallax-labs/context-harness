@@ -19,6 +19,13 @@
 //! model = "text-embedding-3-small"
 //! dims = 1536
 //!
+//! [vector_index]
+//! backend = "disabled"
+//! path = "./data/vector-index"
+//! metric = "cosine"
+//! index = "flat"
+//! fallback = "sqlite"
+//!
 //! [retrieval]
 //! final_limit = 12
 //! hybrid_alpha = 0.6            # 0.0 = keyword only, 1.0 = semantic only
@@ -72,6 +79,10 @@ pub struct Config {
     /// Embedding provider settings (defaults to disabled).
     #[serde(default)]
     pub embedding: EmbeddingConfig,
+    /// Optional vector-index acceleration settings (defaults to disabled).
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub vector_index: VectorIndexConfig,
     /// HTTP server bind address.
     #[allow(dead_code)]
     pub server: ServerConfig,
@@ -111,6 +122,7 @@ impl Config {
                 max_chunks_per_doc: default_max_chunks_per_doc(),
             },
             embedding: EmbeddingConfig::default(),
+            vector_index: VectorIndexConfig::default(),
             server: ServerConfig {
                 bind: "127.0.0.1:7331".to_string(),
             },
@@ -289,6 +301,66 @@ fn default_max_retries() -> u32 {
 }
 fn default_timeout_secs() -> u64 {
     30
+}
+
+/// Optional vector-index acceleration configuration.
+///
+/// The default is disabled and preserves the current exact SQLite vector scan
+/// path. Non-disabled backends are reserved for later evaluation PRs.
+#[derive(Debug, Deserialize, Clone)]
+pub struct VectorIndexConfig {
+    /// Backend name. Default: `"disabled"`.
+    #[serde(default = "default_vector_backend")]
+    #[allow(dead_code)]
+    pub backend: String,
+    /// Filesystem path for external vector-index state. Default: `"./data/vector-index"`.
+    #[serde(default = "default_vector_path")]
+    #[allow(dead_code)]
+    pub path: PathBuf,
+    /// Distance metric. Default: `"cosine"`.
+    #[serde(default = "default_vector_metric")]
+    #[allow(dead_code)]
+    pub metric: String,
+    /// Index kind. Default: `"flat"`.
+    #[serde(default = "default_vector_index")]
+    #[allow(dead_code)]
+    pub index: String,
+    /// Fallback strategy when acceleration is disabled or unavailable. Default: `"sqlite"`.
+    #[serde(default = "default_vector_fallback")]
+    #[allow(dead_code)]
+    pub fallback: String,
+}
+
+impl Default for VectorIndexConfig {
+    fn default() -> Self {
+        Self {
+            backend: default_vector_backend(),
+            path: default_vector_path(),
+            metric: default_vector_metric(),
+            index: default_vector_index(),
+            fallback: default_vector_fallback(),
+        }
+    }
+}
+
+fn default_vector_backend() -> String {
+    "disabled".to_string()
+}
+
+fn default_vector_path() -> PathBuf {
+    PathBuf::from("./data/vector-index")
+}
+
+fn default_vector_metric() -> String {
+    "cosine".to_string()
+}
+
+fn default_vector_index() -> String {
+    "flat".to_string()
+}
+
+fn default_vector_fallback() -> String {
+    "sqlite".to_string()
 }
 
 /// HTTP server configuration.
