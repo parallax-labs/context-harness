@@ -265,11 +265,13 @@ async fn brute_force_vector_index_matches_sqlite_vector_search_ordering() {
 }
 
 #[tokio::test]
-async fn disabled_vector_index_config_preserves_sqlite_fallback_defaults() {
+async fn auto_vector_index_config_preserves_sqlite_fallback_defaults() {
     let tmp = TempDir::new().unwrap();
     let cfg = test_config(&tmp);
 
-    assert_eq!(cfg.vector_index.backend, "disabled");
+    assert_eq!(cfg.vector_index.backend, "auto");
+    assert_eq!(cfg.vector_index.path, std::path::PathBuf::from("auto"));
+    assert_eq!(cfg.vector_index.index, "hnsw");
     assert_eq!(cfg.vector_index.fallback, "sqlite");
 
     let disabled = DisabledVectorIndex;

@@ -70,7 +70,7 @@ The first implementation work is intentionally not zvec and not sqlite-vec. It c
 - `BruteForceSqliteVectorIndex` wraps the current exact SQLite vector scan and establishes the compatibility baseline.
 - Later zvec or sqlite-vec backends must return `ChunkCandidate` values that core hybrid scoring can consume unchanged.
 
-The prerequisite PR wires this interface only where behavior remains identical. Enabling a non-SQLite vector backend is a later decision after benchmark, recall, packaging, and fallback evidence.
+The prerequisite PR wires this interface only where behavior remains identical. The intended product experience is plug-and-play: default `backend = "auto"` should use zvec when the binary supports it and fall back to SQLite when it does not.
 
 ## Alternatives Considered
 
@@ -247,18 +247,45 @@ Keep existing configs working. Add optional vector index settings rather than ch
 
 ```toml
 [vector_index]
-backend = "disabled"   # "disabled" | "zvec" | "sqlite-vec"
-path = "./data/vector-index"
+backend = "auto"       # "auto" | "zvec" | "sqlite" | "disabled" | "sqlite-vec"
+path = "auto"          # resolves beside the SQLite app store in the app data root
 metric = "cosine"
 index = "hnsw"         # backend-specific; "flat" for exact/debug mode
 fallback = "sqlite"    # use brute-force SQLite if the accelerator is unhealthy
 ```
 
-Open questions:
+The desired default layout is:
+
+```text
+<app-data-root>/
+  ctx.sqlite
+  vector-index/
+```
+
+SQLite remains the source of truth. The zvec directory is derived state and can be removed or rebuilt without re-syncing connectors.
+
+Bootstrap and maintenance commands should make this feel automatic:
+
+```bash
+ctx init                  # initializes SQLite and any auto-supported vector sidecar
+ctx vector-index status   # reports backend, health, freshness, and fallback mode
+ctx vector-index rebuild  # rebuilds the sidecar from SQLite embeddings
+```
+
+Explicit overrides are still useful for debugging, deterministic baselines, and packaging fallout:
+
+- `backend = "auto"`: use zvec when available, otherwise SQLite fallback.
+- `backend = "zvec"`: require zvec and error if it cannot initialize.
+- `backend = "sqlite"` or `"disabled"`: force the current brute-force path.
+
+Resolved questions:
 
 - Should this live under `[retrieval.vector_index]` instead of top-level `[vector_index]`?
+  - Keep it top-level because it has storage lifecycle, sidecar path, and rebuild behavior.
 - Should the default stay `"disabled"` until one backend has release-grade packaging?
+  - No. The desired product behavior is `auto` with SQLite fallback. Normal builds may still omit zvec support until CI proves the native packaging story.
 - Should `path` default beside `db.path`, e.g. `ctx.sqlite.vector-index/`?
+  - Use `path = "auto"` and resolve it under the same app data root as the SQLite file.
 
 ### Implementation Plan
 
@@ -282,9 +309,11 @@ Open questions:
    - Also upsert/delete into the configured vector index from `replace_chunks`, `upsert_embedding`, and `embed rebuild`.
    - Add `ctx vector-index rebuild` or equivalent if the index is sidecar-backed.
 
-5. **Later: prototype zvec backend.**
-   - Add zvec behind an optional feature.
-   - Implement HNSW and Flat modes.
+5. **Bake off zvec.**
+   - Add zvec behind optional `zvec-bundled` and `zvec-system` Cargo features.
+   - Add an ignored benchmark that builds a zvec sidecar from SQLite vectors and compares latency, index build time, sidecar size, and top-k overlap against the exact SQLite scan.
+   - Run the feature in CI/release target jobs to prove native packaging.
+   - Implement HNSW first and Flat mode if the Rust API exposes it cleanly.
    - Preserve source/date filtering.
    - Benchmark latency and recall against the brute-force baseline.
 
@@ -293,8 +322,9 @@ Open questions:
    - Prefer the backend with the best balance of latency, recall, packaging, and complexity.
 
 7. **Decide default behavior.**
-   - Keep disabled/default brute force if no backend clears the targets.
-   - Enable the accelerator only after release packaging and fallback behavior are solid.
+   - Keep `auto` as the product default.
+   - Let normal builds fall back to SQLite if they lack zvec support.
+   - Enable zvec in release builds only after CI proves supported targets build and the bake-off clears latency/recall thresholds.
 
 ## Acceptance Criteria
 
@@ -303,7 +333,8 @@ Open questions:
 - Current normal CI behavior is unchanged because the probe is ignored.
 - `AppStore` wraps app-level SQLite operations while preserving sync, embed, stats, and export output.
 - `VectorIndex` exists with disabled and brute-force SQLite baseline implementations.
-- The top-level `[vector_index]` config defaults to disabled and existing configs that omit it continue to load.
+- The top-level `[vector_index]` config defaults to auto, falls back to SQLite, and existing configs that omit it continue to load.
+- A zvec bake-off benchmark exists behind an opt-in Cargo feature.
 - A future zvec/sqlite-vec prototype can be compared against the same benchmark shape.
 - SQLite/FTS5 remains the canonical keyword store.
 - The design does not require changing the current usage contract unless later benchmarks justify a larger migration.
@@ -321,6 +352,7 @@ Open questions:
 - Existing `Store` abstraction and `SqliteStore`.
 - Benchmark probe in `crates/context-harness/tests/perf_sqlite_store.rs`.
 - Candidate backend investigation for zvec and sqlite-vec.
+- CI jobs that build the zvec feature on supported release targets.
 - Optional future retrieval eval dataset from [PRD-0009](../prd/0009-retrieval-quality-and-dogfooding.md).
 
 ## Open Questions

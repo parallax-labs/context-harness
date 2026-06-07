@@ -52,6 +52,7 @@ fastembed = { version = "5", optional = true, default-features = false, features
 tract-onnx = { version = "0.22", optional = true }
 tokenizers = { version = "0.19", optional = true }
 ndarray = { version = "0.16", optional = true }
+zvec = { version = "0.1", optional = true, default-features = false }
 
 [features]
 default = ["local-embeddings-fastembed"]
@@ -59,9 +60,12 @@ default = ["local-embeddings-fastembed"]
 local-embeddings-fastembed = ["dep:fastembed"]
 # Fallback: tract + tokenizers for musl and Intel Mac.
 local-embeddings-tract = ["dep:tract-onnx", "dep:tokenizers", "dep:ndarray"]
+# Experimental vector index bake-off. `zvec-bundled` exercises zvec's zero-setup
+# build path; `zvec-system` links against an installed libzvec_c_api.
+zvec-bundled = ["dep:zvec", "zvec/bundled"]
+zvec-system = ["dep:zvec"]
 
 [dev-dependencies]
 tempfile = "3"
 reqwest = { version = "0.12", default-features = false, features = ["json", "blocking", "rustls-tls"] }
 lopdf = "0.38"
-

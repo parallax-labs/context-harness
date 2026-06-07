@@ -20,12 +20,12 @@ provider = "disabled"
 # timeout_secs = 30
 
 # Optional vector-index acceleration.
-# Disabled preserves canonical SQLite/FTS5 storage and brute-force vector scan behavior.
+# Auto uses zvec when the binary supports it and falls back to SQLite otherwise.
 [vector_index]
-backend = "disabled"
-path = "./data/vector-index"
+backend = "auto"
+path = "auto"
 metric = "cosine"
-index = "flat"
+index = "hnsw"
 fallback = "sqlite"
 
 # ── OpenAI example ──

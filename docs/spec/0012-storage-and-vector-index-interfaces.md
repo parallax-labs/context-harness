@@ -18,7 +18,9 @@ This spec defines the storage boundary required before vector acceleration can b
 
 **ChunkCandidate** is the core search candidate shape consumed by semantic and hybrid scoring.
 
-**Disabled vector index** is the default vector-index mode. It is unavailable by design and relies on SQLite fallback behavior.
+**Auto vector index** is the default vector-index mode. It uses the built-in vector accelerator when the binary supports one and the accelerator initializes successfully, otherwise it relies on SQLite fallback behavior.
+
+**Disabled vector index** is an explicit override mode. It is unavailable by design and relies on SQLite fallback behavior.
 
 ## Requirements
 
@@ -38,23 +40,27 @@ This spec defines the storage boundary required before vector acceleration can b
 14. `VectorIndex` SHALL own optional vector candidate retrieval only.
 15. `VectorIndex` SHALL NOT own canonical document storage, chunk storage, checkpoint storage, FTS5 keyword search, stats, or export.
 16. `VectorIndex::search` implementations SHALL return `ChunkCandidate` values compatible with core semantic and hybrid scoring.
-17. `DisabledVectorIndex` SHALL report disabled and unavailable health.
-18. Disabled vector-index configuration SHALL preserve current semantic and hybrid search behavior through SQLite fallback.
-19. `BruteForceSqliteVectorIndex` SHALL return candidates with the same ordering and candidate shape as the current exact SQLite vector scan.
-20. `SqliteStore::vector_search` SHALL remain functionally equivalent during the prerequisite implementation.
-21. The default top-level `[vector_index]` configuration SHALL be:
+17. Auto vector-index configuration SHALL preserve current semantic and hybrid search behavior through SQLite fallback when no accelerator is available.
+18. `DisabledVectorIndex` SHALL report disabled and unavailable health.
+19. Disabled vector-index configuration SHALL preserve current semantic and hybrid search behavior through SQLite fallback.
+20. `BruteForceSqliteVectorIndex` SHALL return candidates with the same ordering and candidate shape as the current exact SQLite vector scan.
+21. `SqliteStore::vector_search` SHALL remain functionally equivalent during the prerequisite implementation.
+22. The default top-level `[vector_index]` configuration SHALL be:
 
 ```toml
 [vector_index]
-backend = "disabled"
-path = "./data/vector-index"
+backend = "auto"
+path = "auto"
 metric = "cosine"
-index = "flat"
+index = "hnsw"
 fallback = "sqlite"
 ```
 
-22. Config files that omit `[vector_index]` SHALL load with the default disabled configuration.
-23. No zvec, sqlite-vec, or new native vector-index dependency is required by this prerequisite spec.
+23. Config files that omit `[vector_index]` SHALL load with the default auto configuration.
+24. The `path = "auto"` value SHALL resolve to a sidecar vector-index directory under the same application data root as the SQLite database.
+25. A sidecar vector index SHALL be derived state that can be rebuilt from SQLite documents, chunks, and embeddings.
+26. zvec integration SHALL be evaluated behind an opt-in Cargo feature before it is used by normal builds.
+27. No zvec, sqlite-vec, or new native vector-index dependency is required by normal builds for this prerequisite spec.
 
 ## Acceptance Criteria
 
@@ -66,5 +72,6 @@ fallback = "sqlite"
 - Tests cover export DTOs matching the current `ctx export` JSON shape.
 - Tests cover stats document, chunk, and embedded counts.
 - Tests cover `BruteForceSqliteVectorIndex` ordering parity with `SqliteStore::vector_search`.
-- Tests cover disabled vector-index defaults and health.
+- Tests cover auto vector-index defaults, SQLite fallback, and disabled health.
 - Ignored SQLite performance benchmarks remain available for baseline and scaling evaluation.
+- Ignored zvec performance benchmarks remain available behind an opt-in zvec feature.
