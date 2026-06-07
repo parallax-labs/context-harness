@@ -129,6 +129,44 @@ Use HNSW for the default production index:
 
 Support Flat as a test/debug mode to compare exact recall against HNSW and against the current brute-force SQLite implementation.
 
+### Performance Proof Plan
+
+Before making zvec the default, use the ignored performance probe in `crates/context-harness/tests/perf_sqlite_store.rs` to establish SQLite baselines and compare candidate backends under the same synthetic corpus shape.
+
+Run the current SQLite baseline with:
+
+```bash
+cargo test -p context-harness --test perf_sqlite_store -- --ignored --nocapture
+```
+
+The probe accepts environment overrides:
+
+```bash
+CTX_PERF_DOCS=5000 \
+CTX_PERF_CHUNKS_PER_DOC=20 \
+CTX_PERF_DIMS=384 \
+CTX_PERF_REPEAT=5 \
+cargo test -p context-harness --test perf_sqlite_store -- --ignored --nocapture
+```
+
+Track at least:
+
+- corpus size: documents, chunks, dimensions, database/storage bytes
+- populate time
+- `keyword_search` min/median/average/max
+- `vector_search` min/median/average/max
+- `hybrid_search` min/median/average/max
+
+Initial local baseline on 2026-06-07 with 1,000 documents, 10 chunks per document, 384 dimensions, and 5 repeats:
+
+| Path | Median |
+|------|--------|
+| `keyword_search` | 12.95 ms |
+| `vector_search` | 193.09 ms |
+| `hybrid_search` | 293.13 ms |
+
+These numbers are not acceptance thresholds because developer hardware varies, but they are enough to justify benchmarking the current brute-force vector path before committing to a full replacement. A future zvec prototype should run the same corpus shape and report recall/latency against this baseline.
+
 ### Config
 
 Keep `[db] path = "./data/ctx.sqlite"` readable during migration for backward compatibility, but reinterpret it as a storage root when zvec is enabled. Add an optional backend selector:
