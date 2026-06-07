@@ -1,0 +1,61 @@
+{
+  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-config-schema/schema.json",
+  "productName": "Context Harness",
+  "version": "0.1.0",
+  "identifier": "com.parallaxlabs.context-harness",
+  "build": {
+    "beforeDevCommand": {
+      "script": "npm run dev",
+      "cwd": "./frontend"
+    },
+    "beforeBuildCommand": {
+      "script": "npm run build",
+      "cwd": "./frontend"
+    },
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "./frontend/dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "title": "Context Harness",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 600
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "DeveloperTool",
+    "shortDescription": "Local-first knowledge base for AI tools",
+    "longDescription": "Context Harness is a local-first context ingestion and retrieval framework for AI tools. This native app provides a visual interface for managing workspaces, connectors, search, and embeddings.",
+    "copyright": "Copyright (c) 2025 Parallax Labs",
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    },
+    "windows": {
+      "wix": {
+        "language": "en-US"
+      }
+    },
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": false
+      }
+    }
+  }
+}
