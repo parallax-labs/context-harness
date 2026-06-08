@@ -171,7 +171,7 @@ The default layout is backward-compatible:
 
 5. **Update local model cache.** Change fastembed and tract local model caches to `cache_dir()/models/` with env var fallback.
 
-6. **Update telemetry state.** Change telemetry state to `state_dir()/telemetry.json`.
+6. **Reserve state paths for non-analytics CLI state.** Keep `state_dir()` available for future logs or history, but do not create telemetry state.
 
 7. **Keep desktop/native path handling as follow-up.** This PR enforces CLI/app-crate defaults; any desktop-specific workspace creation should adopt the same `.ctx/` layout later.
 

@@ -217,5 +217,4 @@ The CLI SHALL NOT move existing legacy config, data, or registry files automatic
 6. `ctx init` with no config creates `.ctx/config.toml`, `.ctx/data/`, `.ctx/cache/`, and `.ctx/.gitignore`.
 7. Registries in `~/.ctx/registries/` are found when `$XDG_DATA_HOME/ctx/registries/` doesn't exist.
 8. Local embedding models are cached in `$XDG_CACHE_HOME/ctx/models/` by default.
-9. Telemetry state is stored in `$XDG_STATE_HOME/ctx/telemetry.json`.
-10. Docker deployments using `--config /app/config/ctx.toml` work without changes.
+9. Docker deployments using `--config /app/config/ctx.toml` work without changes.

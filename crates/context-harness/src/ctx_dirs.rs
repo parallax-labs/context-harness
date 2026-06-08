@@ -135,6 +135,7 @@ pub fn cache_dir() -> PathBuf {
     xdg_app_dir("CTX_CACHE_DIR", "XDG_CACHE_HOME", ".cache")
 }
 
+#[allow(dead_code)]
 pub fn state_dir() -> PathBuf {
     xdg_app_dir("CTX_STATE_DIR", "XDG_STATE_HOME", ".local/state")
 }
@@ -142,10 +143,6 @@ pub fn state_dir() -> PathBuf {
 #[allow(dead_code)]
 pub fn models_dir() -> PathBuf {
     cache_dir().join("models")
-}
-
-pub fn telemetry_state_path() -> PathBuf {
-    state_dir().join("telemetry.json")
 }
 
 pub fn registries_dir() -> PathBuf {
