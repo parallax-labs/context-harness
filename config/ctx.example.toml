@@ -21,6 +21,7 @@ provider = "disabled"
 
 # Optional vector-index acceleration.
 # Auto uses zvec when the binary supports it and falls back to SQLite otherwise.
+# path = "auto" resolves to .ctx/data/vector-index/zvec beside the SQLite DB.
 [vector_index]
 backend = "auto"
 path = "auto"

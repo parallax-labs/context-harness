@@ -913,6 +913,35 @@ fn validate_config(config: Config) -> Result<Config> {
         ),
     }
 
+    match config.vector_index.backend.as_str() {
+        "auto" | "zvec" | "sqlite" | "disabled" => {}
+        other => anyhow::bail!(
+            "Unknown vector_index.backend: '{}'. Must be auto, zvec, sqlite, or disabled.",
+            other
+        ),
+    }
+
+    match config.vector_index.metric.as_str() {
+        "cosine" => {}
+        other => anyhow::bail!("Unknown vector_index.metric: '{}'. Must be cosine.", other),
+    }
+
+    match config.vector_index.index.as_str() {
+        "hnsw" | "flat" => {}
+        other => anyhow::bail!(
+            "Unknown vector_index.index: '{}'. Must be hnsw or flat.",
+            other
+        ),
+    }
+
+    match config.vector_index.fallback.as_str() {
+        "sqlite" | "disabled" => {}
+        other => anyhow::bail!(
+            "Unknown vector_index.fallback: '{}'. Must be sqlite or disabled.",
+            other
+        ),
+    }
+
     Ok(config)
 }
 

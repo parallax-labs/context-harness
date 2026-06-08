@@ -51,8 +51,9 @@ This ADR is **Proposed**, not Accepted, because the vector backend, thresholds, 
 
 - The project can investigate the observed vector bottleneck without destabilizing the rest of the storage stack.
 - Existing SQLite/FTS5 benefits remain intact.
-- The design now needs an app-store boundary, a vector-index abstraction, health checks, rebuild support, and fallback behavior.
-- The zvec sidecar is derived state under the app data root and can be rebuilt from SQLite embeddings.
+- The app-store boundary and vector-index abstraction keep SQLite canonical while allowing semantic vector candidate retrieval to be accelerated.
+- The zvec sidecar is derived workspace-local state at `.ctx/data/vector-index/zvec` by default and can be rebuilt from SQLite embeddings.
+- `ctx vector-index status` and `ctx vector-index rebuild` provide explicit health and repair workflows.
 - zvec packaging can be validated by CI jobs that enable the zvec Cargo feature on supported release targets.
 - Candidate backends must be judged on latency, recall, packaging, and consistency complexity.
 - If a backend proves useful, accepted ADRs [ADR-0002](0002-sqlite-as-embedded-storage.md), [ADR-0003](0003-fts5-for-keyword-search.md), and [ADR-0004](0004-brute-force-vector-search.md) do not need to be superseded wholesale; only ADR-0004 may need updating or supersession for the vector-search implementation.

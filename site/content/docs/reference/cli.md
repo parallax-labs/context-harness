@@ -202,6 +202,34 @@ Dropping all embeddings...
 Embedding 584 chunks... done (18.7s)
 ```
 
+### `ctx vector-index status`
+
+Show the configured vector backend, sidecar path, SQLite vector count, and whether the derived sidecar is fresh.
+
+```bash
+$ ctx vector-index status
+vector-index status
+  backend: zvec
+  enabled: true
+  available: true
+  path: .ctx/data/vector-index/zvec
+  sqlite vectors: 584
+  fresh: true
+```
+
+### `ctx vector-index rebuild`
+
+Rebuild the derived zvec sidecar from canonical SQLite embeddings.
+
+```bash
+$ ctx vector-index rebuild
+vector-index rebuild
+  backend: zvec
+  path: .ctx/data/vector-index/zvec
+  sqlite vectors: 584
+  fresh: true
+```
+
 ---
 
 ### `ctx serve mcp`

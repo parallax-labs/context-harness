@@ -25,6 +25,7 @@ use crate::config::Config;
 use crate::db;
 use crate::embedding;
 use crate::sqlite_store::SqliteStore;
+use crate::vector_index;
 
 /// Core search function returning structured results.
 ///
@@ -60,7 +61,6 @@ pub async fn search_documents(
     }
 
     let pool = db::connect(config).await?;
-    let store = SqliteStore::new(pool.clone());
 
     let query_vec = if mode != "keyword" {
         let provider = embedding::create_provider(&config.embedding)?;
@@ -86,7 +86,13 @@ pub async fn search_documents(
         explain,
     };
 
-    let results = context_harness_core::search::search(&store, &req).await?;
+    let results = if mode == "keyword" {
+        let store = SqliteStore::new(pool.clone());
+        context_harness_core::search::search(&store, &req).await?
+    } else {
+        let store = vector_index::configured_vector_store(config, pool.clone()).await?;
+        context_harness_core::search::search(&store, &req).await?
+    };
 
     pool.close().await;
     Ok(results)

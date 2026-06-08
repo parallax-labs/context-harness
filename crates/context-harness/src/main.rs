@@ -77,6 +77,7 @@ mod telemetry;
 mod tool_script;
 #[allow(dead_code)]
 mod traits;
+mod vector_index;
 
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{generate, Shell};
@@ -223,6 +224,12 @@ enum Commands {
         action: EmbedAction,
     },
 
+    /// Manage the derived vector-index sidecar.
+    VectorIndex {
+        #[command(subcommand)]
+        action: VectorIndexAction,
+    },
+
     /// Start the MCP-compatible HTTP server.
     ///
     /// Exposes Context Harness functionality via a JSON API for integration
@@ -318,6 +325,15 @@ enum EmbedAction {
         #[arg(long)]
         batch_size: Option<usize>,
     },
+}
+
+/// Vector-index management subcommands.
+#[derive(Subcommand)]
+enum VectorIndexAction {
+    /// Show configured backend, sidecar path, and freshness.
+    Status,
+    /// Rebuild the sidecar from canonical SQLite embeddings.
+    Rebuild,
 }
 
 /// Connector management subcommands.
@@ -652,6 +668,43 @@ async fn main() -> anyhow::Result<()> {
             }
             EmbedAction::Rebuild { batch_size } => {
                 embed_cmd::run_embed_rebuild(&cfg, batch_size).await?;
+            }
+        },
+        Commands::VectorIndex { action } => match action {
+            VectorIndexAction::Status => {
+                let status = vector_index::vector_index_status(&cfg).await?;
+                println!("vector-index status");
+                println!("  backend: {}", status.health.backend);
+                println!("  enabled: {}", status.health.enabled);
+                println!("  available: {}", status.health.available);
+                println!("  path: {}", status.path.display());
+                println!("  sqlite vectors: {}", status.sqlite_vector_count);
+                println!("  fresh: {}", status.fresh);
+                if let Some(manifest) = status.manifest {
+                    println!("  sidecar vectors: {}", manifest.vector_count);
+                    println!(
+                        "  sidecar: metric={}, index={}, dims={}",
+                        manifest.metric,
+                        manifest.index,
+                        manifest
+                            .dims
+                            .map(|dims| dims.to_string())
+                            .unwrap_or_else(|| "unknown".to_string())
+                    );
+                } else {
+                    println!("  sidecar: missing");
+                }
+                if let Some(message) = status.health.message {
+                    println!("  message: {}", message);
+                }
+            }
+            VectorIndexAction::Rebuild => {
+                let status = vector_index::rebuild_configured_vector_index(&cfg).await?;
+                println!("vector-index rebuild");
+                println!("  backend: {}", status.health.backend);
+                println!("  path: {}", status.path.display());
+                println!("  sqlite vectors: {}", status.sqlite_vector_count);
+                println!("  fresh: {}", status.fresh);
             }
         },
         Commands::Serve { service } => match service {

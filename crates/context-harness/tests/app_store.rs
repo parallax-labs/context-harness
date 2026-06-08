@@ -5,12 +5,35 @@ use context_harness::config::Config;
 use context_harness::models::{Document, SourceItem};
 use context_harness::sqlite_store::SqliteStore;
 use context_harness::vector_index::{
-    BruteForceSqliteVectorIndex, DisabledVectorIndex, VectorIndex, VectorSearchOptions,
+    self, BruteForceSqliteVectorIndex, DisabledVectorIndex, VectorIndex, VectorSearchOptions,
 };
+#[cfg(feature = "zvec-bundled")]
+use context_harness_core::search::{search, SearchParams, SearchRequest};
 use context_harness_core::store::Store;
 use tempfile::TempDir;
 
 fn test_config(tmp: &TempDir) -> Config {
+    let db_path = tmp.path().join("ctx.sqlite");
+    let config_content = format!(
+        r#"
+[db]
+path = "{}"
+
+[chunking]
+max_tokens = 700
+
+[retrieval]
+final_limit = 12
+
+[server]
+bind = "127.0.0.1:0"
+"#,
+        db_path.display()
+    );
+    toml::from_str(&config_content).unwrap()
+}
+
+fn test_config_without_vector_index(tmp: &TempDir) -> Config {
     let db_path = tmp.path().join("ctx.sqlite");
     let config_content = format!(
         r#"
@@ -66,6 +89,45 @@ async fn seed_document(
     store.upsert_document(&doc).await.unwrap();
     let chunks = chunk_text(id, body, 700);
     store.replace_chunks(id, &chunks, None).await.unwrap();
+}
+
+async fn seed_vector_documents(store: &SqliteAppStore) {
+    seed_document(
+        store,
+        "doc-a",
+        "filesystem:test",
+        "a.md",
+        "alpha beta deployment",
+    )
+    .await;
+    seed_document(
+        store,
+        "doc-b",
+        "filesystem:test",
+        "b.md",
+        "gamma delta security",
+    )
+    .await;
+
+    let pending = store.find_pending_chunks("model-a", None).await.unwrap();
+    for item in pending {
+        let vector = if item.document_id == "doc-a" {
+            vec![1.0, 0.0]
+        } else {
+            vec![0.0, 1.0]
+        };
+        store
+            .upsert_embedding(
+                &item.chunk_id,
+                &item.document_id,
+                &vector,
+                "model-a",
+                2,
+                &item.text_hash,
+            )
+            .await
+            .unwrap();
+    }
 }
 
 #[tokio::test]
@@ -267,7 +329,7 @@ async fn brute_force_vector_index_matches_sqlite_vector_search_ordering() {
 #[tokio::test]
 async fn auto_vector_index_config_preserves_sqlite_fallback_defaults() {
     let tmp = TempDir::new().unwrap();
-    let cfg = test_config(&tmp);
+    let cfg = test_config_without_vector_index(&tmp);
 
     assert_eq!(cfg.vector_index.backend, "auto");
     assert_eq!(cfg.vector_index.path, std::path::PathBuf::from("auto"));
@@ -290,6 +352,211 @@ async fn auto_vector_index_config_preserves_sqlite_fallback_defaults() {
         .await
         .unwrap()
         .is_empty());
+}
+
+#[tokio::test]
+async fn auto_vector_index_uses_sqlite_fallback_without_explicit_config() {
+    let tmp = TempDir::new().unwrap();
+    let cfg = test_config_without_vector_index(&tmp);
+    SqliteAppStore::initialize_config(&cfg).await.unwrap();
+    let store = SqliteAppStore::connect(&cfg).await.unwrap();
+    seed_vector_documents(&store).await;
+
+    let indexed = vector_index::configured_vector_store(&cfg, store.pool().clone())
+        .await
+        .unwrap();
+    let candidates = indexed
+        .vector_search(&[0.9, 0.1], 2, None, None)
+        .await
+        .unwrap();
+
+    assert_eq!(candidates.len(), 2);
+    assert_eq!(candidates[0].document_id, "doc-a");
+}
+
+#[tokio::test]
+async fn vector_index_auto_path_resolves_beside_sqlite_database() {
+    let tmp = TempDir::new().unwrap();
+    let cfg = test_config_without_vector_index(&tmp);
+
+    assert_eq!(
+        vector_index::resolve_vector_index_path(&cfg),
+        tmp.path().join("vector-index").join("zvec")
+    );
+
+    let minimal = Config::minimal();
+    assert_eq!(
+        vector_index::resolve_vector_index_path(&minimal),
+        std::path::PathBuf::from(".ctx/data/vector-index/zvec")
+    );
+}
+
+#[tokio::test]
+async fn explicit_disabled_backend_still_preserves_sqlite_fallback_search() {
+    let tmp = TempDir::new().unwrap();
+    let mut cfg = test_config_without_vector_index(&tmp);
+    cfg.vector_index.backend = "disabled".to_string();
+    cfg.vector_index.fallback = "sqlite".to_string();
+    SqliteAppStore::initialize_config(&cfg).await.unwrap();
+    let store = SqliteAppStore::connect(&cfg).await.unwrap();
+    seed_vector_documents(&store).await;
+
+    let indexed = vector_index::configured_vector_store(&cfg, store.pool().clone())
+        .await
+        .unwrap();
+    let candidates = indexed
+        .vector_search(&[0.1, 0.9], 2, None, None)
+        .await
+        .unwrap();
+
+    assert_eq!(candidates[0].document_id, "doc-b");
+}
+
+#[cfg(feature = "zvec-bundled")]
+#[tokio::test]
+async fn zvec_sidecar_builds_and_queries_candidates() {
+    let tmp = TempDir::new().unwrap();
+    let cfg = test_config_without_vector_index(&tmp);
+    SqliteAppStore::initialize_config(&cfg).await.unwrap();
+    let store = SqliteAppStore::connect(&cfg).await.unwrap();
+    seed_vector_documents(&store).await;
+
+    let indexed = vector_index::configured_vector_store(&cfg, store.pool().clone())
+        .await
+        .unwrap();
+    let candidates = indexed
+        .vector_search(&[0.9, 0.1], 2, None, None)
+        .await
+        .unwrap();
+    let status = vector_index::vector_index_status(&cfg).await.unwrap();
+
+    assert_eq!(candidates[0].document_id, "doc-a");
+    assert_eq!(status.health.backend, "zvec");
+    assert!(status.health.available);
+    assert!(status.fresh);
+    assert!(status.path.join("manifest.json").exists());
+}
+
+#[cfg(feature = "zvec-bundled")]
+#[tokio::test]
+async fn zvec_semantic_and_hybrid_search_remain_compatible() {
+    let tmp = TempDir::new().unwrap();
+    let cfg = test_config_without_vector_index(&tmp);
+    SqliteAppStore::initialize_config(&cfg).await.unwrap();
+    let store = SqliteAppStore::connect(&cfg).await.unwrap();
+    seed_vector_documents(&store).await;
+
+    let sqlite = SqliteStore::new(store.pool().clone());
+    let indexed = vector_index::configured_vector_store(&cfg, store.pool().clone())
+        .await
+        .unwrap();
+    let params = SearchParams {
+        hybrid_alpha: 0.6,
+        candidate_k_keyword: 10,
+        candidate_k_vector: 10,
+        final_limit: 10,
+    };
+    let semantic_req = SearchRequest {
+        query: "deployment",
+        query_vec: Some(&[0.9, 0.1]),
+        mode: "semantic",
+        source_filter: None,
+        since: None,
+        params: params.clone(),
+        explain: true,
+    };
+    let sqlite_semantic = search(&sqlite, &semantic_req).await.unwrap();
+    let zvec_semantic = search(&indexed, &semantic_req).await.unwrap();
+
+    assert_eq!(sqlite_semantic[0].id, zvec_semantic[0].id);
+    assert_eq!(zvec_semantic[0].id, "doc-a");
+
+    let hybrid_req = SearchRequest {
+        query: "deployment",
+        query_vec: Some(&[0.9, 0.1]),
+        mode: "hybrid",
+        source_filter: None,
+        since: None,
+        params,
+        explain: true,
+    };
+    let hybrid = search(&indexed, &hybrid_req).await.unwrap();
+    let explain = hybrid[0].explain.as_ref().unwrap();
+
+    assert_eq!(hybrid[0].id, "doc-a");
+    assert_eq!(explain.keyword_candidates, 1);
+    assert_eq!(explain.vector_candidates, 2);
+    assert!((explain.alpha - 0.6).abs() < f64::EPSILON);
+}
+
+#[cfg(feature = "zvec-bundled")]
+#[tokio::test]
+async fn zvec_rebuild_handles_missing_and_stale_sidecar_state() {
+    let tmp = TempDir::new().unwrap();
+    let cfg = test_config_without_vector_index(&tmp);
+    SqliteAppStore::initialize_config(&cfg).await.unwrap();
+    let store = SqliteAppStore::connect(&cfg).await.unwrap();
+    seed_vector_documents(&store).await;
+
+    let indexed = vector_index::configured_vector_store(&cfg, store.pool().clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        indexed
+            .vector_search(&[0.9, 0.1], 2, None, None)
+            .await
+            .unwrap()[0]
+            .document_id,
+        "doc-a"
+    );
+    drop(indexed);
+
+    vector_index::remove_configured_sidecar(&cfg).unwrap();
+    let rebuilt = vector_index::configured_vector_store(&cfg, store.pool().clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        rebuilt
+            .vector_search(&[0.9, 0.1], 2, None, None)
+            .await
+            .unwrap()[0]
+            .document_id,
+        "doc-a"
+    );
+    drop(rebuilt);
+
+    std::fs::write(
+        vector_index::resolve_vector_index_path(&cfg).join("manifest.json"),
+        r#"{"version":1,"backend":"zvec","vector_count":0,"model":null,"dims":null,"metric":"cosine","index":"hnsw","digest":"stale"}"#,
+    )
+    .unwrap();
+    let status = vector_index::rebuild_configured_vector_index(&cfg)
+        .await
+        .unwrap();
+    assert!(status.fresh);
+    assert_eq!(status.manifest.unwrap().vector_count, 2);
+}
+
+#[cfg(feature = "zvec-bundled")]
+#[tokio::test]
+async fn auto_zvec_falls_back_to_sqlite_when_sidecar_is_unhealthy() {
+    let tmp = TempDir::new().unwrap();
+    let mut cfg = test_config_without_vector_index(&tmp);
+    cfg.vector_index.path = tmp.path().join("not-a-directory");
+    SqliteAppStore::initialize_config(&cfg).await.unwrap();
+    let store = SqliteAppStore::connect(&cfg).await.unwrap();
+    seed_vector_documents(&store).await;
+    std::fs::write(&cfg.vector_index.path, "blocking file").unwrap();
+
+    let indexed = vector_index::configured_vector_store(&cfg, store.pool().clone())
+        .await
+        .unwrap();
+    let candidates = indexed
+        .vector_search(&[0.1, 0.9], 2, None, None)
+        .await
+        .unwrap();
+
+    assert_eq!(candidates[0].document_id, "doc-b");
 }
 
 #[tokio::test]

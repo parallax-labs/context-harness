@@ -6,7 +6,7 @@
 
 ## Overview
 
-This spec defines the storage boundary required before vector acceleration can be evaluated. SQLite/FTS5 remains canonical. Optional vector indexes MAY accelerate semantic candidate retrieval, but they MUST NOT become authoritative for documents, chunks, checkpoints, keyword search, stats, or export unless a later spec changes that contract.
+This spec defines the storage boundary and production vector-index sidecar behavior. SQLite/FTS5 remains canonical. Optional vector indexes MAY accelerate semantic candidate retrieval, but they MUST NOT become authoritative for documents, chunks, checkpoints, keyword search, stats, or export unless a later spec changes that contract.
 
 ## Definitions
 
@@ -57,10 +57,16 @@ fallback = "sqlite"
 ```
 
 23. Config files that omit `[vector_index]` SHALL load with the default auto configuration.
-24. The `path = "auto"` value SHALL resolve to a sidecar vector-index directory under the same application data root as the SQLite database.
+24. The `path = "auto"` value SHALL resolve to `.ctx/data/vector-index/zvec` for the default workspace database, or to `<db-parent>/vector-index/zvec` for an explicit SQLite database path.
 25. A sidecar vector index SHALL be derived state that can be rebuilt from SQLite documents, chunks, and embeddings.
-26. zvec integration SHALL be evaluated behind an opt-in Cargo feature before it is used by normal builds.
-27. No zvec, sqlite-vec, or new native vector-index dependency is required by normal builds for this prerequisite spec.
+26. zvec integration SHALL be available behind the `zvec-bundled` Cargo feature.
+27. Normal builds that do not include zvec SHALL keep working through SQLite fallback.
+28. `backend = "auto"` SHALL build or open a fresh zvec sidecar when zvec is compiled in and SQLite vectors exist.
+29. `backend = "auto"` SHALL fall back to SQLite when zvec is not compiled in, unavailable, or unhealthy.
+30. `backend = "zvec"` SHALL return an error when zvec is not compiled in or cannot initialize.
+31. The zvec sidecar SHALL include a manifest with vector count, model, dims, metric, index kind, and a digest of canonical SQLite embedding rows.
+32. Missing or stale zvec sidecar state SHALL be rebuildable from SQLite embeddings.
+33. The CLI SHALL expose `ctx vector-index status` and `ctx vector-index rebuild`.
 
 ## Acceptance Criteria
 
@@ -73,5 +79,6 @@ fallback = "sqlite"
 - Tests cover stats document, chunk, and embedded counts.
 - Tests cover `BruteForceSqliteVectorIndex` ordering parity with `SqliteStore::vector_search`.
 - Tests cover auto vector-index defaults, SQLite fallback, and disabled health.
+- Tests cover zvec sidecar build/query, semantic/hybrid compatibility, SQLite fallback, and missing/stale sidecar rebuild behavior when `zvec-bundled` is enabled.
 - Ignored SQLite performance benchmarks remain available for baseline and scaling evaluation.
 - Ignored zvec performance benchmarks remain available behind an opt-in zvec feature.
