@@ -6,6 +6,8 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+#[cfg(feature = "zvec-bundled")]
+use std::sync::RwLock;
 
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
@@ -728,6 +730,7 @@ pub struct ZvecVectorIndex {
     pool: SqlitePool,
     path: PathBuf,
     collection: zvec::Collection,
+    metadata: RwLock<Vec<IndexedVectorRecord>>,
 }
 
 #[cfg(feature = "zvec-bundled")]
@@ -753,18 +756,19 @@ impl ZvecVectorIndex {
     async fn open_existing(config: &Config, pool: SqlitePool) -> Result<Self> {
         let path = resolve_vector_index_path(config);
         let collection_path = path.join(COLLECTION_DIR);
-        let collection = zvec::Collection::open(collection_path.to_string_lossy().as_ref(), None)
-            .with_context(|| {
+        let collection = zvec::Collection::open(&collection_path).with_context(|| {
             format!(
                 "failed to open zvec collection {}",
                 collection_path.display()
             )
         })?;
+        let snapshot = sqlite_vector_snapshot(&pool).await?;
         Ok(Self {
             config: config.clone(),
             pool,
             path,
             collection,
+            metadata: RwLock::new(snapshot.records),
         })
     }
 
@@ -799,25 +803,22 @@ impl ZvecVectorIndex {
             .first()
             .map(|r| r.record.dims)
             .ok_or_else(|| anyhow!("SQLite has no vectors to index"))?;
-        let schema = zvec_schema(dims, &config.vector_index.index)?;
+        let schema = zvec_schema(dims)?;
         let collection_path = path.join(COLLECTION_DIR);
-        let collection = zvec::Collection::create_and_open(
-            collection_path.to_string_lossy().as_ref(),
-            &schema,
-            None,
-        )
-        .with_context(|| {
-            format!(
-                "failed to create zvec collection {}",
-                collection_path.display()
-            )
-        })?;
+        let collection =
+            zvec::Collection::create_and_open(&collection_path, schema).with_context(|| {
+                format!(
+                    "failed to create zvec collection {}",
+                    collection_path.display()
+                )
+            })?;
 
         let index = Self {
             config: config.clone(),
             pool,
             path: path.clone(),
             collection,
+            metadata: RwLock::new(snapshot.records.clone()),
         };
         index.populate(&snapshot.records)?;
         index.collection.optimize()?;
@@ -831,20 +832,19 @@ impl ZvecVectorIndex {
         for record in records {
             batch.push(doc_from_record(record)?);
             if batch.len() == ZVEC_BATCH_SIZE {
-                self.upsert_docs(&batch)?;
+                self.insert_docs(&batch)?;
                 batch.clear();
             }
         }
         if !batch.is_empty() {
-            self.upsert_docs(&batch)?;
+            self.insert_docs(&batch)?;
         }
         self.collection.flush()?;
         Ok(())
     }
 
-    fn upsert_docs(&self, docs: &[zvec::Doc]) -> Result<()> {
-        let refs: Vec<&zvec::Doc> = docs.iter().collect();
-        self.collection.upsert(&refs)?;
+    fn insert_docs(&self, docs: &[zvec::Doc]) -> Result<()> {
+        self.collection.insert(docs)?;
         Ok(())
     }
 
@@ -882,7 +882,12 @@ impl VectorIndex for ZvecVectorIndex {
             updated_at: row.get("updated_at"),
         };
         let doc = doc_from_record(&indexed)?;
-        self.upsert_docs(&[doc])?;
+        let _ = self.collection.delete(&[record.chunk_id.as_str()]);
+        self.collection.insert(&[doc])?;
+        self.metadata
+            .write()
+            .map_err(|_| anyhow!("zvec metadata lock poisoned"))?
+            .push(indexed);
         self.collection.flush()?;
         Ok(())
     }
@@ -913,32 +918,37 @@ impl VectorIndex for ZvecVectorIndex {
             return Ok(Vec::new());
         }
         let since_ts = parse_since(options.since)?;
-        let topk = limit.saturating_mul(8).max(limit).min(i32::MAX as usize) as i32;
-        let query = zvec::VectorQuery::builder()
-            .field("embedding")
-            .vector_fp32(query_vec)
+        let topk = limit.saturating_mul(8).max(limit);
+        let query = zvec::VectorQuery::new("embedding")
             .topk(topk)
-            .build()?;
+            .include_doc_id(true)
+            .output_fields(&["chunk_id", "document_id", "source", "updated_at", "snippet"])
+            .vector(query_vec)?;
 
-        let rows = self.collection.query(&query)?;
+        let rows = self.collection.query(query)?;
+        let metadata = self
+            .metadata
+            .read()
+            .map_err(|_| anyhow!("zvec metadata lock poisoned"))?;
         let mut candidates = Vec::new();
         for row in rows.iter() {
-            let Some(chunk_id) = row.pk_copy() else {
+            let Some(record) = metadata.get(row.doc_id() as usize) else {
                 continue;
             };
-            let source = row.get_string("source")?.unwrap_or_default();
-            if options.source.is_some_and(|expected| source != expected) {
+            if options
+                .source
+                .is_some_and(|expected| record.source != expected)
+            {
                 continue;
             }
-            let updated_at = row.get_int64("updated_at")?;
-            if since_ts.is_some_and(|since| updated_at < since) {
+            if since_ts.is_some_and(|since| record.updated_at < since) {
                 continue;
             }
             candidates.push(ChunkCandidate {
-                chunk_id,
-                document_id: row.get_string("document_id")?.unwrap_or_default(),
-                raw_score: 1.0 - row.score() as f64,
-                snippet: row.get_string("snippet")?.unwrap_or_default(),
+                chunk_id: record.record.chunk_id.clone(),
+                document_id: record.record.document_id.clone(),
+                raw_score: row.score() as f64,
+                snippet: record.snippet.clone(),
             });
             if candidates.len() == limit {
                 break;
@@ -967,33 +977,26 @@ impl VectorIndex for ZvecVectorIndex {
 }
 
 #[cfg(feature = "zvec-bundled")]
-fn zvec_schema(dims: usize, index: &str) -> Result<zvec::CollectionSchema> {
-    let vector = match index {
-        "flat" => zvec::FieldSchema::vector_fp32("embedding", dims as u32)
-            .flat()
-            .metric(zvec::MetricType::Cosine),
-        _ => zvec::FieldSchema::vector_fp32("embedding", dims as u32)
-            .hnsw(16, 200)
-            .metric(zvec::MetricType::Cosine),
-    };
-
-    Ok(zvec::CollectionSchema::builder("context_chunks")
-        .field(zvec::FieldSchema::string("document_id").invert_index(true, false))
-        .field(zvec::FieldSchema::string("source").invert_index(true, false))
-        .field(zvec::FieldSchema::int64("updated_at").invert_index(true, false))
-        .field(zvec::FieldSchema::string("snippet"))
-        .field(vector)
-        .build()?)
+fn zvec_schema(dims: usize) -> Result<zvec::CollectionSchema> {
+    let mut schema = zvec::CollectionSchema::new("context_chunks");
+    schema.add_field(zvec::FieldSchema::string("chunk_id"))?;
+    schema.add_field(zvec::FieldSchema::string("document_id"))?;
+    schema.add_field(zvec::FieldSchema::string("source"))?;
+    schema.add_field(zvec::FieldSchema::int64("updated_at"))?;
+    schema.add_field(zvec::FieldSchema::string("snippet"))?;
+    schema.add_field(zvec::VectorSchema::fp32("embedding", dims as u32))?;
+    Ok(schema)
 }
 
 #[cfg(feature = "zvec-bundled")]
 fn doc_from_record(record: &IndexedVectorRecord) -> Result<zvec::Doc> {
-    let mut doc = zvec::Doc::new()?;
+    let mut doc = zvec::Doc::new();
     doc.set_pk(&record.record.chunk_id)?;
-    doc.add_string("document_id", &record.record.document_id)?;
-    doc.add_string("source", &record.source)?;
-    doc.add_int64("updated_at", record.updated_at)?;
-    doc.add_string("snippet", &record.snippet)?;
-    doc.add_vector_fp32("embedding", &record.record.vector)?;
+    doc.set_string("chunk_id", &record.record.chunk_id)?;
+    doc.set_string("document_id", &record.record.document_id)?;
+    doc.set_string("source", &record.source)?;
+    doc.set_int64("updated_at", record.updated_at)?;
+    doc.set_string("snippet", &record.snippet)?;
+    doc.set_vector("embedding", &record.record.vector)?;
     Ok(doc)
 }

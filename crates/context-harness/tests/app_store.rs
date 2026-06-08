@@ -111,9 +111,9 @@ async fn seed_vector_documents(store: &SqliteAppStore) {
     let pending = store.find_pending_chunks("model-a", None).await.unwrap();
     for item in pending {
         let vector = if item.document_id == "doc-a" {
-            vec![1.0, 0.0]
+            vec![1.0, 0.0, 0.0, 0.0]
         } else {
-            vec![0.0, 1.0]
+            vec![0.0, 1.0, 0.0, 0.0]
         };
         store
             .upsert_embedding(
@@ -121,7 +121,7 @@ async fn seed_vector_documents(store: &SqliteAppStore) {
                 &item.document_id,
                 &vector,
                 "model-a",
-                2,
+                4,
                 &item.text_hash,
             )
             .await
@@ -424,7 +424,7 @@ async fn auto_vector_index_uses_sqlite_fallback_without_explicit_config() {
         .await
         .unwrap();
     let candidates = indexed
-        .vector_search(&[0.9, 0.1], 2, None, None)
+        .vector_search(&[0.9, 0.1, 0.0, 0.0], 2, None, None)
         .await
         .unwrap();
 
@@ -463,7 +463,7 @@ async fn explicit_disabled_backend_still_preserves_sqlite_fallback_search() {
         .await
         .unwrap();
     let candidates = indexed
-        .vector_search(&[0.1, 0.9], 2, None, None)
+        .vector_search(&[0.1, 0.9, 0.0, 0.0], 2, None, None)
         .await
         .unwrap();
 
@@ -483,7 +483,7 @@ async fn zvec_sidecar_builds_and_queries_candidates() {
         .await
         .unwrap();
     let candidates = indexed
-        .vector_search(&[0.9, 0.1], 2, None, None)
+        .vector_search(&[0.9, 0.1, 0.0, 0.0], 2, None, None)
         .await
         .unwrap();
     let status = vector_index::vector_index_status(&cfg).await.unwrap();
@@ -516,7 +516,7 @@ async fn zvec_semantic_and_hybrid_search_remain_compatible() {
     };
     let semantic_req = SearchRequest {
         query: "deployment",
-        query_vec: Some(&[0.9, 0.1]),
+        query_vec: Some(&[0.9, 0.1, 0.0, 0.0]),
         mode: "semantic",
         source_filter: None,
         since: None,
@@ -531,7 +531,7 @@ async fn zvec_semantic_and_hybrid_search_remain_compatible() {
 
     let hybrid_req = SearchRequest {
         query: "deployment",
-        query_vec: Some(&[0.9, 0.1]),
+        query_vec: Some(&[0.9, 0.1, 0.0, 0.0]),
         mode: "hybrid",
         source_filter: None,
         since: None,
@@ -561,7 +561,7 @@ async fn zvec_rebuild_handles_missing_and_stale_sidecar_state() {
         .unwrap();
     assert_eq!(
         indexed
-            .vector_search(&[0.9, 0.1], 2, None, None)
+            .vector_search(&[0.9, 0.1, 0.0, 0.0], 2, None, None)
             .await
             .unwrap()[0]
             .document_id,
@@ -575,7 +575,7 @@ async fn zvec_rebuild_handles_missing_and_stale_sidecar_state() {
         .unwrap();
     assert_eq!(
         rebuilt
-            .vector_search(&[0.9, 0.1], 2, None, None)
+            .vector_search(&[0.9, 0.1, 0.0, 0.0], 2, None, None)
             .await
             .unwrap()[0]
             .document_id,
@@ -610,7 +610,7 @@ async fn auto_zvec_falls_back_to_sqlite_when_sidecar_is_unhealthy() {
         .await
         .unwrap();
     let candidates = indexed
-        .vector_search(&[0.1, 0.9], 2, None, None)
+        .vector_search(&[0.1, 0.9, 0.0, 0.0], 2, None, None)
         .await
         .unwrap();
 

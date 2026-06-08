@@ -352,7 +352,7 @@ dependencies = [
  "bitflags",
  "cexpr",
  "clang-sys",
- "itertools 0.12.1",
+ "itertools 0.10.5",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -741,7 +741,7 @@ dependencies = [
  "uuid",
  "walkdir",
  "zip",
- "zvec",
+ "zvec-bindings",
 ]
 
 [[package]]
@@ -5898,13 +5898,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "zvec"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6bd8ac51df24026a52849501c185202bf2d262ce545e8b3cf664c94fa2ac6751"
+name = "zvec-bindings"
+version = "0.3.1"
+source = "git+https://github.com/parallaxisjones/zvec-rust-binding?rev=6ef141f98234d1adc499f1d99ad89ba447f21757#6ef141f98234d1adc499f1d99ad89ba447f21757"
+dependencies = [
+ "thiserror 1.0.69",
+ "zvec-sys",
+]
+
+[[package]]
+name = "zvec-sys"
+version = "0.3.1"
+source = "git+https://github.com/parallaxisjones/zvec-rust-binding?rev=6ef141f98234d1adc499f1d99ad89ba447f21757#6ef141f98234d1adc499f1d99ad89ba447f21757"
 dependencies = [
  "bindgen",
- "sha2",
- "ureq 2.12.1",
- "zip",
 ]
