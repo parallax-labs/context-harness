@@ -62,6 +62,11 @@ candidate_k_vector = 80   # Vector candidate pool size
 group_by = "document"     # Group chunks by parent doc
 doc_agg = "max"           # Aggregation: "max" or "avg"
 max_chunks_per_doc = 3    # Max chunks per doc in results
+
+[vector_index]
+backend = "auto"          # Use zvec when compiled in and healthy
+path = "auto"             # .ctx/data/vector-index/zvec beside the SQLite DB
+fallback = "sqlite"       # Preserve semantic/hybrid search if zvec is unavailable
 ```
 
 **Guidelines:**
@@ -69,6 +74,7 @@ max_chunks_per_doc = 3    # Max chunks per doc in results
 - Decrease `final_limit` for agent use (agents work better with fewer, more relevant results)
 - Use `max_chunks_per_doc = 1` for broad coverage, higher for deep-dive queries
 - `hybrid_alpha = 0.6` is a good starting point — adjust based on whether your queries are more keyword-heavy or conceptual
+- `ctx vector-index status` reports sidecar health and freshness; `ctx vector-index rebuild` recreates the derived zvec sidecar from SQLite embeddings
 
 ### CLI search
 

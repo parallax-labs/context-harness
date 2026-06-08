@@ -53,6 +53,13 @@ group_by = "document"                  # Group chunks by parent document
 doc_agg = "max"                        # Aggregation: use max chunk score
 max_chunks_per_doc = 3                 # Max chunks per document in results
 
+[vector_index]
+backend = "auto"                       # zvec when available, SQLite fallback otherwise
+path = "auto"                          # .ctx/data/vector-index/zvec beside the SQLite DB
+metric = "cosine"
+index = "hnsw"
+fallback = "sqlite"
+
 [server]
 bind = "127.0.0.1:7331"               # HTTP server bind address
 

@@ -20,6 +20,7 @@ use crate::db;
 use crate::migrate;
 use crate::models::SourceItem;
 use crate::sqlite_store::SqliteStore;
+use crate::vector_index::{self, VectorRecord};
 
 /// A chunk that needs embedding because its embedding is missing or stale.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -144,7 +145,9 @@ impl Store for SqliteAppStore {
     ) -> Result<()> {
         self.core_store()
             .replace_chunks(doc_id, chunks, vectors)
-            .await
+            .await?;
+        vector_index::remove_configured_sidecar(&self.config)?;
+        Ok(())
     }
 
     async fn upsert_embedding(
@@ -158,7 +161,17 @@ impl Store for SqliteAppStore {
     ) -> Result<()> {
         self.core_store()
             .upsert_embedding(chunk_id, doc_id, vector, model, dims, content_hash)
-            .await
+            .await?;
+        let record = VectorRecord {
+            chunk_id: chunk_id.to_string(),
+            document_id: doc_id.to_string(),
+            vector: vector.to_vec(),
+            model: model.to_string(),
+            dims,
+            content_hash: content_hash.to_string(),
+        };
+        vector_index::sync_vector_record_after_sqlite(&self.config, &self.pool, &record).await?;
+        Ok(())
     }
 
     async fn get_document(&self, id: &str) -> Result<Option<DocumentResponse>> {
@@ -285,6 +298,7 @@ impl AppStore for SqliteAppStore {
         sqlx::query("DELETE FROM embeddings")
             .execute(&self.pool)
             .await?;
+        vector_index::remove_configured_sidecar(&self.config)?;
         Ok(())
     }
 

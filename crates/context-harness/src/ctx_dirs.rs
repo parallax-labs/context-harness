@@ -110,6 +110,10 @@ pub fn workspace_db_path() -> PathBuf {
     workspace_data_dir().join("ctx.sqlite")
 }
 
+pub fn workspace_vector_index_dir() -> PathBuf {
+    workspace_data_dir().join("vector-index").join("zvec")
+}
+
 pub fn workspace_cache_dir() -> PathBuf {
     workspace_dir().join("cache")
 }

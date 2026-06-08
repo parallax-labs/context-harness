@@ -247,8 +247,8 @@ Keep existing configs working. Add optional vector index settings rather than ch
 
 ```toml
 [vector_index]
-backend = "auto"       # "auto" | "zvec" | "sqlite" | "disabled" | "sqlite-vec"
-path = "auto"          # resolves beside the SQLite app store in the app data root
+backend = "auto"       # "auto" | "zvec" | "sqlite" | "disabled"
+path = "auto"          # resolves to .ctx/data/vector-index/zvec by default
 metric = "cosine"
 index = "hnsw"         # backend-specific; "flat" for exact/debug mode
 fallback = "sqlite"    # use brute-force SQLite if the accelerator is unhealthy
@@ -257,9 +257,10 @@ fallback = "sqlite"    # use brute-force SQLite if the accelerator is unhealthy
 The desired default layout is:
 
 ```text
-<app-data-root>/
+.ctx/data/
   ctx.sqlite
   vector-index/
+    zvec/
 ```
 
 SQLite remains the source of truth. The zvec directory is derived state and can be removed or rebuilt without re-syncing connectors.
