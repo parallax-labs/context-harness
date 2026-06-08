@@ -88,7 +88,6 @@ fn run_ctx_in_dir(root: &Path, args: &[&str], envs: &[(&str, &str)]) -> (String,
     let mut command = Command::new(&binary);
     command
         .current_dir(root)
-        .env("CTXH_DO_NOT_TRACK", "1")
         .env_remove("CTX_CONFIG")
         .env_remove("CTX_CONFIG_DIR")
         .env_remove("CTX_DATA_DIR")
