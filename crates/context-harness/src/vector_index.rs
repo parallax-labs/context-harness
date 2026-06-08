@@ -412,7 +412,7 @@ async fn configured_required_zvec(
 }
 
 pub fn resolve_vector_index_path(config: &Config) -> PathBuf {
-    if config.vector_index.path != PathBuf::from("auto") {
+    if config.vector_index.path != *"auto" {
         return config.vector_index.path.clone();
     }
 
