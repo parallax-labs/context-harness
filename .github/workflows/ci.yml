@@ -59,7 +59,7 @@ jobs:
             os: ubuntu-latest
             name: linux-x86_64
             zig: false
-            features: ""
+            features: "--no-default-features --features local-embeddings-tract,zvec-bundled"
 
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
@@ -72,7 +72,7 @@ jobs:
             os: ubuntu-24.04-arm
             name: linux-aarch64
             zig: false
-            features: ""
+            features: "--no-default-features --features local-embeddings-tract,zvec-bundled"
 
           - target: x86_64-apple-darwin
             os: macos-latest
@@ -84,7 +84,7 @@ jobs:
             os: macos-latest
             name: macos-aarch64
             zig: false
-            features: ""
+            features: "--no-default-features --features local-embeddings-tract,zvec-bundled"
 
           - target: x86_64-pc-windows-msvc
             os: windows-latest

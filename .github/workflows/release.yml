@@ -20,12 +20,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Primary: fastembed with bundled ORT (default features).
+          # Native Unix: tract embeddings plus statically linked zvec.
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             name: ctx-linux-x86_64
             zig: false
-            features: ""
+            features: "--no-default-features --features local-embeddings-tract,zvec-bundled"
 
           # Fallback: tract (pure Rust) for musl; Zig provides musl C++ toolchain.
           - target: x86_64-unknown-linux-musl
@@ -34,12 +34,12 @@ jobs:
             zig: true
             features: "--no-default-features --features local-embeddings-tract"
 
-          # Native aarch64 on ARM runner to avoid Zig cross-link issues (C++/ORT).
+          # Native aarch64 on ARM runner to avoid cross-link issues.
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-24.04-arm
             name: ctx-linux-aarch64
             zig: false
-            features: ""
+            features: "--no-default-features --features local-embeddings-tract,zvec-bundled"
 
           # Fallback: tract (pure Rust) for Intel Mac.
           - target: x86_64-apple-darwin
@@ -52,7 +52,7 @@ jobs:
             os: macos-latest
             name: ctx-macos-aarch64
             zig: false
-            features: ""
+            features: "--no-default-features --features local-embeddings-tract,zvec-bundled"
 
           - target: x86_64-pc-windows-msvc
             os: windows-latest
