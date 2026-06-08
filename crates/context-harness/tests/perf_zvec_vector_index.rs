@@ -25,7 +25,7 @@ mod zvec_bench {
     use sqlx::{Row, SqlitePool};
     use tempfile::TempDir;
     use walkdir::{DirEntry, WalkDir};
-    use zvec::{Collection, CollectionSchema, Doc, FieldSchema, MetricType, VectorQuery};
+    use zvec::{Collection, CollectionSchema, Doc, FieldSchema, VectorQuery, VectorSchema};
 
     const DEFAULT_DOCS: usize = 1_000;
     const DEFAULT_CHUNKS_PER_DOC: usize = 10;
@@ -90,8 +90,9 @@ mod zvec_bench {
         .await);
 
         let collection = create_collection(&zvec_path, scenario.dims);
+        let mut zvec_metadata = Vec::new();
         let build_ms = ms(timed(|| async {
-            populate_zvec_from_sqlite(&pool, &collection).await.unwrap();
+            zvec_metadata = populate_zvec_from_sqlite(&pool, &collection).await.unwrap();
         })
         .await);
         let optimize_ms = ms(timed(|| async {
@@ -110,7 +111,13 @@ mod zvec_bench {
             .vector_search(&query_vec, scenario.candidate_k, None, None)
             .await
             .unwrap();
-        let _ = zvec_search(&collection, &query_vec, scenario.candidate_k).unwrap();
+        let _ = zvec_search(
+            &collection,
+            &zvec_metadata,
+            &query_vec,
+            scenario.candidate_k,
+        )
+        .unwrap();
 
         let sqlite = measure_repeat(scenario.repeat, || async {
             store
@@ -121,7 +128,13 @@ mod zvec_bench {
         .await;
 
         let zvec = measure_repeat(scenario.repeat, || async {
-            zvec_search(&collection, &query_vec, scenario.candidate_k).unwrap()
+            zvec_search(
+                &collection,
+                &zvec_metadata,
+                &query_vec,
+                scenario.candidate_k,
+            )
+            .unwrap()
         })
         .await;
 
@@ -129,7 +142,13 @@ mod zvec_bench {
             .vector_search(&query_vec, scenario.candidate_k, None, None)
             .await
             .unwrap();
-        let zvec_top = zvec_search(&collection, &query_vec, scenario.candidate_k).unwrap();
+        let zvec_top = zvec_search(
+            &collection,
+            &zvec_metadata,
+            &query_vec,
+            scenario.candidate_k,
+        )
+        .unwrap();
         let topk_overlap = topk_overlap(&sqlite_top, &zvec_top);
 
         let report = ZvecBakeoffReport {
@@ -166,8 +185,9 @@ mod zvec_bench {
         .await);
 
         let collection = create_collection(&zvec_path, scenario.dims);
+        let mut zvec_metadata = Vec::new();
         let build_ms = ms(timed(|| async {
-            populate_zvec_from_sqlite(&pool, &collection).await.unwrap();
+            zvec_metadata = populate_zvec_from_sqlite(&pool, &collection).await.unwrap();
         })
         .await);
         let optimize_ms = ms(timed(|| async {
@@ -183,7 +203,13 @@ mod zvec_bench {
             .vector_search(&query_vec, scenario.candidate_k, None, None)
             .await
             .unwrap();
-        let _ = zvec_search(&collection, &query_vec, scenario.candidate_k).unwrap();
+        let _ = zvec_search(
+            &collection,
+            &zvec_metadata,
+            &query_vec,
+            scenario.candidate_k,
+        )
+        .unwrap();
 
         let sqlite = measure_repeat(scenario.repeat, || async {
             store
@@ -194,7 +220,13 @@ mod zvec_bench {
         .await;
 
         let zvec = measure_repeat(scenario.repeat, || async {
-            zvec_search(&collection, &query_vec, scenario.candidate_k).unwrap()
+            zvec_search(
+                &collection,
+                &zvec_metadata,
+                &query_vec,
+                scenario.candidate_k,
+            )
+            .unwrap()
         })
         .await;
 
@@ -202,7 +234,13 @@ mod zvec_bench {
             .vector_search(&query_vec, scenario.candidate_k, None, None)
             .await
             .unwrap();
-        let zvec_top = zvec_search(&collection, &query_vec, scenario.candidate_k).unwrap();
+        let zvec_top = zvec_search(
+            &collection,
+            &zvec_metadata,
+            &query_vec,
+            scenario.candidate_k,
+        )
+        .unwrap();
         let topk_overlap = topk_overlap(&sqlite_top, &zvec_top);
 
         let report = CorpusBakeoffReport {
@@ -222,24 +260,23 @@ mod zvec_bench {
     }
 
     fn create_collection(path: &Path, dims: usize) -> Collection {
-        let schema = CollectionSchema::builder("context_chunks")
-            .field(FieldSchema::string("document_id").invert_index(true, false))
-            .field(FieldSchema::string("snippet"))
-            .field(
-                FieldSchema::vector_fp32("embedding", dims as u32)
-                    .hnsw(16, 200)
-                    .metric(MetricType::Cosine),
-            )
-            .build()
+        let mut schema = CollectionSchema::new("context_chunks");
+        schema.add_field(FieldSchema::string("chunk_id")).unwrap();
+        schema
+            .add_field(FieldSchema::string("document_id"))
+            .unwrap();
+        schema.add_field(FieldSchema::string("snippet")).unwrap();
+        schema
+            .add_field(VectorSchema::fp32("embedding", dims as u32))
             .unwrap();
 
-        Collection::create_and_open(path.to_str().unwrap(), &schema, None).unwrap()
+        Collection::create_and_open(path, schema).unwrap()
     }
 
     async fn populate_zvec_from_sqlite(
         pool: &SqlitePool,
         collection: &Collection,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<Vec<ChunkCandidate>> {
         let rows = sqlx::query(
             r#"
             SELECT cv.chunk_id, cv.document_id, cv.embedding,
@@ -253,6 +290,7 @@ mod zvec_bench {
         .await?;
 
         let mut batch = Vec::with_capacity(ZVEC_BATCH_SIZE);
+        let mut metadata = Vec::with_capacity(rows.len());
         for row in rows {
             let chunk_id: String = row.get("chunk_id");
             let document_id: String = row.get("document_id");
@@ -260,11 +298,19 @@ mod zvec_bench {
             let snippet: String = row.get("snippet");
             let vector = blob_to_vec(&blob);
 
-            let mut doc = Doc::new().unwrap();
+            metadata.push(ChunkCandidate {
+                chunk_id: chunk_id.clone(),
+                document_id: document_id.clone(),
+                raw_score: 0.0,
+                snippet: snippet.clone(),
+            });
+
+            let mut doc = Doc::new();
             doc.set_pk(&chunk_id).unwrap();
-            doc.add_string("document_id", &document_id).unwrap();
-            doc.add_string("snippet", &snippet).unwrap();
-            doc.add_vector_fp32("embedding", &vector).unwrap();
+            doc.set_string("chunk_id", &chunk_id).unwrap();
+            doc.set_string("document_id", &document_id).unwrap();
+            doc.set_string("snippet", &snippet).unwrap();
+            doc.set_vector("embedding", &vector).unwrap();
             batch.push(doc);
 
             if batch.len() == ZVEC_BATCH_SIZE {
@@ -278,36 +324,35 @@ mod zvec_bench {
         }
 
         collection.flush().unwrap();
-        Ok(())
+        Ok(metadata)
     }
 
     fn insert_batch(collection: &Collection, docs: &[Doc]) {
-        let refs: Vec<&Doc> = docs.iter().collect();
-        collection.upsert(&refs).unwrap();
+        collection.insert(docs).unwrap();
     }
 
     fn zvec_search(
         collection: &Collection,
+        metadata: &[ChunkCandidate],
         query_vec: &[f32],
         limit: i64,
     ) -> anyhow::Result<Vec<ChunkCandidate>> {
-        let query = VectorQuery::builder()
-            .field("embedding")
-            .vector_fp32(query_vec)
-            .topk(limit as i32)
-            .build()?;
+        let query = VectorQuery::new("embedding")
+            .topk(limit.max(0) as usize)
+            .include_doc_id(true)
+            .vector(query_vec)?;
 
-        let rows = collection.query(&query)?;
+        let rows = collection.query(query)?;
         let mut candidates = Vec::new();
         for row in rows.iter() {
-            let Some(chunk_id) = row.pk_copy() else {
+            let Some(record) = metadata.get(row.doc_id() as usize) else {
                 continue;
             };
             candidates.push(ChunkCandidate {
-                chunk_id,
-                document_id: row.get_string("document_id")?.unwrap_or_default(),
+                chunk_id: record.chunk_id.clone(),
+                document_id: record.document_id.clone(),
                 raw_score: row.score() as f64,
-                snippet: row.get_string("snippet")?.unwrap_or_default(),
+                snippet: record.snippet.clone(),
             });
         }
         Ok(candidates)

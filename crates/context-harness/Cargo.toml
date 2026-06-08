@@ -51,7 +51,7 @@ fastembed = { version = "5", optional = true, default-features = false, features
 tract-onnx = { version = "0.22", optional = true }
 tokenizers = { version = "0.19", optional = true }
 ndarray = { version = "0.16", optional = true }
-zvec = { version = "0.1", optional = true, default-features = false }
+zvec = { package = "zvec-bindings", git = "https://github.com/parallaxisjones/zvec-rust-binding", rev = "6ef141f98234d1adc499f1d99ad89ba447f21757", optional = true, default-features = false }
 
 [features]
 default = ["local-embeddings-fastembed"]
@@ -59,8 +59,8 @@ default = ["local-embeddings-fastembed"]
 local-embeddings-fastembed = ["dep:fastembed"]
 # Fallback: tract + tokenizers for musl and Intel Mac.
 local-embeddings-tract = ["dep:tract-onnx", "dep:tokenizers", "dep:ndarray"]
-# Experimental vector index bake-off. Exercises zvec's zero-setup bundled build path.
-zvec-bundled = ["dep:zvec", "zvec/bundled"]
+# Release vector index accelerator. Uses zvec's zero-setup bundled build path.
+zvec-bundled = ["dep:zvec", "zvec/static"]
 
 [dev-dependencies]
 tempfile = "3"
