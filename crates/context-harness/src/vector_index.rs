@@ -412,7 +412,7 @@ async fn configured_required_zvec(
 }
 
 pub fn resolve_vector_index_path(config: &Config) -> PathBuf {
-    if config.vector_index.path != *"auto" {
+    if config.vector_index.path.as_os_str() != "auto" {
         return config.vector_index.path.clone();
     }
 
@@ -469,26 +469,52 @@ fn status_health(
             backend: "disabled".to_string(),
             message: Some("vector index disabled; SQLite fallback remains canonical".to_string()),
         },
-        "zvec" | "auto" if cfg!(feature = "zvec-bundled") => VectorIndexHealth {
+        "zvec" if cfg!(feature = "zvec-bundled") => VectorIndexHealth {
             enabled: true,
             available: fresh,
             backend: "zvec".to_string(),
-            message: Some(if sqlite_vector_count == 0 {
-                "SQLite has no vectors to index".to_string()
-            } else if manifest.is_none() {
-                "zvec sidecar missing".to_string()
-            } else if fresh {
-                "zvec sidecar fresh".to_string()
-            } else {
-                "zvec sidecar stale".to_string()
-            }),
+            message: Some(zvec_health_message(manifest, fresh, sqlite_vector_count)),
         },
-        _ => VectorIndexHealth {
+        "zvec" => VectorIndexHealth {
+            enabled: true,
+            available: false,
+            backend: "zvec".to_string(),
+            message: Some("zvec not compiled in; rebuild with --features zvec-bundled".to_string()),
+        },
+        "auto" if cfg!(feature = "zvec-bundled") => VectorIndexHealth {
+            enabled: true,
+            available: fresh,
+            backend: "zvec".to_string(),
+            message: Some(zvec_health_message(manifest, fresh, sqlite_vector_count)),
+        },
+        "auto" => VectorIndexHealth {
             enabled: true,
             available: config.vector_index.fallback == "sqlite",
             backend: "sqlite-bruteforce".to_string(),
             message: Some("zvec not compiled in; using SQLite fallback".to_string()),
         },
+        _ => VectorIndexHealth {
+            enabled: true,
+            available: config.vector_index.fallback == "sqlite",
+            backend: "sqlite-bruteforce".to_string(),
+            message: Some("unknown vector-index backend; using configured fallback".to_string()),
+        },
+    }
+}
+
+fn zvec_health_message(
+    manifest: Option<&VectorIndexManifest>,
+    fresh: bool,
+    sqlite_vector_count: usize,
+) -> String {
+    if sqlite_vector_count == 0 {
+        "SQLite has no vectors to index".to_string()
+    } else if manifest.is_none() {
+        "zvec sidecar missing".to_string()
+    } else if fresh {
+        "zvec sidecar fresh".to_string()
+    } else {
+        "zvec sidecar stale".to_string()
     }
 }
 
@@ -545,7 +571,7 @@ async fn sync_vector_record_after_sqlite_impl(
 
     let index = ZvecVectorIndex::open_existing(config, pool.clone()).await?;
     index.upsert(record).await?;
-    index.write_current_manifest().await?;
+    mark_sidecar_stale(&path, &manifest)?;
     Ok(())
 }
 
@@ -676,6 +702,13 @@ fn write_manifest(path: &Path, manifest: &VectorIndexManifest) -> Result<()> {
 }
 
 #[allow(dead_code)]
+fn mark_sidecar_stale(path: &Path, manifest: &VectorIndexManifest) -> Result<()> {
+    let mut stale = manifest.clone();
+    stale.digest = format!("stale:{}", stale.digest);
+    write_manifest(path, &stale)
+}
+
+#[allow(dead_code)]
 fn parse_since(since: Option<&str>) -> Result<Option<i64>> {
     let Some(since) = since else {
         return Ok(None);
@@ -701,17 +734,17 @@ pub struct ZvecVectorIndex {
 impl ZvecVectorIndex {
     pub async fn open_or_rebuild(config: &Config, pool: SqlitePool) -> Result<Self> {
         let path = resolve_vector_index_path(config);
-        let snapshot = sqlite_vector_snapshot(&pool).await?;
-        let manifest = read_manifest(&path)?;
-        let expected = manifest_for_snapshot(&snapshot, config);
         let collection_path = path.join(COLLECTION_DIR);
 
-        if snapshot.records.is_empty() {
-            return Err(anyhow!("SQLite has no vectors to index"));
+        if read_manifest(&path)?.is_some_and(|manifest| !manifest.digest.starts_with("stale:"))
+            && collection_path.exists()
+        {
+            return Self::open_existing(config, pool).await;
         }
 
-        if manifest.as_ref().is_some_and(|m| m == &expected) && collection_path.exists() {
-            return Self::open_existing(config, pool).await;
+        let snapshot = sqlite_vector_snapshot(&pool).await?;
+        if snapshot.records.is_empty() {
+            return Err(anyhow!("SQLite has no vectors to index"));
         }
 
         Self::rebuild_from_snapshot(config, pool, path, snapshot).await
@@ -747,9 +780,16 @@ impl ZvecVectorIndex {
         path: PathBuf,
         snapshot: SqliteVectorSnapshot,
     ) -> Result<Self> {
-        if path.exists() {
+        if path.is_dir() {
             std::fs::remove_dir_all(&path).with_context(|| {
                 format!("failed to remove stale zvec sidecar {}", path.display())
+            })?;
+        } else if path.exists() {
+            std::fs::remove_file(&path).with_context(|| {
+                format!(
+                    "failed to remove stale zvec sidecar file {}",
+                    path.display()
+                )
             })?;
         }
         std::fs::create_dir_all(&path)?;
@@ -873,7 +913,7 @@ impl VectorIndex for ZvecVectorIndex {
             return Ok(Vec::new());
         }
         let since_ts = parse_since(options.since)?;
-        let topk = (limit * 8).max(limit).min(i32::MAX as usize) as i32;
+        let topk = limit.saturating_mul(8).max(limit).min(i32::MAX as usize) as i32;
         let query = zvec::VectorQuery::builder()
             .field("embedding")
             .vector_fp32(query_vec)

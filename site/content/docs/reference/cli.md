@@ -210,7 +210,10 @@ Show the configured vector backend, sidecar path, SQLite vector count, and wheth
 $ ctx vector-index status
 vector-index status
   backend: zvec
+  enabled: true
+  available: true
   path: .ctx/data/vector-index/zvec
+  sqlite vectors: 584
   fresh: true
 ```
 
@@ -222,6 +225,8 @@ Rebuild the derived zvec sidecar from canonical SQLite embeddings.
 $ ctx vector-index rebuild
 vector-index rebuild
   backend: zvec
+  path: .ctx/data/vector-index/zvec
+  sqlite vectors: 584
   fresh: true
 ```
 
