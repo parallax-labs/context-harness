@@ -7,7 +7,6 @@ use context_harness::sqlite_store::SqliteStore;
 use context_harness::vector_index::{
     self, BruteForceSqliteVectorIndex, DisabledVectorIndex, VectorIndex, VectorSearchOptions,
 };
-#[cfg(feature = "zvec-bundled")]
 use context_harness_core::search::{search, SearchParams, SearchRequest};
 use context_harness_core::store::Store;
 use tempfile::TempDir;
@@ -97,7 +96,7 @@ async fn seed_vector_documents(store: &SqliteAppStore) {
         "doc-a",
         "filesystem:test",
         "a.md",
-        "alpha beta deployment",
+        "alpha beta deployment local-first MCP-compatible multi-repo",
     )
     .await;
     seed_document(
@@ -235,6 +234,65 @@ async fn export_index_matches_ctx_export_json_shape() {
     assert_eq!(json["chunks"][0]["document_id"], "doc-a");
     assert_eq!(json["chunks"][0]["chunk_index"], 0);
     assert_eq!(json["chunks"][0]["text"], "alpha beta");
+}
+
+#[tokio::test]
+async fn keyword_search_treats_hyphenated_terms_as_user_text() {
+    let tmp = TempDir::new().unwrap();
+    let store = initialized_store(&tmp).await;
+    seed_document(
+        &store,
+        "doc-a",
+        "filesystem:test",
+        "a.md",
+        "Context Harness provides local-first retrieval for MCP-compatible, multi-repo work.",
+    )
+    .await;
+
+    let sqlite = SqliteStore::new(store.pool().clone());
+    let candidates = sqlite
+        .keyword_search(
+            "Context Harness local-first MCP-compatible multi-repo",
+            10,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidates[0].document_id, "doc-a");
+}
+
+#[tokio::test]
+async fn hybrid_search_treats_hyphenated_terms_as_user_text() {
+    let tmp = TempDir::new().unwrap();
+    let cfg = test_config_without_vector_index(&tmp);
+    SqliteAppStore::initialize_config(&cfg).await.unwrap();
+    let store = SqliteAppStore::connect(&cfg).await.unwrap();
+    seed_vector_documents(&store).await;
+
+    let sqlite = SqliteStore::new(store.pool().clone());
+    let params = SearchParams {
+        hybrid_alpha: 0.6,
+        candidate_k_keyword: 10,
+        candidate_k_vector: 10,
+        final_limit: 10,
+    };
+    let req = SearchRequest {
+        query: "deployment local-first MCP-compatible multi-repo",
+        query_vec: Some(&[0.9, 0.1]),
+        mode: "hybrid",
+        source_filter: None,
+        since: None,
+        params,
+        explain: true,
+    };
+
+    let results = search(&sqlite, &req).await.unwrap();
+
+    assert_eq!(results[0].id, "doc-a");
+    assert_eq!(results[0].explain.as_ref().unwrap().keyword_candidates, 1);
 }
 
 #[tokio::test]

@@ -33,6 +33,14 @@ impl SqliteStore {
     }
 }
 
+fn fts_query_from_user_text(query: &str) -> String {
+    query
+        .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .filter(|term| !term.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn format_ts_iso(ts: i64) -> String {
     chrono::DateTime::from_timestamp(ts, 0)
         .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
@@ -280,6 +288,11 @@ impl Store for SqliteStore {
         _source: Option<&str>,
         _since: Option<&str>,
     ) -> Result<Vec<ChunkCandidate>> {
+        let fts_query = fts_query_from_user_text(query);
+        if fts_query.is_empty() {
+            return Ok(Vec::new());
+        }
+
         let rows = sqlx::query(
             r#"
             SELECT chunk_id, document_id, rank,
@@ -290,7 +303,7 @@ impl Store for SqliteStore {
             LIMIT ?
             "#,
         )
-        .bind(query)
+        .bind(fts_query)
         .bind(limit)
         .fetch_all(&self.pool)
         .await?;
