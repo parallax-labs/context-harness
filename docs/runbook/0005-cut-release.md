@@ -111,7 +111,7 @@ This runbook walks through cutting a new release of Context Harness. Use it when
 | Workflow fails on a specific build job | Platform-specific build error (e.g. Zig, tract, ORT) | Check the failing job logs; reproduce locally with `cargo build --release --target <target> -p context-harness` (see [RUNBOOK-0006](0006-ci-failures.md)) |
 | Release created but artifacts missing | Upload/download artifact step failed | Re-run the failed job; if artifacts are corrupted, delete the release and re-push the tag (after fixing the workflow) |
 | Tag already exists | Tag was pushed previously | Use `git tag -d v0.6.0` locally and `git push origin :refs/tags/v0.6.0` to delete the remote tag; fix issues, then re-tag and push |
-| Blog post PR not created | `site/content/blog/` unchanged (no new stub) | Script may have detected existing file; run `./scripts/generate-release-blog.sh v0.6.0` locally and open a manual PR |
+| Blog post PR not created | `site/content/blog/` unchanged, existing post detected, or workflow change detection missed an untracked stub | Run `./scripts/generate-release-blog.sh v0.6.0` locally, check `git status --short site/content/blog/`, and open a manual PR |
 | Version mismatch between tag and Cargo.toml | Tag pushed before version bump | Delete the tag, bump version, commit, push, then re-create and push the tag |
 
 ## Related Runbooks
