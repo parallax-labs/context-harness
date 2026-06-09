@@ -28,6 +28,7 @@ See [DESIGN-0000](0000-design-policy.md) for the full policy.
 | [0005](0005-deployment-guide.md) | Deployment Guide | Reference |
 | [0006](0006-vector-index-acceleration.md) | Vector Index Acceleration | Draft |
 | [0007](0007-xdg-config-directories.md) | XDG-Compliant Config and Data Directories | Planning |
+| [0008](0008-multi-workspace-mcp-router.md) | Multi-Workspace MCP Router | Draft |
 
 ## Creating a New Design Doc
 
