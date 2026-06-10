@@ -206,9 +206,11 @@ option. It exposes workspace selection, workspace-labeled responses, and the
     the workspace runtime that loaded them.
 53. If multiple workspaces expose local tools or prompts with the same name, the
     router SHALL avoid ambiguous global registration.
-54. Until an authoritative namespacing contract is implemented, multi-workspace
-    mode SHALL only guarantee routing for built-in tools and workspace
-    discovery.
+54. Until the namespacing contract is implemented, multi-workspace mode SHALL
+    only guarantee routing for built-in tools and workspace discovery. That
+    contract is defined in "Phase 3: Workspace-Scoped Extensions and Request
+    Origin" (requirements 65–82) and [DESIGN-0009](../design/0009-workspace-scoped-extensions.md);
+    once Phase 3 is implemented it supersedes this interim guarantee.
 
 ### Storage and Sidecars
 
@@ -248,6 +250,84 @@ option. It exposes workspace selection, workspace-labeled responses, and the
    | `workspace_id_conflict` | A qualified id conflicts with an explicit workspace field. |
    | `unsupported_workspace_selector` | A selector such as `all` is not valid for the requested operation. |
 
+## Phase 3: Workspace-Scoped Extensions and Request Origin
+
+This section defines how global and workspace-local tools, agents, and prompts
+are exposed, resolved by the originating workspace of a request. It applies only
+in multi-workspace mode and, once implemented, supersedes the interim guarantee
+in requirement 54. The transport binding for request origin (requirement 65) is
+defined by [ADR-0023](../adr/0023-request-origin-binding.md) (Proposed) and is
+finalized when that ADR is accepted. See
+[DESIGN-0009](../design/0009-workspace-scoped-extensions.md).
+
+### Request Origin
+
+65. A session MAY carry a **request origin**: the workspace a client session is
+    associated with. Origin SHALL be supplied at the session/transport level (an
+    HTTP header or an MCP `initialize` parameter), established at session
+    initialization, and SHALL NOT be required per tool call. The server SHALL
+    NOT infer origin from server-side filesystem state. The transport binding is
+    the `X-Context-Harness-Workspace` HTTP header (primary) with an MCP
+    `initialize` parameter as an optional fallback, per
+    [ADR-0023](../adr/0023-request-origin-binding.md).
+66. An origin value MAY be expressed as a registered workspace id or as an
+    absolute root path. A root-path origin SHALL resolve to the registered
+    workspace whose `root` equals the supplied path.
+67. An origin that does not resolve to an enabled, registered workspace SHALL be
+    treated as **unrecognized**. The server SHALL NOT load configuration outside
+    the registry to satisfy an origin.
+68. When origin is unrecognized or absent, the session SHALL resolve extensions
+    with no workspace overrides (built-ins and the global layer only), and
+    built-in selection SHALL fall back to requirements 19–20.
+
+### Extension Layers and Resolution
+
+69. Context Harness SHALL recognize two extension layers: a **global layer**
+    (root-level shared tools, agents, and prompts under the global config
+    directory defined by [SPEC-0013](0013-config-resolution.md)) and a
+    **workspace layer** (a workspace's own tools, agents, and prompts).
+70. The effective extension set for a session SHALL be the union of the global
+    layer and the origin workspace's layer.
+71. When the global layer and the workspace layer define an extension with the
+    same name, the workspace entry SHALL override (shadow) the global entry for
+    that session.
+72. A workspace MAY explicitly hide a named global extension. A hidden global
+    extension SHALL NOT appear in that session's effective set.
+73. Built-in tools (`search`, `get`, `sources`, `workspaces`) SHALL always be
+    available and SHALL NOT be shadowed or hidden by any layer.
+74. `list_tools` and `list_prompts` SHALL return the session's effective set.
+    When a session's origin changes (if permitted), the server SHALL emit the
+    corresponding MCP `list_changed` notification.
+75. A tool or prompt that is not in the session's effective set SHALL return the
+    existing not-found error for tool and prompt calls.
+
+### Execution Scoping
+
+76. A resolved workspace-layer tool or prompt SHALL execute against its owning
+    workspace's configuration and store.
+77. A resolved global-layer tool or prompt SHALL execute with the session's
+    origin workspace as its default workspace context. When origin is
+    unrecognized or absent, a global-layer extension that requires a workspace
+    context SHALL follow requirements 19–20.
+78. Request origin SHALL participate in built-in selector precedence as a tier
+    below an explicit `workspace` field (and below a qualified id for `get`) and
+    above `[defaults].workspace`. The full precedence SHALL be: qualified id
+    (`get`), then explicit `workspace`, then session origin, then
+    `[defaults].workspace`, then single-enabled fallback, then
+    `workspace_required`.
+79. Cross-workspace selectors — an explicit `workspace` field or
+    `workspace = "all"` — SHALL remain available regardless of session origin.
+    Origin sets the default target, not a restriction.
+
+### Isolation and Compatibility
+
+80. Per-session resolution SHALL NOT expose one workspace's workspace-layer tools
+    or prompts to a session whose origin is a different workspace.
+81. The redaction requirements in 48–49 SHALL apply to all extension layers.
+82. Compatibility (single-workspace) mode SHALL be unaffected by this section.
+    Its effective extension set SHALL match the pre-router behavior, preserving
+    the additive invariant in requirement 15.
+
 ## Acceptance Criteria
 
 1. Integration tests cover absent-registry behavior and confirm existing
@@ -279,11 +359,25 @@ option. It exposes workspace selection, workspace-labeled responses, and the
 12. Tests cover unknown, disabled, and unavailable workspace errors.
 13. Tests cover that each workspace uses its own SQLite database path.
 14. Tests cover that vector-index sidecar paths are resolved per workspace.
+15. (Phase 3) Tests cover that a session with origin = workspace A exposes
+    built-ins, the global layer, and A's tools/prompts, and does not expose
+    workspace B's local tools.
+16. (Phase 3) Tests cover that a global/workspace name collision resolves to the
+    workspace entry, and that a workspace hide-list removes a named global
+    extension from the session.
+17. (Phase 3) Tests cover that an unrecognized or absent origin resolves to
+    built-ins and the global layer only, and never loads a config outside the
+    registry.
+18. (Phase 3) Tests cover that an explicit `workspace` selector and
+    `workspace = "all"` work from any session regardless of origin.
+19. (Phase 3) Tests cover that compatibility mode is unchanged by Phase 3 (the
+    additive invariant).
 
 ## Related Documents
 
 - [PRD-0011: Multi-Workspace MCP Router](../prd/0011-multi-workspace-mcp-router.md)
 - [DESIGN-0008: Multi-Workspace MCP Router](../design/0008-multi-workspace-mcp-router.md)
+- [DESIGN-0009: Workspace-Scoped Extensions and Request Origin](../design/0009-workspace-scoped-extensions.md)
 - [SPEC-0012: Storage and Vector Index Interfaces](0012-storage-and-vector-index-interfaces.md)
 - [SPEC-0013: Config Resolution and Directory Layout](0013-config-resolution.md)
 - [ADR-0009: MCP Streamable HTTP Transport](../adr/0009-mcp-streamable-http-transport.md)

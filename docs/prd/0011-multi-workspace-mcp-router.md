@@ -109,7 +109,13 @@ Support `workspace = "all"` with grouped results and stable workspace labels.
 ### Phase 3: Workspace-Scoped Extensions
 
 Define how Lua tools, Rust tools, and MCP prompts are exposed when multiple
-workspaces register extensions with the same name.
+workspaces register extensions with the same name. The approach is a global +
+workspace cascade (workspace overrides global) resolved by a session-scoped
+**request origin**, so each session sees only the shared globals plus its own
+workspace's extensions — which removes the cross-workspace name-collision
+problem rather than solving it head-on. See
+[DESIGN-0009](../design/0009-workspace-scoped-extensions.md) and SPEC-0014
+requirements 65–82.
 
 ## Success Criteria
 
