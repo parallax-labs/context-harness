@@ -42,7 +42,9 @@ configuration or running a port per project.
 5. Workspace-specific source status is discoverable through MCP so the user can
    understand which stores are healthy or stale.
 6. Existing single-config MCP deployments continue to work without changing
-   their client configuration.
+   their client configuration. Multi-workspace behavior is additive and opt-in:
+   it is activated by an explicit serve flag, never implicitly by the presence
+   of a registry file.
 
 ## Non-Goals
 
@@ -54,6 +56,8 @@ configuration or running a port per project.
 - Providing networked multi-user access control.
 - Guaranteeing globally comparable raw search scores across independent
   workspaces.
+- Activating multi-workspace mode implicitly from the presence of a registry
+  file or from running `ctx serve mcp` without an explicit opt-in.
 
 ## User Stories
 
@@ -83,7 +87,9 @@ configuration or running a port per project.
    config, SQLite store, connector status, embedding state, and vector-index
    sidecar.
 7. The product must support a compatibility mode for existing single-workspace
-   configurations.
+   configurations, and this mode must be the default. Multi-workspace mode must
+   require an explicit opt-in flag and must be rejected when combined with an
+   explicit single config (`--config`/`CTX_CONFIG`).
 8. The product must provide clear errors for unknown, disabled, or unhealthy
    workspaces.
 9. The product should allow users to discover registered workspaces through MCP.
@@ -92,8 +98,9 @@ configuration or running a port per project.
 
 ### Phase 1: Built-In Workspace Routing
 
-Add a workspace registry, route built-in `search`, `get`, and `sources`, and
-preserve existing single-config behavior.
+Add a workspace registry and an explicit `--workspaces` opt-in, route built-in
+`search`, `get`, and `sources`, and preserve existing single-config behavior. Ship
+a minimal `ctx workspace add/list/remove` so the registry is not hand-edited.
 
 ### Phase 2: Cross-Workspace Search
 

@@ -24,6 +24,12 @@ boundary: SQLite/FTS5 remains canonical per workspace, and vector indexes are
 derived sidecars. The router should sit above those runtimes rather than
 combining stores.
 
+The router is additive. The single-config server is the default and must keep
+working byte-for-byte; multi-workspace serving is an explicit opt-in. Activation
+is therefore tied to a `--workspaces` flag rather than to the mere presence of a
+registry file, so an existing single-config deployment cannot be silently
+switched into a different response shape.
+
 ## Proposal
 
 Introduce a workspace-router layer for MCP and REST serving. The router owns a
@@ -31,8 +37,8 @@ set of workspace runtimes and dispatches built-in operations to the selected
 runtime.
 
 ```text
-ctx serve mcp
-  -> load single Config, or load workspaces.toml
+ctx serve mcp                 # compatibility mode: one resolved Config
+ctx serve mcp --workspaces    # multi-workspace mode: load workspaces.toml
   -> build ServerRuntime
        -> WorkspaceRouter
             -> WorkspaceRuntime(context_harness)
@@ -93,9 +99,13 @@ router-aware tools:
 - `sources`
 - `workspaces`
 
-The single-workspace path can be represented as a router with one workspace.
-That avoids two server implementations and keeps compatibility behavior in one
-place.
+The single-workspace path can be represented internally as a router with one
+workspace. That avoids two server implementations and keeps compatibility
+behavior in one place. The *wire contract*, however, is selected by activation
+mode rather than by router cardinality: compatibility mode (no `--workspaces`)
+emits the existing flat shapes with no extra fields, while multi-workspace mode
+(`--workspaces`) emits the workspace-labeled shapes — even when the registry
+holds exactly one workspace. See SPEC-0014 requirements 11–17.
 
 ### REST Changes
 
@@ -140,9 +150,15 @@ ranking. A grouped response is easiest to reason about:
 }
 ```
 
-Single-workspace search can keep the existing flat `results` array and add
-`workspace` and `qualified_id` fields when the server is in multi-workspace
-mode.
+Compatibility mode keeps the existing flat `results` array with no added fields.
+The `workspace` and `qualified_id` fields are present only in multi-workspace
+mode, and the grouped shape above is the multi-workspace shape for both a single
+selected workspace and `all`.
+
+For `all`, workspaces are searched concurrently with a per-workspace deadline so
+one slow or locked store cannot stall the response, and `limit` applies per
+workspace (there is no global cross-store ranking). Workspaces that fail or time
+out appear in `errors` rather than being silently dropped.
 
 ### Qualified IDs
 
@@ -201,26 +217,41 @@ simpler to observe and test.
 
 ## Implementation Plan
 
-1. Add workspace registry parsing for `$XDG_CONFIG_HOME/ctx/workspaces.toml`.
-2. Add `WorkspaceRuntime` and `WorkspaceRouter` modules.
-3. Represent single-workspace serve mode as a router containing one workspace.
-4. Add router-aware built-in tools for `search`, `get`, `sources`, and
+1. Add the `--workspaces[=<path>]` flag to `ctx serve mcp` and make activation
+   explicit. Reject `--workspaces` combined with `--config`/`CTX_CONFIG`.
+2. Add workspace registry parsing for `$XDG_CONFIG_HOME/ctx/workspaces.toml`.
+3. Add `WorkspaceRuntime` and `WorkspaceRouter` modules. Validate cheaply at
+   startup; defer store-open and extension load to first query.
+4. Represent single-workspace serve mode as a router containing one workspace,
+   but select the wire contract from activation mode, not router cardinality.
+5. Add router-aware built-in tools for `search`, `get`, `sources`, and
    `workspaces`.
-5. Update `McpBridge` and REST handlers to construct `ToolContext` or equivalent
+6. Update `McpBridge` and REST handlers to construct `ToolContext` or equivalent
    routing context from the router.
-6. Add qualified-id parsing and conflict detection.
-7. Add all-workspace search with grouped results and per-workspace error
+7. Add qualified-id parsing (qualified only when the prefix matches a registered
+   workspace id) and conflict detection.
+8. Add all-workspace search with grouped results, bounded concurrency, a
+   per-workspace deadline, per-workspace `limit`, and per-workspace error
    reporting.
-8. Add integration tests with multiple temporary workspace configs and SQLite
-   stores.
-9. Document MCP examples for default workspace, explicit workspace, and
-   all-workspace search.
-10. Defer workspace-local extension namespacing to a follow-up design or a later
+9. Add a minimal `ctx workspace add/list/remove` command that validates absolute
+   paths at write time, so the registry is not hand-edited (mitigates the
+   path-drift risk below).
+10. Add a golden test that locks the additive invariant: with no `--workspaces`,
+    MCP and REST responses are byte-for-byte identical to the pre-router server.
+11. Add integration tests with multiple temporary workspace configs and SQLite
+    stores.
+12. Document MCP examples for default workspace, explicit workspace, and
+    all-workspace search (see RUNBOOK-0018).
+13. Defer workspace-local extension namespacing to a follow-up design or a later
     section of SPEC-0014 once behavior is locked.
 
 ## Acceptance Criteria
 
 - Existing single-workspace MCP tests continue to pass.
+- A golden test confirms compatibility-mode responses are byte-for-byte
+  identical to the pre-router server (additive invariant).
+- With a registry present but no `--workspaces`, the server stays in
+  compatibility mode; `--workspaces` with `--config`/`CTX_CONFIG` is rejected.
 - A test server can expose multiple independent SQLite stores through one MCP
   endpoint.
 - Explicit workspace search matches single-workspace search for that store.
@@ -238,19 +269,29 @@ simpler to observe and test.
   whole server.
 - Extension namespacing can become confusing if shipped too early. Built-in
   routing should land first.
-- File paths in `workspaces.toml` can drift when projects move. A future
-  `ctx workspace add` command should validate paths and make registry edits less
-  manual.
+- File paths in `workspaces.toml` can drift when projects move. The
+  `ctx workspace add` command (plan step 9) should validate paths and make
+  registry edits less manual.
+- The MCP server already serves with permissive CORS (`allow_origin(Any)`). One
+  endpoint now reaching many local stores widens what any web origin can reach on
+  localhost. This is pre-existing, but multi-workspace mode increases the blast
+  radius and should be noted in deployment guidance.
+
+## Resolved Questions
+
+1. `workspace = "all"` returns grouped results only for v1. A normalized flat
+   ranking is explicitly out of scope until there is a real cross-store scoring
+   story (raw BM25/cosine are not globally comparable).
+2. Workspace runtimes are validated cheaply at startup and initialized lazily on
+   first query (store-open and extension load are deferred). The `workspaces`
+   tool reports a two-tier health state accordingly.
+3. `ctx init` SHALL NOT auto-register the current workspace in
+   `workspaces.toml`. Registration is an explicit `ctx workspace add` action,
+   keeping multi-workspace behavior opt-in.
 
 ## Open Questions
 
-1. Should `workspace = "all"` return grouped results only, or should it also
-   offer a normalized flat ranking mode?
-2. Should the registry support workspace aliases in addition to the canonical
+1. Should the registry support workspace aliases in addition to the canonical
    workspace id?
-3. Should workspace runtimes be fully loaded at startup or initialized lazily on
-   first query?
-4. What is the final namespacing contract for workspace-local Lua tools, Rust
+2. What is the final namespacing contract for workspace-local Lua tools, Rust
    tools, and prompts?
-5. Should `ctx init` optionally register the current workspace in
-   `workspaces.toml`?

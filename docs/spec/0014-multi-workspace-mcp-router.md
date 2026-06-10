@@ -13,6 +13,11 @@ effective configuration, SQLite store, connector status, embedding state, and
 vector-index sidecar. The router is a runtime dispatch layer and SHALL NOT merge
 workspace stores into a single canonical database.
 
+Multi-workspace behavior is **additive and opt-in**. The server runs in
+compatibility (single-workspace) mode by default and behaves exactly as the
+pre-router server. Multi-workspace mode is activated only by an explicit serve
+option, never implicitly by the presence of a registry file.
+
 ## Definitions
 
 **Workspace** is a named Context Harness project or corpus with its own resolved
@@ -32,6 +37,14 @@ workspaces, or the default workspace.
 **Qualified document id** is a document identifier that includes the workspace id
 and document id in the form `<workspace-id>:<document-id>`.
 
+**Compatibility mode** is the default single-workspace server mode. It resolves
+one effective config and exposes the pre-router endpoints, tool names, and
+response shapes unchanged.
+
+**Multi-workspace mode** is the router mode activated by an explicit serve
+option. It exposes workspace selection, workspace-labeled responses, and the
+`workspaces` discovery tool.
+
 ## Requirements
 
 ### Workspace Registry
@@ -44,6 +57,7 @@ and document id in the form `<workspace-id>:<document-id>`.
    ```toml
    [defaults]
    workspace = "context_harness"
+   bind = "127.0.0.1:7331"
 
    [workspaces.context_harness]
    root = "/absolute/path/to/context-harness"
@@ -51,123 +65,179 @@ and document id in the form `<workspace-id>:<document-id>`.
    enabled = true
    ```
 
+   The `[defaults].bind` field is optional and controls the shared server bind
+   address in multi-workspace mode (see requirement 16).
+
 3. The `root` field SHALL be required and SHALL be an absolute path.
 4. The `config` field MAY be omitted. When omitted, the runtime SHALL resolve
    the workspace configuration from `root` using the workspace-local resolution
-   behavior in [SPEC-0013](0013-config-resolution.md).
+   behavior in [SPEC-0013](0013-config-resolution.md). In this case the global
+   config defaults SHALL merge into the resolved config as defined by
+   [SPEC-0013](0013-config-resolution.md).
 5. When `config` is present, it SHALL be an absolute path and SHALL be loaded as
-   the sole config source, preserving explicit config behavior.
+   the sole config source with no global merge, preserving explicit config
+   behavior. The differing merge behavior between requirements 4 and 5 SHALL be
+   treated as intentional and documented for operators.
 6. The `enabled` field MAY be omitted and SHALL default to `true`.
 7. Disabled workspaces SHALL be listed by workspace discovery but SHALL reject
    search, get, sources, tool, and prompt calls.
 8. Workspace ids SHALL be unique within the registry.
 9. Invalid workspace ids, relative root paths, and relative config paths SHALL
    make the affected workspace invalid and unavailable.
-10. The registry MAY be absent. When absent, `ctx serve mcp` SHALL behave as the
-    existing single-workspace server.
+10. The registry MAY be absent. The presence or absence of the registry SHALL
+    NOT by itself determine the server mode. Mode is selected as defined in
+    "Server Modes" below.
 
 ### Server Modes
 
-11. `ctx serve mcp` SHALL support the existing single-workspace mode.
-12. `ctx serve mcp` SHALL support multi-workspace mode when a workspace registry
-    exists or an explicit multi-workspace serve option is provided.
-13. In single-workspace mode, existing MCP clients SHALL continue to use the same
-    endpoint and tool names.
-14. In multi-workspace mode, the MCP endpoint SHALL remain `/mcp`.
-15. In multi-workspace mode, REST endpoints SHALL remain available on the same
-    Axum server.
+11. `ctx serve mcp` SHALL run in compatibility (single-workspace) mode by
+    default.
+12. Multi-workspace mode SHALL be activated only by an explicit opt-in: the
+    `--workspaces` flag on `ctx serve mcp`, optionally taking a registry path as
+    `--workspaces[=<path>]`. Without `--workspaces`, the server SHALL run in
+    compatibility mode even when a registry file exists.
+13. The `--workspaces` flag SHALL NOT be combined with `--config` or
+    `CTX_CONFIG`. Combining them SHALL be rejected with a startup error. When
+    `--config` or `CTX_CONFIG` is set without `--workspaces`, the server SHALL
+    run in compatibility mode and SHALL ignore any registry file.
+14. The server mode SHALL be determined solely by the activation path (presence
+    of `--workspaces`), not by the number of registered workspaces. A registry
+    containing exactly one workspace SHALL still run in multi-workspace mode when
+    activated with `--workspaces`.
+15. In compatibility mode, the MCP endpoint, REST endpoints, tool names, and
+    response shapes SHALL be byte-for-byte identical to the pre-router server.
+    This is the additive invariant: an existing single-config deployment SHALL
+    require no client configuration change.
+16. In multi-workspace mode, the MCP endpoint SHALL remain `/mcp` and REST
+    endpoints SHALL remain available on the same Axum server. The shared server
+    SHALL bind to `[defaults].bind` from the registry, defaulting to
+    `127.0.0.1:7331` when absent. Per-workspace `[server].bind` values SHALL be
+    ignored for the shared endpoint in multi-workspace mode.
+17. Response shape SHALL be determined by mode. Compatibility mode SHALL use the
+    existing flat response shapes. Multi-workspace mode SHALL use the
+    workspace-labeled shapes defined below.
 
 ### Workspace Selection
 
-16. Built-in `search`, `get`, and `sources` tools SHALL accept an optional
+18. Built-in `search`, `get`, and `sources` tools SHALL accept an optional
     `workspace` field.
-17. If `workspace` is omitted, the router SHALL use the default workspace.
-18. If no default workspace is configured and more than one enabled workspace is
-    available, the router SHALL return a `workspace_required` error.
-19. The reserved workspace selector `all` SHALL mean every enabled workspace.
-20. `workspace = "all"` SHALL be valid for `search` and `sources`.
-21. `workspace = "all"` SHALL NOT be valid for `get` unless the `id` is a
+19. If `workspace` is omitted, the router SHALL use the default workspace.
+20. If no default workspace is configured: when exactly one enabled workspace
+    exists, the router SHALL use it; when more than one enabled workspace
+    exists, the router SHALL return a `workspace_required` error.
+21. The reserved workspace selector `all` SHALL mean every enabled workspace.
+22. `workspace = "all"` SHALL be valid for `search` and `sources`.
+23. `workspace = "all"` SHALL NOT be valid for `get` unless the `id` is a
     qualified document id.
-22. An unknown workspace id SHALL return an `unknown_workspace` error.
-23. A disabled workspace id SHALL return a `workspace_disabled` error.
-24. An invalid or unhealthy workspace runtime SHALL return a
+24. An unknown workspace id SHALL return an `unknown_workspace` error.
+25. A disabled workspace id SHALL return a `workspace_disabled` error.
+26. An invalid or unhealthy workspace runtime SHALL return a
     `workspace_unavailable` error.
 
 ### Search
 
-25. Single-workspace search SHALL execute against the selected workspace's
+27. Single-workspace search SHALL execute against the selected workspace's
     existing search implementation.
-26. Single-workspace search SHALL preserve the selected workspace's existing
+28. Single-workspace search SHALL preserve the selected workspace's existing
     search ranking, result fields, retrieval configuration, embedding provider,
     and vector-index fallback behavior.
-27. Search responses in multi-workspace mode SHALL include `workspace` on every
+29. Search responses in multi-workspace mode SHALL include `workspace` on every
     result item.
-28. Search responses in multi-workspace mode SHALL include `qualified_id` on
+30. Search responses in multi-workspace mode SHALL include `qualified_id` on
     every result item.
-29. For single-workspace search, returned document ids MAY remain unqualified for
+31. In compatibility mode, returned document ids MAY remain unqualified for
     backward compatibility.
-30. For `workspace = "all"`, the router SHALL search each enabled workspace
+32. For `workspace = "all"`, the router SHALL search each enabled workspace
     independently.
-31. For `workspace = "all"`, the router SHALL NOT compare raw BM25, cosine, or
+33. For `workspace = "all"`, the router MAY search workspaces concurrently and
+    SHALL apply a per-workspace deadline so that one slow, locked, or unhealthy
+    store does not block the overall response.
+34. For `workspace = "all"`, the `limit` parameter SHALL apply per workspace.
+    The router SHALL NOT impose a single global limit across workspaces.
+35. For `workspace = "all"`, the router SHALL NOT compare raw BM25, cosine, or
     hybrid scores as if they were globally comparable across stores.
-32. For `workspace = "all"`, the response SHALL preserve workspace identity for
+36. For `workspace = "all"`, the response SHALL preserve workspace identity for
     every item and SHALL group results by workspace.
-33. Workspace search failure SHALL NOT silently remove that workspace from an
+37. Workspace search failure SHALL NOT silently remove that workspace from an
     `all` search response. The response SHALL include an error entry for each
-    failed workspace.
+    failed workspace, including workspaces that exceed the per-workspace
+    deadline.
 
 ### Get
 
-34. `get` SHALL retrieve documents from one selected workspace.
-35. `get` SHALL accept a qualified document id and route it to the encoded
+38. `get` SHALL retrieve documents from one selected workspace.
+39. `get` SHALL accept a qualified document id and route it to the encoded
     workspace.
-36. If both an explicit `workspace` field and a qualified document id are
+40. An id SHALL be treated as qualified only when it contains `:` and the
+    substring before the first `:` matches a registered workspace id
+    (`[A-Za-z0-9][A-Za-z0-9_-]*`). Otherwise the entire value SHALL be treated
+    as a raw document id and routed to the selected or default workspace.
+41. If both an explicit `workspace` field and a qualified document id are
     provided, they SHALL refer to the same workspace.
-37. If an explicit `workspace` field conflicts with a qualified document id, the
+42. If an explicit `workspace` field conflicts with a qualified document id, the
     router SHALL return `workspace_id_conflict`.
-38. `get` SHALL return `not_found` when the selected workspace is available but
+43. `get` SHALL return `not_found` when the selected workspace is available but
     the document id does not exist in that workspace.
 
 ### Sources and Workspace Discovery
 
-39. `sources` without `workspace` SHALL use the default workspace in
-    single-workspace-compatible mode.
-40. `sources` with `workspace = "all"` SHALL return source status grouped by
+44. `sources` without `workspace` SHALL use the default workspace in
+    compatibility-compatible mode.
+45. `sources` with `workspace = "all"` SHALL return source status grouped by
     workspace.
-41. The server SHALL expose a workspace discovery tool named `workspaces`.
-42. The `workspaces` tool SHALL return workspace id, root path, enabled status,
+46. The server SHALL expose a workspace discovery tool named `workspaces`.
+47. The `workspaces` tool SHALL return workspace id, root path, enabled status,
     default status, and runtime health.
-43. The `workspaces` tool SHALL NOT expose secret values from workspace configs.
+48. The `workspaces` tool SHALL NOT expose secret values from workspace configs.
+49. `sources` and `workspaces` output SHALL redact resolved connector
+    configuration that may contain secrets — including credentials, tokens, and
+    env-expanded values — not only fields whose names literally contain
+    `secret` or `token`.
 
 ### Tools and Prompts
 
-44. Built-in tools SHALL be available in single-workspace and multi-workspace
+50. Built-in tools SHALL be available in compatibility and multi-workspace
     modes.
-45. Workspace-local Lua tools, Rust tools, and prompts SHALL remain scoped to
+51. In compatibility mode, all workspace-local Lua tools, Rust tools, and
+    prompts SHALL be exposed exactly as in the pre-router server. The
+    multi-workspace built-ins-only guarantee in requirement 54 SHALL NOT reduce
+    what compatibility mode exposes.
+52. Workspace-local Lua tools, Rust tools, and prompts SHALL remain scoped to
     the workspace runtime that loaded them.
-46. If multiple workspaces expose local tools or prompts with the same name, the
+53. If multiple workspaces expose local tools or prompts with the same name, the
     router SHALL avoid ambiguous global registration.
-47. Until an authoritative namespacing contract is implemented, multi-workspace
+54. Until an authoritative namespacing contract is implemented, multi-workspace
     mode SHALL only guarantee routing for built-in tools and workspace
     discovery.
 
 ### Storage and Sidecars
 
-48. Each workspace SHALL retain its own canonical SQLite store.
-49. The router SHALL NOT write documents, chunks, embeddings, checkpoints, or
+55. Each workspace SHALL retain its own canonical SQLite store.
+56. The router SHALL NOT write documents, chunks, embeddings, checkpoints, or
     FTS rows into any shared cross-workspace database.
-50. Each workspace's vector-index sidecar SHALL remain derived state for that
+57. Each workspace's vector-index sidecar SHALL remain derived state for that
     workspace only.
-51. The router SHALL NOT treat vector-index sidecars as authoritative storage.
-52. Workspace runtime initialization SHALL respect the vector-index behavior
+58. The router SHALL NOT treat vector-index sidecars as authoritative storage.
+59. Workspace runtime initialization SHALL respect the vector-index behavior
     defined in [SPEC-0012](0012-storage-and-vector-index-interfaces.md).
+
+### Runtime Initialization and Health
+
+60. Workspace registry parsing and cheap validation (id shape, absolute paths,
+    config parse) SHALL occur at startup so that obviously invalid workspaces
+    are reported as unavailable without blocking the server.
+61. Expensive initialization (opening the SQLite store, loading Lua and registry
+    extensions) MAY be deferred until the first request that targets a
+    workspace. A workspace that fails expensive initialization SHALL be reported
+    as `workspace_unavailable` for queries and SHALL appear with an unhealthy
+    status in the `workspaces` tool.
 
 ### Errors
 
-53. Router errors returned through REST SHALL use the existing JSON error shape.
-54. Router errors returned through MCP SHALL be returned as tool errors following
+62. Router errors returned through REST SHALL use the existing JSON error shape.
+63. Router errors returned through MCP SHALL be returned as tool errors following
     existing MCP tool-call conventions.
-55. Router error codes SHALL include:
+64. Router error codes SHALL include:
 
    | Code | Meaning |
    |------|---------|
@@ -180,23 +250,35 @@ and document id in the form `<workspace-id>:<document-id>`.
 
 ## Acceptance Criteria
 
-1. Integration tests cover absent registry behavior and confirm existing
+1. Integration tests cover absent-registry behavior and confirm existing
    single-workspace MCP tool calls still work.
-2. Tests cover parsing a registry with two enabled workspaces and one disabled
+2. A golden test asserts that compatibility-mode MCP and REST responses for the
+   built-in tools are byte-for-byte identical to the pre-router baseline (the
+   additive invariant in requirement 15).
+3. Tests confirm that with a registry file present but no `--workspaces` flag,
+   the server runs in compatibility mode, and that combining `--workspaces` with
+   `--config` or `CTX_CONFIG` is rejected at startup.
+4. Tests confirm a registry with exactly one workspace activated with
+   `--workspaces` runs in multi-workspace mode and labels results.
+5. Tests cover parsing a registry with two enabled workspaces and one disabled
    workspace.
-3. Tests cover `search` with an explicit workspace and compare results to the
-   same workspace queried through the single-workspace path.
-4. Tests cover `search` with `workspace = "all"` and assert every result or
-   error entry includes workspace identity.
-5. Tests cover `get` with an explicit workspace.
-6. Tests cover `get` with a qualified document id.
-7. Tests cover conflict detection when a qualified id and explicit workspace
-   disagree.
-8. Tests cover `sources` and `workspaces` output without exposing secret config
-   values.
-9. Tests cover unknown, disabled, and unavailable workspace errors.
-10. Tests cover that each workspace uses its own SQLite database path.
-11. Tests cover that vector-index sidecar paths are resolved per workspace.
+6. Tests cover `search` with an explicit workspace and compare results to the
+   same workspace queried through the compatibility path.
+7. Tests cover `search` with `workspace = "all"` and assert every result or
+   error entry includes workspace identity, including a per-workspace error
+   entry for a workspace that exceeds its deadline.
+8. Tests cover `get` with an explicit workspace.
+9. Tests cover `get` with a qualified document id, and confirm that a raw id
+   whose prefix is not a registered workspace (for example `foo:bar`) is treated
+   as a raw id rather than a qualified id.
+10. Tests cover conflict detection when a qualified id and explicit workspace
+    disagree.
+11. Tests cover `sources` and `workspaces` output without exposing secret config
+    values, including redaction of connector credentials and env-expanded
+    values.
+12. Tests cover unknown, disabled, and unavailable workspace errors.
+13. Tests cover that each workspace uses its own SQLite database path.
+14. Tests cover that vector-index sidecar paths are resolved per workspace.
 
 ## Related Documents
 
