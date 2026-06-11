@@ -1,9 +1,17 @@
 # SPEC-0014: Multi-Workspace MCP Router
 
-**Status:** Draft - not yet implemented
+**Status:** Phase 1 implemented (built-in routing); Phases 2–3 not yet implemented
 **Date:** 2026-06-09
 **Scope:** MCP and REST routing across multiple Context Harness workspace
 configurations and stores.
+
+> **Implementation status (2026-06-11).** Phase 1 (built-in workspace routing)
+> is implemented: the `--workspaces` opt-in, the registry + `ctx workspace
+> add/list/remove`, router-aware `search`/`get`/`sources`, the `workspaces`
+> discovery tool, qualified-id `get`, connector-secret redaction, and the
+> loopback trust model below. **Deferred:** `workspace = "all"` fan-out
+> (Phase 2 — currently returns `unsupported_workspace_selector`) and the
+> Phase-3 request-origin / workspace-scoped extensions (requirements 65–82).
 
 ## Overview
 
@@ -327,6 +335,39 @@ finalized when that ADR is accepted. See
 82. Compatibility (single-workspace) mode SHALL be unaffected by this section.
     Its effective extension set SHALL match the pre-router behavior, preserving
     the additive invariant in requirement 15.
+
+## Security and Trust Model
+
+Context Harness is a **local-first, single-user** tool. The MCP/REST server has
+**no authentication** and serves with permissive CORS (`allow_origin(Any)`,
+`allow_headers(Any)`). Multi-workspace mode widens the blast radius of that
+posture: one endpoint now fronts every registered store, and an explicit
+`workspace` selector (and, in Phase 2, `workspace = "all"`) reaches any of them
+regardless of session origin (R79). The following constraints define the trust
+boundary for Phase 1:
+
+T1. **Loopback bind is the load-bearing control.** The shared server SHALL
+    default to `127.0.0.1`. A non-loopback bind exposes every registered
+    workspace to other hosts on the network.
+
+T2. **Non-loopback bind is refused in multi-workspace mode** unless the operator
+    passes an explicit `--allow-remote` flag. Compatibility mode warns but does
+    not refuse (pre-router behavior is preserved). A warning is emitted in both
+    modes for any non-loopback bind.
+
+T3. **Redaction is mandatory before exposure.** `sources` and `workspaces`
+    output SHALL pass connector configuration through deny-by-default redaction
+    (R48/R49) so credentials, tokens, env-expanded values, and URL userinfo do
+    not leak across the widened surface.
+
+T4. **Origin is not authorization.** The Phase-3 request origin (R65) sets a
+    session's default workspace; it SHALL NOT be used as an access-control
+    boundary. Explicit and `all` selectors remain available from any session.
+
+T5. **CORS is intentionally permissive** for local MCP clients in Phase 1. A
+    CORS allowlist or a loopback token for multi-workspace mode is a candidate
+    hardening (see DESIGN-0008 risks) and is out of scope for Phase 1; operators
+    rely on T1/T2 and not exposing the port to untrusted origins.
 
 ## Acceptance Criteria
 

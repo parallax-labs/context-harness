@@ -1,8 +1,16 @@
 # DESIGN-0008: Multi-Workspace MCP Router
 
-**Status:** Draft
+**Status:** Phase 1 implemented (2026-06-11)
 **Date:** 2026-06-09
 **Author:** Codex
+
+> **Phase 1 scope (implemented):** built-in workspace routing — the
+> `--workspaces` opt-in, the registry + `ctx workspace add/list/remove`,
+> router-aware `search`/`get`/`sources`, the `workspaces` discovery tool,
+> qualified-id `get`, connector-secret redaction, and the loopback trust model.
+> Implemented as "single = a one-workspace router" with the wire contract chosen
+> by mode. **Not yet implemented:** the `all` fan-out (Phase 2) and
+> workspace-local extension routing / request origin (Phase 3, DESIGN-0009).
 **Related:** [PRD-0011](../prd/0011-multi-workspace-mcp-router.md),
 [SPEC-0014](../spec/0014-multi-workspace-mcp-router.md),
 [SPEC-0012](../spec/0012-storage-and-vector-index-interfaces.md),

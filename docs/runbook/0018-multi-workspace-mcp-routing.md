@@ -1,15 +1,16 @@
 # RUNBOOK-0018: Serve Multiple Workspaces Over One MCP Endpoint
 
-**Status:** Draft
+**Status:** Active (Phase 1)
 **Date:** 2026-06-09
 **Author:** pjones
-**Last Verified:** (not yet — describes planned behavior per SPEC-0014)
+**Last Verified:** 2026-06-11 (Phase 1 — built-in routing)
 
 > This runbook documents the operator procedure for the multi-workspace MCP
 > router defined in [SPEC-0014](../spec/0014-multi-workspace-mcp-router.md) and
-> [DESIGN-0008](../design/0008-multi-workspace-mcp-router.md). The feature is not
-> yet implemented; mark this runbook **Active** and set **Last Verified** once it
-> ships and the steps have been run end-to-end.
+> [DESIGN-0008](../design/0008-multi-workspace-mcp-router.md). **Phase 1
+> (built-in routing) is implemented.** `workspace = "all"` (step 8) is Phase 2
+> and currently returns an `unsupported_workspace_selector` error; everything
+> else below works end-to-end.
 
 ## Purpose
 
@@ -154,7 +155,9 @@ path.
    Expected: every item includes `workspace` and `qualified_id`
    (`context_harness:<id>`).
 
-8. Search across all workspaces.
+8. Search across all workspaces. **(Phase 2 — not yet available.)** In Phase 1
+   `workspace = "all"` returns an `unsupported_workspace_selector` error; query
+   each workspace by id instead.
 
    ```bash
    curl -s -X POST http://127.0.0.1:7331/tools/search \
@@ -210,9 +213,14 @@ workspace store is modified by adding, removing, or deleting it.
 
 - Each workspace keeps its own SQLite store and vector-index sidecar; the router
   never merges stores or treats sidecars as authoritative.
-- `sources` and `workspaces` redact connector secrets and env-expanded values.
-- The MCP server serves with permissive CORS; bind to `127.0.0.1` and do not
-  expose it to untrusted origins.
+- `sources` and `workspaces` redact connector secrets and env-expanded values
+  (deny-by-default; URL credentials are stripped).
+- **Trust model.** The server has no authentication and permissive CORS, and
+  multi-workspace mode fronts every registered store. Loopback bind is the
+  load-bearing control: bind to `127.0.0.1` and do not expose the port to
+  untrusted origins. A non-loopback `[defaults].bind` is **refused** unless you
+  pass `ctx serve mcp --workspaces --allow-remote`. See SPEC-0014 §Security and
+  Trust Model.
 
 ## Related Runbooks
 

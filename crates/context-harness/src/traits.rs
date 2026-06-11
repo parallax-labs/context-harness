@@ -55,6 +55,7 @@ use crate::get::{get_document, DocumentResponse};
 use crate::models::SourceItem;
 use crate::search::{search_documents, SearchResultItem};
 use crate::sources::{get_sources, SourceStatus};
+use crate::workspace::{RouterError, ServerMode, WorkspaceRouter};
 
 // ═══════════════════════════════════════════════════════════════════════
 // Connector Trait
@@ -254,13 +255,58 @@ pub struct SearchOptions {
 /// All methods delegate to the same core functions used by the CLI
 /// and HTTP server, ensuring tools have identical capabilities.
 pub struct ToolContext {
+    /// The active workspace config used by the convenience methods below and by
+    /// compatibility-mode built-in tools. In multi mode this is the default
+    /// workspace's config; router-aware tools resolve per call instead.
     config: Arc<Config>,
+    /// The workspace router. In compatibility mode this is a one-workspace
+    /// router; router-aware (multi-mode) tools dispatch through it.
+    router: Arc<WorkspaceRouter>,
+    /// Whether this context serves the pre-router flat shapes or labeled shapes.
+    mode: ServerMode,
 }
 
 impl ToolContext {
-    /// Create a new tool context from the application config.
+    /// Create a single-workspace (compatibility) tool context from a config.
+    ///
+    /// Internally wraps the config in a one-workspace [`WorkspaceRouter`], so a
+    /// compatibility context is just "a router with one workspace".
     pub fn new(config: Arc<Config>) -> Self {
-        Self { config }
+        let router = Arc::new(WorkspaceRouter::single(config.clone()));
+        Self {
+            config,
+            router,
+            mode: ServerMode::Compat,
+        }
+    }
+
+    /// Create a tool context backed by a (possibly multi-workspace) router.
+    ///
+    /// The convenience methods default to the router's default workspace; the
+    /// router-aware built-in tools resolve the request's `workspace` selector
+    /// against [`ToolContext::router`] per call.
+    pub fn routed(router: Arc<WorkspaceRouter>, mode: ServerMode) -> Self {
+        let config = router.default_config();
+        Self {
+            config,
+            router,
+            mode,
+        }
+    }
+
+    /// The server mode this context serves.
+    pub fn mode(&self) -> ServerMode {
+        self.mode
+    }
+
+    /// The workspace router, for router-aware tools.
+    pub fn router(&self) -> &Arc<WorkspaceRouter> {
+        &self.router
+    }
+
+    /// The active workspace config (the default workspace in multi mode).
+    pub fn config(&self) -> &Arc<Config> {
+        &self.config
     }
 
     /// Search the knowledge base.
@@ -442,6 +488,255 @@ impl Tool for SourcesTool {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// Router-aware built-in tools (multi-workspace mode)
+// ═══════════════════════════════════════════════════════════════════════
+//
+// These mirror the compat built-ins but accept an optional `workspace`
+// selector, dispatch through the request's [`WorkspaceRouter`], and emit the
+// workspace-labeled (grouped) shapes (SPEC-0014 R18–R37). They are registered
+// only in multi-workspace mode; compatibility mode keeps the unit-struct tools
+// above unchanged (the additive invariant). `workspace = "all"` fan-out is
+// Phase 2 — the router currently rejects it with `unsupported_workspace_selector`.
+
+/// Add the optional `workspace` selector to a compat schema's `properties`.
+fn schema_with_workspace_selector(mut schema: Value) -> Value {
+    if let Some(props) = schema.get_mut("properties").and_then(|p| p.as_object_mut()) {
+        props.insert(
+            "workspace".to_string(),
+            serde_json::json!({
+                "type": "string",
+                "description": "Workspace id to target (omit for the default workspace)"
+            }),
+        );
+    }
+    schema
+}
+
+/// Build the grouped multi-workspace search response for a single workspace,
+/// tagging every item with `workspace` and a `qualified_id` (R29/R30/R36).
+fn shape_grouped_search(workspace: &str, results: Vec<SearchResultItem>) -> Value {
+    let items: Vec<Value> = results
+        .into_iter()
+        .map(|item| {
+            let mut obj = serde_json::to_value(&item).unwrap_or(Value::Null);
+            if let Value::Object(map) = &mut obj {
+                let doc_id = map
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                map.insert(
+                    "workspace".to_string(),
+                    Value::String(workspace.to_string()),
+                );
+                map.insert(
+                    "qualified_id".to_string(),
+                    Value::String(format!("{workspace}:{doc_id}")),
+                );
+            }
+            obj
+        })
+        .collect();
+    serde_json::json!({
+        "results": [ { "workspace": workspace, "items": items } ],
+        "errors": []
+    })
+}
+
+/// Multi-workspace `search`: resolves the `workspace` selector and groups results.
+pub struct RoutedSearchTool;
+
+#[async_trait]
+impl Tool for RoutedSearchTool {
+    fn name(&self) -> &str {
+        "search"
+    }
+
+    fn description(&self) -> &str {
+        "Search the knowledge base (optionally scoped to a workspace)"
+    }
+
+    fn is_builtin(&self) -> bool {
+        true
+    }
+
+    fn parameters_schema(&self) -> Value {
+        schema_with_workspace_selector(SearchTool.parameters_schema())
+    }
+
+    async fn execute(&self, params: Value, ctx: &ToolContext) -> Result<Value> {
+        let query = params["query"].as_str().unwrap_or("");
+        if query.trim().is_empty() {
+            anyhow::bail!("query must not be empty");
+        }
+        let mode = params["mode"].as_str().unwrap_or("keyword");
+        let limit = params["limit"].as_i64().unwrap_or(12);
+        let source = params
+            .get("filters")
+            .and_then(|f| f.get("source"))
+            .and_then(|s| s.as_str());
+        let since = params
+            .get("filters")
+            .and_then(|f| f.get("since"))
+            .and_then(|s| s.as_str());
+
+        let selector = params["workspace"].as_str();
+        let runtime = ctx.router().resolve(selector)?;
+
+        let results = search_documents(
+            &runtime.config,
+            query,
+            mode,
+            source,
+            since,
+            Some(limit),
+            false,
+        )
+        .await?;
+        Ok(shape_grouped_search(&runtime.id, results))
+    }
+}
+
+/// Multi-workspace `get`: supports a qualified id (`<ws>:<doc>`) or an explicit
+/// `workspace` selector, with conflict detection (R38–R43).
+pub struct RoutedGetTool;
+
+#[async_trait]
+impl Tool for RoutedGetTool {
+    fn name(&self) -> &str {
+        "get"
+    }
+
+    fn description(&self) -> &str {
+        "Retrieve a document by id or qualified id (<workspace>:<id>)"
+    }
+
+    fn is_builtin(&self) -> bool {
+        true
+    }
+
+    fn parameters_schema(&self) -> Value {
+        schema_with_workspace_selector(GetTool.parameters_schema())
+    }
+
+    async fn execute(&self, params: Value, ctx: &ToolContext) -> Result<Value> {
+        let id = params["id"].as_str().unwrap_or("");
+        if id.trim().is_empty() {
+            anyhow::bail!("id must not be empty");
+        }
+        let field = params["workspace"].as_str();
+        let (qualified_prefix, raw_id) = ctx.router().split_qualified_id(id);
+
+        // A qualified id and an explicit workspace field must agree (R41/R42).
+        if let (Some(q), Some(f)) = (qualified_prefix, field) {
+            if q != f {
+                return Err(RouterError::WorkspaceIdConflict {
+                    field: f.to_string(),
+                    qualified: q.to_string(),
+                }
+                .into());
+            }
+        }
+
+        let selector = qualified_prefix.or(field);
+        let runtime = ctx.router().resolve(selector)?;
+
+        let doc = get_document(&runtime.config, raw_id).await?;
+        let mut obj = serde_json::to_value(&doc)?;
+        if let Value::Object(map) = &mut obj {
+            map.insert("workspace".to_string(), Value::String(runtime.id.clone()));
+            map.insert(
+                "qualified_id".to_string(),
+                Value::String(format!("{}:{}", runtime.id, raw_id)),
+            );
+        }
+        Ok(obj)
+    }
+}
+
+/// Multi-workspace `sources`: connector status for one workspace, grouped and
+/// redacted (R44/R48/R49).
+pub struct RoutedSourcesTool;
+
+#[async_trait]
+impl Tool for RoutedSourcesTool {
+    fn name(&self) -> &str {
+        "sources"
+    }
+
+    fn description(&self) -> &str {
+        "List connector status for a workspace (optionally scoped to a workspace)"
+    }
+
+    fn is_builtin(&self) -> bool {
+        true
+    }
+
+    fn parameters_schema(&self) -> Value {
+        schema_with_workspace_selector(SourcesTool.parameters_schema())
+    }
+
+    async fn execute(&self, params: Value, ctx: &ToolContext) -> Result<Value> {
+        let selector = params["workspace"].as_str();
+        let runtime = ctx.router().resolve(selector)?;
+        let sources = get_sources(&runtime.config);
+        Ok(serde_json::json!({
+            "results": [ { "workspace": runtime.id, "sources": sources } ],
+            "errors": []
+        }))
+    }
+}
+
+/// Multi-workspace discovery tool: lists registered workspaces, their health,
+/// and which is the default — without exposing any secret config values (R46–R49).
+pub struct WorkspacesTool;
+
+#[async_trait]
+impl Tool for WorkspacesTool {
+    fn name(&self) -> &str {
+        "workspaces"
+    }
+
+    fn description(&self) -> &str {
+        "List registered workspaces, their health, and the default workspace"
+    }
+
+    fn is_builtin(&self) -> bool {
+        true
+    }
+
+    fn parameters_schema(&self) -> Value {
+        serde_json::json!({ "type": "object", "properties": {} })
+    }
+
+    async fn execute(&self, _params: Value, ctx: &ToolContext) -> Result<Value> {
+        let router = ctx.router();
+        let default = router.default_id();
+        let workspaces: Vec<Value> = router
+            .list()
+            .iter()
+            .map(|rt| {
+                let health = match &rt.health {
+                    crate::workspace::WorkspaceHealth::Ok => serde_json::json!({ "status": "ok" }),
+                    crate::workspace::WorkspaceHealth::Unavailable(reason) => {
+                        serde_json::json!({ "status": "unavailable", "reason": reason })
+                    }
+                };
+                serde_json::json!({
+                    "id": rt.id,
+                    "root": rt.root.as_ref().map(|p| p.display().to_string()),
+                    "enabled": rt.enabled,
+                    "default": Some(rt.id.as_str()) == default,
+                    "resolution": rt.resolution.as_str(),
+                    "health": health,
+                })
+            })
+            .collect();
+        Ok(serde_json::json!({ "workspaces": workspaces }))
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // Registries
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -580,6 +875,20 @@ impl ToolRegistry {
         registry.register(Box::new(SearchTool));
         registry.register(Box::new(GetTool));
         registry.register(Box::new(SourcesTool));
+        registry
+    }
+
+    /// Create a tool registry with the router-aware built-ins for
+    /// multi-workspace mode: `search`/`get`/`sources` accept a `workspace`
+    /// selector and the `workspaces` discovery tool is added. Workspace-local
+    /// Lua/Rust tools are intentionally not registered in multi mode in Phase 1
+    /// (SPEC-0014 R54).
+    pub fn with_builtins_multi() -> Self {
+        let mut registry = Self::new();
+        registry.register(Box::new(RoutedSearchTool));
+        registry.register(Box::new(RoutedGetTool));
+        registry.register(Box::new(RoutedSourcesTool));
+        registry.register(Box::new(WorkspacesTool));
         registry
     }
 

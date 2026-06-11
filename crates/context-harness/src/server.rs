@@ -71,12 +71,16 @@ use crate::mcp::McpBridge;
 use crate::registry::RegistryManager;
 use crate::tool_script::{load_tool_definitions, validate_params, LuaToolAdapter, ToolInfo};
 use crate::traits::{ToolContext, ToolRegistry};
+use crate::workspace::{RouterError, ServerMode, WorkspaceRouter};
 
 /// Shared application state passed to all route handlers via Axum's `State` extractor.
 #[derive(Clone)]
 struct AppState {
-    /// Application configuration (wrapped in `Arc` for cheap cloning across handlers).
-    config: Arc<Config>,
+    /// Workspace router (one-workspace in compatibility mode; multi under
+    /// `--workspaces`). Handlers build a [`ToolContext`] from this per request.
+    router: Arc<WorkspaceRouter>,
+    /// Whether the server emits flat (compat) or workspace-labeled (multi) shapes.
+    mode: ServerMode,
     /// Unified tool registry containing built-in, Lua, and custom Rust tools.
     tools: Arc<ToolRegistry>,
     /// Agent registry containing TOML, Lua, and custom Rust agents.
@@ -256,8 +260,120 @@ pub async fn run_server_with_extensions(
     let tools = Arc::new(tool_registry);
     let agents = Arc::new(agent_registry);
 
+    // Compatibility mode is a router with one workspace; the wire contract is
+    // selected by mode, not by workspace count (SPEC-0014 R14/R15).
+    let router = Arc::new(WorkspaceRouter::single(config.clone()));
+
+    serve_router(
+        router,
+        ServerMode::Compat,
+        bind_addr,
+        false,
+        tools,
+        agents,
+        extra_tools,
+        extra_agents,
+    )
+    .await
+}
+
+/// Starts the multi-workspace MCP server (`ctx serve mcp --workspaces`).
+///
+/// Routes the built-in `search` / `get` / `sources` / `workspaces` tools across
+/// the registered workspaces in `router`. Per SPEC-0014 R54, only built-in
+/// tools are exposed in multi-workspace mode in Phase 1 — workspace-local Lua
+/// and registry tools/agents are not loaded. `bind` comes from the registry's
+/// `[defaults].bind` (R16); `allow_remote` permits a non-loopback bind.
+pub async fn run_server_multi(
+    router: Arc<WorkspaceRouter>,
+    bind: String,
+    allow_remote: bool,
+) -> anyhow::Result<()> {
+    let tools = Arc::new(ToolRegistry::with_builtins_multi());
+    let agents = Arc::new(AgentRegistry::new());
+    let extra_tools = Arc::new(ToolRegistry::new());
+    let extra_agents = Arc::new(AgentRegistry::new());
+
+    println!("Multi-workspace MCP mode. Registered workspaces:");
+    for rt in router.list() {
+        let default = if Some(rt.id.as_str()) == router.default_id() {
+            " (default)"
+        } else {
+            ""
+        };
+        let health = if rt.health.is_ok() {
+            "ok"
+        } else {
+            "unavailable"
+        };
+        println!(
+            "  {}{} — enabled={} health={} resolution={}",
+            rt.id,
+            default,
+            rt.enabled,
+            health,
+            rt.resolution.as_str()
+        );
+    }
+
+    serve_router(
+        router,
+        ServerMode::Multi,
+        bind,
+        allow_remote,
+        tools,
+        agents,
+        extra_tools,
+        extra_agents,
+    )
+    .await
+}
+
+/// Whether a `host:port` bind address targets the loopback interface.
+fn is_loopback_bind(bind: &str) -> bool {
+    let host = bind.rsplit_once(':').map(|(h, _)| h).unwrap_or(bind);
+    let host = host.trim_start_matches('[').trim_end_matches(']');
+    if host.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    host.parse::<std::net::IpAddr>()
+        .map(|ip| ip.is_loopback())
+        .unwrap_or(false)
+}
+
+/// Shared Axum wiring for both compatibility and multi-workspace modes.
+#[allow(clippy::too_many_arguments)]
+async fn serve_router(
+    router: Arc<WorkspaceRouter>,
+    mode: ServerMode,
+    bind_addr: String,
+    allow_remote: bool,
+    tools: Arc<ToolRegistry>,
+    agents: Arc<AgentRegistry>,
+    extra_tools: Arc<ToolRegistry>,
+    extra_agents: Arc<AgentRegistry>,
+) -> anyhow::Result<()> {
+    // Trust model (SPEC-0014 trust-model section): loopback bind is the
+    // load-bearing control. A non-loopback bind is refused in multi-workspace
+    // mode (which fronts every registered store) unless explicitly allowed.
+    if !is_loopback_bind(&bind_addr) {
+        if mode == ServerMode::Multi && !allow_remote {
+            anyhow::bail!(
+                "refusing to bind multi-workspace server to non-loopback address '{bind_addr}': \
+                 this exposes every registered workspace to other hosts. Bind to 127.0.0.1, or \
+                 pass --allow-remote to override."
+            );
+        }
+        eprintln!(
+            "warning: binding to non-loopback address '{bind_addr}'. The MCP server has \
+             permissive CORS and no authentication; only bind to addresses reachable by \
+             trusted clients."
+        );
+    }
+
     let state = AppState {
-        config: config.clone(),
+        router: router.clone(),
+        mode,
         tools: tools.clone(),
         agents: agents.clone(),
     };
@@ -267,13 +383,14 @@ pub async fn run_server_with_extensions(
     let mcp_extra = extra_tools.clone();
     let mcp_agents = agents.clone();
     let mcp_extra_agents = extra_agents.clone();
-    let mcp_config = config.clone();
+    let mcp_router = router.clone();
 
     let extra_state = (extra_tools.clone(), extra_agents);
     let mcp_service = StreamableHttpService::new(
         move || {
             Ok(McpBridge::new(
-                mcp_config.clone(),
+                mcp_router.clone(),
+                mode,
                 mcp_tools.clone(),
                 mcp_extra.clone(),
                 mcp_agents.clone(),
@@ -385,6 +502,20 @@ fn tool_error(message: impl Into<String>) -> AppError {
 /// (e.g. empty query → 400, document not found → 404) without needing
 /// a custom error type in the `Tool` trait.
 fn classify_tool_error(tool_name: &str, err: anyhow::Error) -> AppError {
+    // Router errors carry their own SPEC-0014 R64 code; surface it directly.
+    if let Some(re) = err.downcast_ref::<RouterError>() {
+        let status = match re {
+            RouterError::UnknownWorkspace(_) => StatusCode::NOT_FOUND,
+            RouterError::WorkspaceUnavailable { .. } => StatusCode::SERVICE_UNAVAILABLE,
+            _ => StatusCode::BAD_REQUEST,
+        };
+        return AppError {
+            status,
+            code: re.code().to_string(),
+            message: format!("{tool_name}: {re}"),
+        };
+    }
+
     let msg = err.to_string();
 
     if msg.contains("not found") {
@@ -499,7 +630,7 @@ async fn handle_tool_call(
         .map_err(|e| bad_request(e.to_string()))?;
 
     // Execute via the Tool trait
-    let ctx = ToolContext::new(state.config.clone());
+    let ctx = ToolContext::routed(state.router.clone(), state.mode);
     let result = tool
         .execute(validated_params, &ctx)
         .await
@@ -572,7 +703,7 @@ async fn handle_resolve_agent(
         .or_else(|| extra_agents.find(&name))
         .ok_or_else(|| not_found(format!("no agent registered with name: {}", name)))?;
 
-    let ctx = ToolContext::new(state.config.clone());
+    let ctx = ToolContext::routed(state.router.clone(), state.mode);
     let prompt = agent
         .resolve(args, &ctx)
         .await

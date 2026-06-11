@@ -120,6 +120,7 @@ pub mod mcp;
 pub mod migrate;
 pub mod models;
 pub mod progress;
+pub mod redact;
 pub mod registry;
 pub mod search;
 pub mod server;
@@ -129,6 +130,7 @@ pub mod stats;
 pub mod tool_script;
 pub mod traits;
 pub mod vector_index;
+pub mod workspace;
 
 pub use agents::{Agent, AgentPrompt, AgentRegistry, TomlAgent};
 pub use context_harness_core::store;
