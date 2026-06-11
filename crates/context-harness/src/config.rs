@@ -833,6 +833,87 @@ pub fn load_config_for_cli(explicit_path: Option<PathBuf>) -> Result<ResolvedCon
     }
 }
 
+/// Resolve a workspace's effective config from its root directory (SPEC-0014 R4).
+///
+/// Resolves `<root>/.ctx/config.toml` (or the legacy `<root>/config/ctx.toml`)
+/// and merges global config defaults underneath it — mirroring the `Workspace`
+/// branch of [`load_config_for_cli`] but anchored at an explicit `root` instead
+/// of the process working directory. Relative store paths in the resolved
+/// config are re-rooted under `root` so each workspace addresses its own store.
+pub fn load_config_for_root(root: &Path) -> Result<ResolvedConfig> {
+    let workspace_path = root.join(".ctx").join("config.toml");
+    let legacy_path = root.join("config").join("ctx.toml");
+
+    let (chosen, kind) = if workspace_path.exists() {
+        (Some(workspace_path), ConfigSourceKind::Workspace)
+    } else if legacy_path.exists() {
+        (Some(legacy_path), ConfigSourceKind::LegacyWorkspace)
+    } else {
+        (None, ConfigSourceKind::BuiltIn)
+    };
+
+    let global = ctx_dirs::config_dir().join("config.toml");
+
+    let mut config = match &chosen {
+        Some(path) => {
+            let workspace_value = load_config_value(path)?;
+            let merged = if global.exists() {
+                let mut global_value = load_config_value(&global)?;
+                merge_toml(&mut global_value, workspace_value);
+                global_value
+            } else {
+                workspace_value
+            };
+            config_from_value(merged)?
+        }
+        None if global.exists() => load_config_file(&global)?,
+        None => Config::minimal(),
+    };
+
+    reroot_workspace_paths(&mut config, root);
+    Ok(ResolvedConfig {
+        config,
+        path: chosen,
+        source: kind,
+    })
+}
+
+/// Load a pinned config file as the sole source, with no global merge (SPEC-0014 R5).
+///
+/// Preserves explicit-config behavior (`config = …` in the workspace registry),
+/// but still re-roots relative store paths under `root` so the workspace
+/// addresses its own store in multi-workspace mode.
+pub fn load_config_pinned(config_path: &Path, root: &Path) -> Result<ResolvedConfig> {
+    let mut config = load_config_file(config_path)?;
+    reroot_workspace_paths(&mut config, root);
+    Ok(ResolvedConfig {
+        config,
+        path: Some(config_path.to_path_buf()),
+        source: ConfigSourceKind::Explicit,
+    })
+}
+
+/// Re-root relative store paths under an explicit workspace root so each
+/// workspace addresses its own SQLite store and vector sidecar regardless of
+/// the server's working directory (SPEC-0014 R55–R58).
+fn reroot_workspace_paths(config: &mut Config, root: &Path) {
+    if config.db.path.is_relative() {
+        config.db.path = root.join(&config.db.path);
+    }
+    // The vector sidecar path is derived from db.path when set to "auto" (see
+    // vector_index::resolve_vector_index_path), so only an explicit relative
+    // override needs re-rooting here.
+    if config.vector_index.path.as_os_str() != "auto" && config.vector_index.path.is_relative() {
+        config.vector_index.path = root.join(&config.vector_index.path);
+    }
+    // Filesystem connector roots feed `sources` health checks; re-root relative ones.
+    for fs in config.connectors.filesystem.values_mut() {
+        if fs.root.is_relative() {
+            fs.root = root.join(&fs.root);
+        }
+    }
+}
+
 pub fn ensure_workspace_config_for_init(explicit_path: Option<&Path>) -> Result<Option<PathBuf>> {
     let paths = ctx_dirs::config_paths(explicit_path.map(Path::to_path_buf));
     if paths.has_explicit_source() || paths.has_workspace_source() {
