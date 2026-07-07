@@ -67,6 +67,8 @@ mod mcp;
 mod migrate;
 mod models;
 mod progress;
+#[allow(dead_code)]
+mod redact;
 mod registry;
 mod search;
 mod server;
@@ -77,6 +79,8 @@ mod tool_script;
 #[allow(dead_code)]
 mod traits;
 mod vector_index;
+#[allow(dead_code)]
+mod workspace;
 
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{generate, Shell};
@@ -236,6 +240,16 @@ enum Commands {
     Serve {
         #[command(subcommand)]
         service: ServeService,
+    },
+
+    /// Manage the multi-workspace registry (`workspaces.toml`).
+    ///
+    /// Register, list, and remove workspaces served by
+    /// `ctx serve mcp --workspaces`. The registry lives at
+    /// `$XDG_CONFIG_HOME/ctx/workspaces.toml`.
+    Workspace {
+        #[command(subcommand)]
+        action: WorkspaceAction,
     },
 
     /// Manage Lua connector scripts.
@@ -476,7 +490,52 @@ enum ServeService {
     ///
     /// Binds to the address configured in `[server].bind` and serves
     /// the Context Harness API endpoints.
-    Mcp,
+    ///
+    /// Pass `--workspaces` to serve multiple registered workspaces through one
+    /// endpoint (multi-workspace mode); without it the server runs in
+    /// single-workspace compatibility mode.
+    Mcp {
+        /// Serve multiple workspaces from the registry (multi-workspace mode).
+        ///
+        /// Optionally takes a registry path; defaults to
+        /// `$XDG_CONFIG_HOME/ctx/workspaces.toml`. Cannot be combined with
+        /// `--config` / `CTX_CONFIG`.
+        #[arg(long, value_name = "PATH", num_args = 0..=1, require_equals = true)]
+        workspaces: Option<Option<PathBuf>>,
+
+        /// Allow binding the multi-workspace server to a non-loopback address.
+        ///
+        /// Off by default: a non-loopback bind exposes every registered
+        /// workspace to other hosts.
+        #[arg(long)]
+        allow_remote: bool,
+    },
+}
+
+/// `ctx workspace` subcommands for managing the multi-workspace registry.
+#[derive(Subcommand)]
+enum WorkspaceAction {
+    /// Register a workspace in the registry.
+    Add {
+        /// Stable workspace id (`[A-Za-z0-9][A-Za-z0-9_-]*`).
+        id: String,
+        /// Absolute path to the workspace root. Validated at write time.
+        #[arg(long)]
+        root: PathBuf,
+        /// Pin a specific config file as the sole source (no global merge).
+        #[arg(long)]
+        config: Option<PathBuf>,
+        /// Register the workspace as disabled (listed, but rejects queries).
+        #[arg(long)]
+        disabled: bool,
+    },
+    /// List registered workspaces.
+    List,
+    /// Remove a workspace from the registry.
+    Remove {
+        /// The workspace id to remove.
+        id: String,
+    },
 }
 
 #[tokio::main]
@@ -561,6 +620,54 @@ async fn main() -> anyhow::Result<()> {
             } = cli.command
             {
                 tool_script::test_tool(&path, params, &cfg, source.as_deref()).await?;
+            }
+            return Ok(());
+        }
+        // Multi-workspace MCP serving builds its router from the registry and
+        // must NOT resolve a single config (SPEC-0014 R13: --workspaces is
+        // incompatible with --config/CTX_CONFIG). Handle it before the
+        // single-config resolution below.
+        Commands::Serve {
+            service:
+                ServeService::Mcp {
+                    workspaces: Some(reg_opt),
+                    allow_remote,
+                },
+        } => {
+            if cli.config.is_some() || std::env::var_os("CTX_CONFIG").is_some() {
+                anyhow::bail!(
+                    "--workspaces cannot be combined with --config or CTX_CONFIG \
+                     (SPEC-0014 R13); drop one of them"
+                );
+            }
+            let reg_path = reg_opt
+                .clone()
+                .unwrap_or_else(workspace::default_registry_path);
+            let registry = workspace::WorkspaceRegistry::load(&reg_path)?;
+            let router = std::sync::Arc::new(workspace::build_multi_router(&registry)?);
+            let bind = registry
+                .defaults
+                .bind
+                .clone()
+                .unwrap_or_else(|| "127.0.0.1:7331".to_string());
+            server::run_server_multi(router, bind, *allow_remote).await?;
+            return Ok(());
+        }
+        // The workspace registry commands operate on workspaces.toml and do not
+        // need a resolved single config.
+        Commands::Workspace { action } => {
+            let reg_path = workspace::default_registry_path();
+            match action {
+                WorkspaceAction::Add {
+                    id,
+                    root,
+                    config,
+                    disabled,
+                } => {
+                    workspace::cmd_add(&reg_path, id, root, config.as_deref(), !*disabled)?;
+                }
+                WorkspaceAction::List => workspace::cmd_list(&reg_path)?,
+                WorkspaceAction::Remove { id } => workspace::cmd_remove(&reg_path, id)?,
             }
             return Ok(());
         }
@@ -699,7 +806,10 @@ async fn main() -> anyhow::Result<()> {
             }
         },
         Commands::Serve { service } => match service {
-            ServeService::Mcp => {
+            // The multi-workspace case (`--workspaces`) is handled earlier and
+            // returns before single-config resolution; reaching here means
+            // compatibility (single-workspace) mode.
+            ServeService::Mcp { .. } => {
                 server::run_server(&cfg).await?;
             }
         },
@@ -757,6 +867,8 @@ async fn main() -> anyhow::Result<()> {
             }
         },
         Commands::Completions { .. } => unreachable!(),
+        // Handled above (before config loading).
+        Commands::Workspace { .. } => unreachable!(),
         Commands::Agent { action } => match action {
             AgentAction::List => {
                 agent_script::list_agents(&cfg)?;

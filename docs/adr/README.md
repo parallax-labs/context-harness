@@ -31,6 +31,7 @@ including the context, alternatives considered, and consequences of each decisio
 | [0020](0020-cross-platform-framework-selection.md) | Cross-Platform Framework Selection | Accepted |
 | [0021](0021-vector-index-acceleration.md) | Vector Index Acceleration | Proposed |
 | [0022](0022-xdg-base-directory-compliance.md) | XDG Base Directory Compliance | Proposed |
+| [0023](0023-request-origin-binding.md) | Request Origin via HTTP Header | Proposed |
 
 ## Creating a New ADR
 

@@ -29,6 +29,7 @@ it. A spec references both for traceability from product intent to implementatio
 | [0008](0008-tauri-desktop-application.md) | Tauri Desktop Application | Planned |
 | [0009](0009-retrieval-quality-and-dogfooding.md) | Retrieval Quality and Dogfooding | Planned |
 | [0010](0010-distribution-and-packaging.md) | Distribution and Packaging | Planned |
+| [0011](0011-multi-workspace-mcp-router.md) | Multi-Workspace MCP Router | Draft |
 
 ## Creating a New PRD
 

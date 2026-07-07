@@ -14,16 +14,19 @@ use rmcp::model::*;
 use rmcp::{ErrorData as McpError, ServerHandler};
 
 use crate::agents::AgentRegistry;
-use crate::config::Config;
 use crate::traits::{ToolContext, ToolRegistry};
+use crate::workspace::{ServerMode, WorkspaceRouter};
 
 /// Bridges the existing registries to the MCP JSON-RPC protocol.
 ///
 /// Each MCP session receives a clone of this struct (everything is
 /// behind `Arc`), so all sessions share the same tool set and agents.
+/// The `router` is a one-workspace router in compatibility mode and a
+/// multi-workspace router under `--workspaces`.
 #[derive(Clone)]
 pub struct McpBridge {
-    config: Arc<Config>,
+    router: Arc<WorkspaceRouter>,
+    mode: ServerMode,
     tools: Arc<ToolRegistry>,
     extra_tools: Arc<ToolRegistry>,
     agents: Arc<AgentRegistry>,
@@ -32,14 +35,16 @@ pub struct McpBridge {
 
 impl McpBridge {
     pub fn new(
-        config: Arc<Config>,
+        router: Arc<WorkspaceRouter>,
+        mode: ServerMode,
         tools: Arc<ToolRegistry>,
         extra_tools: Arc<ToolRegistry>,
         agents: Arc<AgentRegistry>,
         extra_agents: Arc<AgentRegistry>,
     ) -> Self {
         Self {
-            config,
+            router,
+            mode,
             tools,
             extra_tools,
             agents,
@@ -178,7 +183,7 @@ impl ServerHandler for McpBridge {
             .map(serde_json::Value::Object)
             .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
 
-        let ctx = ToolContext::new(self.config.clone());
+        let ctx = ToolContext::routed(self.router.clone(), self.mode);
         match tool.execute(params, &ctx).await {
             Ok(result) => {
                 let text = serde_json::to_string_pretty(&result).unwrap_or_default();
@@ -225,7 +230,7 @@ impl ServerHandler for McpBridge {
             .map(serde_json::Value::Object)
             .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
 
-        let ctx = ToolContext::new(self.config.clone());
+        let ctx = ToolContext::routed(self.router.clone(), self.mode);
         let resolved = agent.resolve(args, &ctx).await.map_err(|e| {
             McpError::new(
                 ErrorCode::INTERNAL_ERROR,

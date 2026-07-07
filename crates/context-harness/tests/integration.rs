@@ -1287,3 +1287,371 @@ fn test_server_search_with_filters() {
     server.kill().ok();
     server.wait().ok();
 }
+
+// ============ Additive-invariant golden test (SPEC-0014 R15 / AC 2) ============
+//
+// Locks the compatibility-mode wire contract: a server started without
+// `--workspaces` must expose the exact pre-router tool schemas and flat
+// response shapes. The expected JSON below IS the committed golden baseline —
+// the multi-workspace work (e.g. adding a `workspace` selector to built-in
+// tools) must NOT change anything asserted here.
+
+/// The exact `parameters` schema each built-in tool advertises in compat mode.
+fn expected_compat_tool_schema(name: &str) -> serde_json::Value {
+    match name {
+        "search" => serde_json::json!({
+            "type": "object",
+            "properties": {
+                "query": { "type": "string", "description": "Search query" },
+                "mode": { "type": "string", "enum": ["keyword", "semantic", "hybrid"], "default": "keyword" },
+                "limit": { "type": "integer", "description": "Max results", "default": 12 },
+                "filters": {
+                    "type": "object",
+                    "properties": {
+                        "source": { "type": "string", "description": "Filter by connector source" },
+                        "since": { "type": "string", "description": "Only results updated after this date (YYYY-MM-DD)" }
+                    }
+                }
+            },
+            "required": ["query"]
+        }),
+        "get" => serde_json::json!({
+            "type": "object",
+            "properties": { "id": { "type": "string", "description": "Document UUID" } },
+            "required": ["id"]
+        }),
+        "sources" => serde_json::json!({ "type": "object", "properties": {} }),
+        other => panic!("unexpected compat tool: {other}"),
+    }
+}
+
+#[test]
+fn test_compat_golden_invariant() {
+    let port = find_free_port();
+    let (_tmp, config_path) = setup_server_env(port);
+
+    run_ctx(&config_path, &["init"]);
+    run_ctx(&config_path, &["sync", "filesystem"]);
+
+    let mut server = start_server(&config_path);
+    wait_for_server(port);
+    let client = reqwest::blocking::Client::new();
+
+    // ── /health ──
+    let health: serde_json::Value =
+        reqwest::blocking::get(format!("http://127.0.0.1:{port}/health"))
+            .unwrap()
+            .json()
+            .unwrap();
+    assert_eq!(health["status"], "ok");
+    assert!(health["version"].is_string());
+
+    // ── GET /tools/list: exactly the three built-ins, exact schemas ──
+    let list: serde_json::Value =
+        reqwest::blocking::get(format!("http://127.0.0.1:{port}/tools/list"))
+            .unwrap()
+            .json()
+            .unwrap();
+    let tools = list["tools"].as_array().expect("tools array");
+    assert_eq!(
+        tools.len(),
+        3,
+        "compat mode exposes exactly 3 built-in tools"
+    );
+    let mut names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
+    names.sort_unstable();
+    assert_eq!(names, ["get", "search", "sources"]);
+
+    for t in tools {
+        let name = t["name"].as_str().unwrap();
+        assert_eq!(t["builtin"], true, "{name} must be builtin");
+        assert_eq!(
+            t["parameters"],
+            expected_compat_tool_schema(name),
+            "{name} schema drifted from the compat golden baseline"
+        );
+        // The additive guarantee: compat mode must NOT advertise a workspace selector.
+        assert!(
+            t["parameters"]["properties"].get("workspace").is_none(),
+            "{name} must not expose a `workspace` param in compat mode"
+        );
+    }
+
+    // ── POST /tools/search: flat shape, no workspace labels ──
+    let search: serde_json::Value = client
+        .post(format!("http://127.0.0.1:{port}/tools/search"))
+        .json(&serde_json::json!({ "query": "Rust programming", "mode": "keyword", "limit": 5 }))
+        .send()
+        .unwrap()
+        .json()
+        .unwrap();
+    let result = &search["result"];
+    assert!(
+        result["results"].is_array(),
+        "compat search is flat `results`"
+    );
+    assert!(
+        result.get("errors").is_none(),
+        "compat search has no grouped `errors`"
+    );
+    for item in result["results"].as_array().unwrap() {
+        assert!(
+            item.get("workspace").is_none(),
+            "compat items carry no `workspace`"
+        );
+        assert!(
+            item.get("qualified_id").is_none(),
+            "compat items carry no `qualified_id`"
+        );
+    }
+
+    // ── POST /tools/sources: flat shape ──
+    let sources: serde_json::Value = client
+        .post(format!("http://127.0.0.1:{port}/tools/sources"))
+        .json(&serde_json::json!({}))
+        .send()
+        .unwrap()
+        .json()
+        .unwrap();
+    assert!(
+        sources["result"]["sources"].is_array(),
+        "compat sources is flat"
+    );
+
+    server.kill().ok();
+    server.wait().ok();
+}
+
+// ============ Multi-workspace MCP router (SPEC-0014 Phase 1) ============
+
+/// Create a workspace at `root` with a pinned `.ctx/config.toml` (absolute db
+/// path + a filesystem connector), seed one doc, and return the config path.
+fn setup_multi_workspace(root: &Path, body: &str) -> PathBuf {
+    let ctx = root.join(".ctx");
+    fs::create_dir_all(ctx.join("data")).unwrap();
+    let files = root.join("files");
+    fs::create_dir_all(&files).unwrap();
+    fs::write(files.join("doc.md"), format!("# Doc\n\n{}\n", body)).unwrap();
+
+    let config = format!(
+        "[db]\npath = \"{db}\"\n\n\
+         [chunking]\nmax_tokens = 700\noverlap_tokens = 0\n\n\
+         [retrieval]\nfinal_limit = 12\n\n\
+         [server]\nbind = \"127.0.0.1:7331\"\n\n\
+         [connectors.filesystem.local]\nroot = \"{files}\"\n\
+         include_globs = [\"**/*.md\"]\nexclude_globs = []\nfollow_symlinks = false\n",
+        db = ctx.join("data").join("ctx.sqlite").display(),
+        files = files.display(),
+    );
+    let config_path = ctx.join("config.toml");
+    fs::write(&config_path, config).unwrap();
+    config_path
+}
+
+/// Start `ctx serve mcp --workspaces=<registry>` with an isolated config dir.
+fn start_server_multi(registry_path: &Path, config_dir: &Path) -> std::process::Child {
+    let binary = ctx_binary();
+    Command::new(&binary)
+        .args(["serve", "mcp"])
+        .arg(format!("--workspaces={}", registry_path.display()))
+        .env_remove("CTX_CONFIG")
+        .env("CTX_CONFIG_DIR", config_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|e| panic!("Failed to start multi-workspace server: {}", e))
+}
+
+#[test]
+fn test_multi_workspace_routing() {
+    let ws_a = TempDir::new().unwrap();
+    let ws_b = TempDir::new().unwrap();
+    let cfg_a = setup_multi_workspace(ws_a.path(), "alpha notes about Rust cargo and crates");
+    let cfg_b = setup_multi_workspace(ws_b.path(), "beta notes about Python and pytorch");
+
+    // Build each workspace store via the compat path (absolute db paths).
+    run_ctx(&cfg_a, &["init"]);
+    run_ctx(&cfg_a, &["sync", "filesystem"]);
+    run_ctx(&cfg_b, &["init"]);
+    run_ctx(&cfg_b, &["sync", "filesystem"]);
+
+    let reg_tmp = TempDir::new().unwrap();
+    let cfg_dir = TempDir::new().unwrap();
+    let port = find_free_port();
+    let reg_path = reg_tmp.path().join("workspaces.toml");
+    fs::write(
+        &reg_path,
+        format!(
+            "[defaults]\nworkspace = \"alpha\"\nbind = \"127.0.0.1:{port}\"\n\n\
+             [workspaces.alpha]\nroot = \"{a}\"\nconfig = \"{ca}\"\nenabled = true\n\n\
+             [workspaces.beta]\nroot = \"{b}\"\nconfig = \"{cb}\"\nenabled = true\n\n\
+             [workspaces.gamma]\nroot = \"{b}\"\nconfig = \"{cb}\"\nenabled = false\n",
+            port = port,
+            a = ws_a.path().display(),
+            ca = cfg_a.display(),
+            b = ws_b.path().display(),
+            cb = cfg_b.display(),
+        ),
+    )
+    .unwrap();
+
+    let mut server = start_server_multi(&reg_path, cfg_dir.path());
+    wait_for_server(port);
+    let client = reqwest::blocking::Client::new();
+    let base = format!("http://127.0.0.1:{}", port);
+
+    // workspaces discovery: alpha (default), beta, gamma (disabled); no secrets.
+    let ws: serde_json::Value = client
+        .post(format!("{}/tools/workspaces", base))
+        .json(&serde_json::json!({}))
+        .send()
+        .unwrap()
+        .json()
+        .unwrap();
+    let list = ws["result"]["workspaces"].as_array().unwrap();
+    assert_eq!(list.len(), 3);
+    let alpha = list.iter().find(|w| w["id"] == "alpha").unwrap();
+    assert_eq!(alpha["default"], true);
+    assert_eq!(alpha["enabled"], true);
+    assert_eq!(alpha["health"]["status"], "ok");
+    let gamma = list.iter().find(|w| w["id"] == "gamma").unwrap();
+    assert_eq!(gamma["enabled"], false);
+
+    // Explicit-workspace search: grouped, labeled, qualified ids.
+    let s: serde_json::Value = client
+        .post(format!("{}/tools/search", base))
+        .json(&serde_json::json!({ "query": "Rust", "workspace": "alpha", "limit": 5 }))
+        .send()
+        .unwrap()
+        .json()
+        .unwrap();
+    let groups = s["result"]["results"].as_array().unwrap();
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0]["workspace"], "alpha");
+    let items = groups[0]["items"].as_array().unwrap();
+    assert!(!items.is_empty(), "alpha should have results for 'Rust'");
+    assert_eq!(items[0]["workspace"], "alpha");
+    let qid = items[0]["qualified_id"].as_str().unwrap().to_string();
+    assert!(
+        qid.starts_with("alpha:"),
+        "qualified id starts with workspace: {}",
+        qid
+    );
+
+    // get by qualified id routes to alpha.
+    let g: serde_json::Value = client
+        .post(format!("{}/tools/get", base))
+        .json(&serde_json::json!({ "id": qid }))
+        .send()
+        .unwrap()
+        .json()
+        .unwrap();
+    assert_eq!(g["result"]["workspace"], "alpha");
+
+    // Conflict: explicit workspace disagrees with qualified id prefix.
+    let conflict = client
+        .post(format!("{}/tools/get", base))
+        .json(&serde_json::json!({ "id": qid, "workspace": "beta" }))
+        .send()
+        .unwrap();
+    assert_eq!(conflict.status(), 400);
+    assert_eq!(
+        conflict.json::<serde_json::Value>().unwrap()["error"]["code"],
+        "workspace_id_conflict"
+    );
+
+    // Disabled workspace.
+    let disabled: serde_json::Value = client
+        .post(format!("{}/tools/search", base))
+        .json(&serde_json::json!({ "query": "x", "workspace": "gamma" }))
+        .send()
+        .unwrap()
+        .json()
+        .unwrap();
+    assert_eq!(disabled["error"]["code"], "workspace_disabled");
+
+    // Unknown workspace -> 404.
+    let unknown = client
+        .post(format!("{}/tools/search", base))
+        .json(&serde_json::json!({ "query": "x", "workspace": "nope" }))
+        .send()
+        .unwrap();
+    assert_eq!(unknown.status(), 404);
+    assert_eq!(
+        unknown.json::<serde_json::Value>().unwrap()["error"]["code"],
+        "unknown_workspace"
+    );
+
+    // `all` is rejected in Phase 1.
+    let all: serde_json::Value = client
+        .post(format!("{}/tools/search", base))
+        .json(&serde_json::json!({ "query": "x", "workspace": "all" }))
+        .send()
+        .unwrap()
+        .json()
+        .unwrap();
+    assert_eq!(all["error"]["code"], "unsupported_workspace_selector");
+
+    server.kill().ok();
+    server.wait().ok();
+}
+
+#[test]
+fn test_workspaces_flag_rejects_explicit_config() {
+    // SPEC-0014 R13: --workspaces cannot be combined with --config.
+    let binary = ctx_binary();
+    let output = Command::new(&binary)
+        .arg("--config")
+        .arg("/tmp/does-not-matter.toml")
+        .args(["serve", "mcp", "--workspaces=/tmp/ws.toml"])
+        .output()
+        .unwrap();
+    assert!(
+        !output.status.success(),
+        "should reject --workspaces + --config"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("--workspaces cannot be combined with --config"),
+        "expected rejection message, got: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_multi_workspace_refuses_non_loopback_bind() {
+    let ws = TempDir::new().unwrap();
+    let cfg = setup_multi_workspace(ws.path(), "content");
+    run_ctx(&cfg, &["init"]);
+
+    let reg_tmp = TempDir::new().unwrap();
+    let reg_path = reg_tmp.path().join("workspaces.toml");
+    fs::write(
+        &reg_path,
+        format!(
+            "[defaults]\nbind = \"0.0.0.0:7331\"\n\n\
+             [workspaces.alpha]\nroot = \"{a}\"\nconfig = \"{ca}\"\nenabled = true\n",
+            a = ws.path().display(),
+            ca = cfg.display(),
+        ),
+    )
+    .unwrap();
+
+    let binary = ctx_binary();
+    let output = Command::new(&binary)
+        .args(["serve", "mcp"])
+        .arg(format!("--workspaces={}", reg_path.display()))
+        .env_remove("CTX_CONFIG")
+        .output()
+        .unwrap();
+    assert!(
+        !output.status.success(),
+        "non-loopback bind must be refused without --allow-remote"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("non-loopback"),
+        "expected non-loopback refusal, got: {}",
+        stderr
+    );
+}

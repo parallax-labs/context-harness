@@ -77,7 +77,10 @@ pub fn get_sources(config: &Config) -> Vec<SourceStatus> {
                 name: format!("git:{}", name),
                 configured: true,
                 healthy: true,
-                notes: Some(format!("repo: {}", git_config.url)),
+                notes: Some(format!(
+                    "repo: {}",
+                    crate::redact::redact_url(&git_config.url)
+                )),
             });
         } else {
             sources.push(SourceStatus {
