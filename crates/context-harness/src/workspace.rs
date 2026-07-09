@@ -1017,7 +1017,10 @@ mod tests {
             workspaces: reg.workspaces.clone(),
         };
         let out = toml::to_string(&reg2).unwrap();
-        assert!(!out.contains("search_deadline_ms"), "unset field is omitted");
+        assert!(
+            !out.contains("search_deadline_ms"),
+            "unset field is omitted"
+        );
     }
 
     #[test]
@@ -1057,7 +1060,10 @@ mod tests {
     #[test]
     fn with_search_deadline_overrides_default() {
         let r = WorkspaceRouter::multi(vec![runtime("a", true, WorkspaceHealth::Ok)], None);
-        assert_eq!(r.search_deadline().as_millis(), DEFAULT_SEARCH_DEADLINE_MS as u128);
+        assert_eq!(
+            r.search_deadline().as_millis(),
+            DEFAULT_SEARCH_DEADLINE_MS as u128
+        );
         let r = r.with_search_deadline(Some(250));
         assert_eq!(r.search_deadline().as_millis(), 250);
         // None leaves it unchanged.
@@ -1085,7 +1091,10 @@ mod tests {
         .await;
 
         assert_eq!(
-            outcomes.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>(),
+            outcomes
+                .iter()
+                .map(|(id, _)| id.clone())
+                .collect::<Vec<_>>(),
             vec!["ok".to_string(), "fail".to_string(), "slow".to_string()],
             "order follows input order"
         );
