@@ -19,6 +19,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
@@ -27,6 +28,11 @@ use crate::config::Config;
 
 /// The reserved selector meaning "every enabled workspace".
 pub const ALL_SELECTOR: &str = "all";
+
+/// Default per-workspace deadline for an `all` fan-out search (SPEC-0014 R33).
+pub const DEFAULT_SEARCH_DEADLINE_MS: u64 = 5000;
+/// Maximum number of workspaces searched concurrently during an `all` fan-out.
+pub const FAN_OUT_CONCURRENCY: usize = 4;
 
 /// Whether the server emits the pre-router flat shapes (`Compat`) or the
 /// workspace-labeled shapes (`Multi`). Chosen once at startup by activation
@@ -191,6 +197,9 @@ pub struct WorkspaceRouter {
     /// Stable iteration order for discovery/listing.
     order: Vec<String>,
     mode: ServerMode,
+    /// Per-workspace deadline for `all` fan-out (R33). Defaults to
+    /// `DEFAULT_SEARCH_DEADLINE_MS`; overridden by `with_search_deadline`.
+    search_deadline: Duration,
 }
 
 impl WorkspaceRouter {
@@ -205,6 +214,7 @@ impl WorkspaceRouter {
             workspaces,
             order: vec![id],
             mode: ServerMode::Compat,
+            search_deadline: Duration::from_millis(DEFAULT_SEARCH_DEADLINE_MS),
         }
     }
 
@@ -224,6 +234,7 @@ impl WorkspaceRouter {
             workspaces,
             order,
             mode: ServerMode::Multi,
+            search_deadline: Duration::from_millis(DEFAULT_SEARCH_DEADLINE_MS),
         }
     }
 
@@ -324,6 +335,50 @@ impl WorkspaceRouter {
                 reason: reason.clone(),
             }),
         }
+    }
+
+    /// The configured per-workspace `all`-search deadline (R33).
+    pub fn search_deadline(&self) -> Duration {
+        self.search_deadline
+    }
+
+    /// Override the per-workspace `all`-search deadline. `None` leaves the
+    /// current value (the default) unchanged. Builder-style so existing
+    /// `multi(...)` call sites need no change.
+    pub fn with_search_deadline(mut self, ms: Option<u64>) -> Self {
+        if let Some(ms) = ms {
+            self.search_deadline = Duration::from_millis(ms);
+        }
+        self
+    }
+
+    /// Resolve the `all` selector (SPEC-0014 R21) into the enabled workspaces,
+    /// partitioned into healthy runtimes (to search) and enabled-but-unavailable
+    /// workspaces as pre-built error entries (R26/R37). Disabled workspaces are
+    /// excluded entirely — they are not part of `all` and are not errors (R7).
+    /// Output follows the stable registry order.
+    pub fn resolve_all(&self) -> (Vec<Arc<WorkspaceRuntime>>, Vec<(String, RouterError)>) {
+        let mut healthy = Vec::new();
+        let mut errors = Vec::new();
+        for id in &self.order {
+            let Some(rt) = self.workspaces.get(id) else {
+                continue;
+            };
+            if !rt.enabled {
+                continue;
+            }
+            match &rt.health {
+                WorkspaceHealth::Ok => healthy.push(rt.clone()),
+                WorkspaceHealth::Unavailable(reason) => errors.push((
+                    id.clone(),
+                    RouterError::WorkspaceUnavailable {
+                        id: id.clone(),
+                        reason: reason.clone(),
+                    },
+                )),
+            }
+        }
+        (healthy, errors)
     }
 
     /// Split a `get` id into (workspace, raw_id) using qualified-id rules (R40).
@@ -451,10 +506,10 @@ pub fn build_multi_router(registry: &WorkspaceRegistry) -> anyhow::Result<Worksp
         .iter()
         .map(|(id, entry)| build_runtime(id, entry))
         .collect();
-    Ok(WorkspaceRouter::multi(
-        runtimes,
-        registry.defaults.workspace.clone(),
-    ))
+    Ok(
+        WorkspaceRouter::multi(runtimes, registry.defaults.workspace.clone())
+            .with_search_deadline(registry.defaults.search_deadline_ms),
+    )
 }
 
 /// Resolve one registry entry into a runtime, capturing validation/config
@@ -901,5 +956,39 @@ mod tests {
         assert_eq!(e.code(), "workspace_timeout");
         assert!(e.to_string().contains("beta"));
         assert!(e.to_string().contains("5000"));
+    }
+
+    #[test]
+    fn resolve_all_partitions_by_enabled_and_health() {
+        let r = WorkspaceRouter::multi(
+            vec![
+                runtime("a", true, WorkspaceHealth::Ok),
+                runtime("b", false, WorkspaceHealth::Ok), // disabled -> excluded
+                runtime("c", true, WorkspaceHealth::Unavailable("boom".to_string())),
+                runtime("d", true, WorkspaceHealth::Ok),
+            ],
+            None,
+        );
+        let (healthy, errors) = r.resolve_all();
+        // Healthy, in registry order: a, d. Disabled b excluded.
+        assert_eq!(
+            healthy.iter().map(|rt| rt.id.clone()).collect::<Vec<_>>(),
+            vec!["a".to_string(), "d".to_string()]
+        );
+        // c is enabled-but-unavailable -> one error entry.
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].0, "c");
+        assert_eq!(errors[0].1.code(), "workspace_unavailable");
+    }
+
+    #[test]
+    fn with_search_deadline_overrides_default() {
+        let r = WorkspaceRouter::multi(vec![runtime("a", true, WorkspaceHealth::Ok)], None);
+        assert_eq!(r.search_deadline().as_millis(), DEFAULT_SEARCH_DEADLINE_MS as u128);
+        let r = r.with_search_deadline(Some(250));
+        assert_eq!(r.search_deadline().as_millis(), 250);
+        // None leaves it unchanged.
+        let r = r.with_search_deadline(None);
+        assert_eq!(r.search_deadline().as_millis(), 250);
     }
 }
