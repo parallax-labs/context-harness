@@ -361,12 +361,16 @@ pub struct RegistryDefaults {
     /// Shared server bind address in multi-workspace mode (R16).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bind: Option<String>,
+    /// Per-workspace deadline (ms) for `all` fan-out search (SPEC-0014 R33).
+    /// Overrides the built-in 5000 ms default when set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_deadline_ms: Option<u64>,
 }
 
 impl RegistryDefaults {
     /// Whether no defaults are set (so the `[defaults]` table can be omitted).
     fn is_empty(&self) -> bool {
-        self.workspace.is_none() && self.bind.is_none()
+        self.workspace.is_none() && self.bind.is_none() && self.search_deadline_ms.is_none()
     }
 }
 
@@ -865,5 +869,20 @@ mod tests {
         let out = reg.to_toml().unwrap();
         let reparsed: WorkspaceRegistry = toml::from_str(&out).unwrap();
         assert_eq!(reparsed.workspaces["a"].root, PathBuf::from("/abs/a"));
+    }
+
+    #[test]
+    fn registry_parses_search_deadline_ms() {
+        let toml = "[defaults]\nworkspace = \"a\"\nsearch_deadline_ms = 1234\n\n\
+                    [workspaces.a]\nroot = \"/abs/a\"\nenabled = true\n";
+        let reg: WorkspaceRegistry = toml::from_str(toml).unwrap();
+        assert_eq!(reg.defaults.search_deadline_ms, Some(1234));
+        // Round-trips and is omitted when unset.
+        let reg2 = WorkspaceRegistry {
+            defaults: RegistryDefaults::default(),
+            workspaces: reg.workspaces.clone(),
+        };
+        let out = toml::to_string(&reg2).unwrap();
+        assert!(!out.contains("search_deadline_ms"), "unset field is omitted");
     }
 }
