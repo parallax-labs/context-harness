@@ -127,6 +127,8 @@ pub enum RouterError {
     WorkspaceIdConflict { field: String, qualified: String },
     /// A selector such as `all` is not valid for the requested operation.
     UnsupportedWorkspaceSelector(String),
+    /// A workspace exceeded its per-workspace deadline during an `all` fan-out.
+    WorkspaceTimeout { id: String, deadline_ms: u64 },
 }
 
 impl RouterError {
@@ -139,6 +141,7 @@ impl RouterError {
             RouterError::WorkspaceUnavailable { .. } => "workspace_unavailable",
             RouterError::WorkspaceIdConflict { .. } => "workspace_id_conflict",
             RouterError::UnsupportedWorkspaceSelector(_) => "unsupported_workspace_selector",
+            RouterError::WorkspaceTimeout { .. } => "workspace_timeout",
         }
     }
 }
@@ -171,6 +174,9 @@ impl std::fmt::Display for RouterError {
             ),
             RouterError::UnsupportedWorkspaceSelector(sel) => {
                 write!(f, "selector '{sel}' is not valid for this operation")
+            }
+            RouterError::WorkspaceTimeout { id, deadline_ms } => {
+                write!(f, "workspace timed out after {deadline_ms}ms: {id}")
             }
         }
     }
@@ -884,5 +890,16 @@ mod tests {
         };
         let out = toml::to_string(&reg2).unwrap();
         assert!(!out.contains("search_deadline_ms"), "unset field is omitted");
+    }
+
+    #[test]
+    fn workspace_timeout_error_code() {
+        let e = RouterError::WorkspaceTimeout {
+            id: "beta".to_string(),
+            deadline_ms: 5000,
+        };
+        assert_eq!(e.code(), "workspace_timeout");
+        assert!(e.to_string().contains("beta"));
+        assert!(e.to_string().contains("5000"));
     }
 }

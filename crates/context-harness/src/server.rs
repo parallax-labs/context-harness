@@ -507,6 +507,7 @@ fn classify_tool_error(tool_name: &str, err: anyhow::Error) -> AppError {
         let status = match re {
             RouterError::UnknownWorkspace(_) => StatusCode::NOT_FOUND,
             RouterError::WorkspaceUnavailable { .. } => StatusCode::SERVICE_UNAVAILABLE,
+            RouterError::WorkspaceTimeout { .. } => StatusCode::SERVICE_UNAVAILABLE,
             _ => StatusCode::BAD_REQUEST,
         };
         return AppError {
