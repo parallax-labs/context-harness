@@ -1592,17 +1592,36 @@ fn test_multi_workspace_routing() {
         .json()
         .unwrap();
     let groups = all["result"]["results"].as_array().unwrap();
-    let ws_ids: Vec<&str> = groups.iter().map(|g| g["workspace"].as_str().unwrap()).collect();
-    assert!(ws_ids.contains(&"alpha"), "alpha present in all-search: {ws_ids:?}");
-    assert!(ws_ids.contains(&"beta"), "beta present in all-search: {ws_ids:?}");
-    assert!(!ws_ids.contains(&"gamma"), "disabled gamma excluded: {ws_ids:?}");
-    assert_eq!(all["result"]["errors"].as_array().unwrap().len(), 0, "no failures expected");
+    let ws_ids: Vec<&str> = groups
+        .iter()
+        .map(|g| g["workspace"].as_str().unwrap())
+        .collect();
+    assert!(
+        ws_ids.contains(&"alpha"),
+        "alpha present in all-search: {ws_ids:?}"
+    );
+    assert!(
+        ws_ids.contains(&"beta"),
+        "beta present in all-search: {ws_ids:?}"
+    );
+    assert!(
+        !ws_ids.contains(&"gamma"),
+        "disabled gamma excluded: {ws_ids:?}"
+    );
+    assert_eq!(
+        all["result"]["errors"].as_array().unwrap().len(),
+        0,
+        "no failures expected"
+    );
     // Every item carries workspace + qualified_id (R29/R30).
     for g in groups {
         let ws = g["workspace"].as_str().unwrap();
         for item in g["items"].as_array().unwrap() {
             assert_eq!(item["workspace"].as_str().unwrap(), ws);
-            assert!(item["qualified_id"].as_str().unwrap().starts_with(&format!("{ws}:")));
+            assert!(item["qualified_id"]
+                .as_str()
+                .unwrap()
+                .starts_with(&format!("{ws}:")));
         }
     }
 
@@ -1627,7 +1646,10 @@ fn test_multi_workspace_routing() {
         .json()
         .unwrap();
     let src_groups = src_all["result"]["results"].as_array().unwrap();
-    let src_ids: Vec<&str> = src_groups.iter().map(|g| g["workspace"].as_str().unwrap()).collect();
+    let src_ids: Vec<&str> = src_groups
+        .iter()
+        .map(|g| g["workspace"].as_str().unwrap())
+        .collect();
     assert!(src_ids.contains(&"alpha") && src_ids.contains(&"beta"));
     assert!(!src_ids.contains(&"gamma"));
 
