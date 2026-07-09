@@ -17,12 +17,15 @@
 //! are deferred — `all` currently returns `unsupported_workspace_selector`.
 
 use std::collections::{BTreeMap, HashMap};
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
+use tokio::sync::Semaphore;
+use tokio::task::JoinSet;
 
 use crate::config::Config;
 
@@ -672,6 +675,76 @@ pub fn cmd_remove(path: &Path, id: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Outcome of one workspace's fan-out operation.
+#[derive(Debug)]
+pub(crate) enum FanOut<T> {
+    /// The operation completed within the deadline.
+    Ok(T),
+    /// The operation returned an error (message captured for the `errors[]` entry).
+    Failed(String),
+    /// The operation exceeded the per-item deadline.
+    TimedOut,
+}
+
+/// Run `op` for each `(id, input)` under a concurrency cap and a per-item
+/// deadline, returning outcomes paired with their id in the input order.
+///
+/// No input id is ever dropped: a task that panics is reported as `Failed`.
+/// This backs SPEC-0014 R33 (per-workspace deadline) and R37 (failures surfaced,
+/// never silently removed). It is generic over the op so the timeout/concurrency
+/// behavior is unit-tested with injected futures — no real store required.
+pub(crate) async fn fan_out<I, T, F, Fut>(
+    items: Vec<(String, I)>,
+    deadline: Duration,
+    max_concurrency: usize,
+    op: F,
+) -> Vec<(String, FanOut<T>)>
+where
+    I: Send + 'static,
+    T: Send + 'static,
+    F: Fn(I) -> Fut + Clone + Send + 'static,
+    Fut: Future<Output = anyhow::Result<T>> + Send + 'static,
+{
+    let order: Vec<String> = items.iter().map(|(id, _)| id.clone()).collect();
+    let sem = Arc::new(Semaphore::new(max_concurrency.max(1)));
+    let mut set: JoinSet<(String, FanOut<T>)> = JoinSet::new();
+    for (id, input) in items {
+        let sem = sem.clone();
+        let op = op.clone();
+        set.spawn(async move {
+            let _permit = sem
+                .acquire_owned()
+                .await
+                .expect("fan-out semaphore is never closed");
+            let outcome = match tokio::time::timeout(deadline, op(input)).await {
+                Ok(Ok(value)) => FanOut::Ok(value),
+                Ok(Err(e)) => FanOut::Failed(e.to_string()),
+                Err(_) => FanOut::TimedOut,
+            };
+            (id, outcome)
+        });
+    }
+
+    let mut by_id: HashMap<String, FanOut<T>> = HashMap::new();
+    while let Some(joined) = set.join_next().await {
+        if let Ok((id, outcome)) = joined {
+            by_id.insert(id, outcome);
+        }
+        // A JoinError (panic/cancel) leaves the id missing; it is reconciled
+        // below as `Failed` so the workspace is never dropped (R37).
+    }
+
+    order
+        .into_iter()
+        .map(|id| {
+            let outcome = by_id
+                .remove(&id)
+                .unwrap_or_else(|| FanOut::Failed("workspace task did not complete".to_string()));
+            (id, outcome)
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -990,5 +1063,34 @@ mod tests {
         // None leaves it unchanged.
         let r = r.with_search_deadline(None);
         assert_eq!(r.search_deadline().as_millis(), 250);
+    }
+
+    #[tokio::test]
+    async fn fan_out_classifies_and_preserves_order() {
+        let items = vec![
+            ("ok".to_string(), 1u32),
+            ("fail".to_string(), 2u32),
+            ("slow".to_string(), 3u32),
+        ];
+        let outcomes = fan_out(items, Duration::from_millis(50), 4, |n: u32| async move {
+            match n {
+                1 => Ok("done".to_string()),
+                2 => Err(anyhow::anyhow!("boom")),
+                _ => {
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                    Ok("late".to_string())
+                }
+            }
+        })
+        .await;
+
+        assert_eq!(
+            outcomes.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>(),
+            vec!["ok".to_string(), "fail".to_string(), "slow".to_string()],
+            "order follows input order"
+        );
+        assert!(matches!(&outcomes[0].1, FanOut::Ok(s) if s == "done"));
+        assert!(matches!(&outcomes[1].1, FanOut::Failed(m) if m.contains("boom")));
+        assert!(matches!(&outcomes[2].1, FanOut::TimedOut));
     }
 }
