@@ -1,6 +1,6 @@
 # DESIGN-0008: Multi-Workspace MCP Router
 
-**Status:** Phase 1 implemented (2026-06-11); Phase 2 design finalized (2026-07-09)
+**Status:** Phase 1 & 2 implemented (2026-07-09)
 **Date:** 2026-06-09
 **Author:** Codex
 
@@ -9,10 +9,10 @@
 > router-aware `search`/`get`/`sources`, the `workspaces` discovery tool,
 > qualified-id `get`, connector-secret redaction, and the loopback trust model.
 > Implemented as "single = a one-workspace router" with the wire contract chosen
-> by mode. **Phase 2 (`all` fan-out)** is designed in detail below
-> ("Phase 2: All-Workspace Fan-Out") and under implementation on
-> `feature/multi-workspace-router-phase2` (2026-07-09). **Not yet implemented:**
-> workspace-local extension routing / request origin (Phase 3, DESIGN-0009).
+> by mode. **Phase 2 (`all` fan-out) is implemented** as designed below
+> ("Phase 2: All-Workspace Fan-Out") on `feature/multi-workspace-router-phase2`
+> (2026-07-09). **Not yet implemented:** workspace-local extension routing /
+> request origin (Phase 3, DESIGN-0009).
 **Related:** [PRD-0011](../prd/0011-multi-workspace-mcp-router.md),
 [SPEC-0014](../spec/0014-multi-workspace-mcp-router.md),
 [SPEC-0012](../spec/0012-storage-and-vector-index-interfaces.md),

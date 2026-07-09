@@ -1,16 +1,17 @@
 # RUNBOOK-0018: Serve Multiple Workspaces Over One MCP Endpoint
 
-**Status:** Active (Phase 1)
+**Status:** Active (Phase 1 & 2)
 **Date:** 2026-06-09
 **Author:** pjones
-**Last Verified:** 2026-06-11 (Phase 1 — built-in routing)
+**Last Verified:** 2026-07-09 (Phase 2 — `all` fan-out for `search`/`sources`)
 
 > This runbook documents the operator procedure for the multi-workspace MCP
 > router defined in [SPEC-0014](../spec/0014-multi-workspace-mcp-router.md) and
 > [DESIGN-0008](../design/0008-multi-workspace-mcp-router.md). **Phase 1
-> (built-in routing) is implemented.** `workspace = "all"` (step 8) is Phase 2
-> and currently returns an `unsupported_workspace_selector` error; everything
-> else below works end-to-end.
+> (built-in routing) and Phase 2 (`all` fan-out for `search` and `sources`,
+> step 8) are implemented.** `get` still rejects `workspace = "all"`
+> (`unsupported_workspace_selector`) — pass a qualified id or an explicit
+> `workspace` instead.
 
 ## Purpose
 
@@ -155,9 +156,11 @@ path.
    Expected: every item includes `workspace` and `qualified_id`
    (`context_harness:<id>`).
 
-8. Search across all workspaces. **(Phase 2 — not yet available.)** In Phase 1
-   `workspace = "all"` returns an `unsupported_workspace_selector` error; query
-   each workspace by id instead.
+8. Search across all workspaces. `workspace = "all"` fans out concurrently
+   (bounded by an internal concurrency cap of 4) to every **enabled**
+   workspace and returns a grouped response instead of a flat `results` array.
+   Disabled workspaces are excluded entirely — they are not searched and do
+   not appear in `errors`.
 
    ```bash
    curl -s -X POST http://127.0.0.1:7331/tools/search \
@@ -165,8 +168,46 @@ path.
      -d '{"query":"incident response","workspace":"all","limit":5}' | jq
    ```
 
-   Expected: results grouped by workspace, `limit` applied per workspace, and an
-   `errors` array that names any workspace that failed or timed out.
+   Expected:
+
+   ```json
+   {
+     "results": [
+       {
+         "workspace": "context_harness",
+         "items": [
+           {
+             "id": "01J...",
+             "qualified_id": "context_harness:01J...",
+             "score": 0.83,
+             "source": "filesystem:docs",
+             "snippet": "..."
+           }
+         ]
+       }
+     ],
+     "errors": []
+   }
+   ```
+
+   `limit` applies per workspace (there is no single global limit and no
+   cross-store score ranking). Each workspace search has a per-workspace
+   deadline that defaults to **5000 ms**; a workspace that exceeds it
+   contributes an entry to `errors` with code `workspace_timeout`, and an
+   unhealthy workspace or one whose search fails (for example, hybrid mode
+   against a workspace with no embeddings) contributes an entry with code
+   `workspace_unavailable`. Override the default deadline with
+   `[defaults].search_deadline_ms` in `workspaces.toml`:
+
+   ```toml
+   [defaults]
+   workspace = "context_harness"
+   bind = "127.0.0.1:7331"
+   search_deadline_ms = 8000   # optional; default 5000
+   ```
+
+   `get` does not accept `workspace = "all"` (`unsupported_workspace_selector`)
+   — pass a qualified id (see step 9) or an explicit `workspace` instead.
 
 9. Retrieve a document. Use a qualified id (recommended after an `all` search):
 
@@ -199,6 +240,7 @@ path.
 | `unknown_workspace` | Id not in the registry | Check `ctx workspace list`; fix the `workspace` value or add the workspace. |
 | `workspace_disabled` | `enabled = false` | Set `enabled = true` and restart. |
 | `workspace_unavailable` | Bad path, unparseable config, or store cannot open | Check the `workspaces` tool health; verify absolute `root`/`config` and that the SQLite store exists. |
+| `workspace_timeout` entry in an `all` search's `errors` array | That workspace didn't respond within the per-workspace deadline (default 5000 ms) | Raise `[defaults].search_deadline_ms`, or investigate why that workspace's store is slow or locked. |
 | `workspace_id_conflict` on `get` | `workspace` field disagrees with the qualified id prefix | Send only one, or make them match. |
 | Workspace silently missing from registry parse | Relative `root`/`config` or invalid id | Use absolute paths and ids matching `[A-Za-z0-9][A-Za-z0-9_-]*`. |
 

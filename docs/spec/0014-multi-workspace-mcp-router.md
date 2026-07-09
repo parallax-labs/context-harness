@@ -1,17 +1,20 @@
 # SPEC-0014: Multi-Workspace MCP Router
 
-**Status:** Phase 1 implemented (built-in routing); Phases 2–3 not yet implemented
+**Status:** Phase 1 & 2 implemented (built-in routing + all-workspace fan-out); Phase 3 not yet implemented
 **Date:** 2026-06-09
 **Scope:** MCP and REST routing across multiple Context Harness workspace
 configurations and stores.
 
-> **Implementation status (2026-06-11).** Phase 1 (built-in workspace routing)
-> is implemented: the `--workspaces` opt-in, the registry + `ctx workspace
-> add/list/remove`, router-aware `search`/`get`/`sources`, the `workspaces`
-> discovery tool, qualified-id `get`, connector-secret redaction, and the
-> loopback trust model below. **Deferred:** `workspace = "all"` fan-out
-> (Phase 2 — currently returns `unsupported_workspace_selector`) and the
-> Phase-3 request-origin / workspace-scoped extensions (requirements 65–82).
+> **Implementation status (2026-07-09).** Phase 1 (built-in workspace routing)
+> and Phase 2 (`all` fan-out for `search` and `sources`) are implemented: the
+> `--workspaces` opt-in, the registry + `ctx workspace add/list/remove`,
+> router-aware `search`/`get`/`sources`, the `workspaces` discovery tool,
+> qualified-id `get`, connector-secret redaction, the loopback trust model
+> below, and all-workspace fan-out (bounded concurrency, a per-workspace
+> deadline, grouped results, and per-workspace error entries) for `search` and
+> `sources`. `get` continues to reject `workspace = "all"` (requirement 23).
+> **Deferred:** the Phase-3 request-origin / workspace-scoped extensions
+> (requirements 65–82).
 
 ## Overview
 
@@ -169,7 +172,10 @@ option. It exposes workspace selection, workspace-labeled responses, and the
 37. Workspace search failure SHALL NOT silently remove that workspace from an
     `all` search response. The response SHALL include an error entry for each
     failed workspace, including workspaces that exceed the per-workspace
-    deadline.
+    deadline. Each error entry SHALL have the shape `{ "workspace": <id>,
+    "code": <code>, "message": <text> }`. A workspace that exceeds the deadline
+    SHALL use code `workspace_timeout`; a workspace that is unavailable or
+    whose search fails SHALL use code `workspace_unavailable`.
 
 ### Get
 
@@ -255,6 +261,7 @@ option. It exposes workspace selection, workspace-labeled responses, and the
    | `unknown_workspace` | No workspace exists with the requested id. |
    | `workspace_disabled` | The requested workspace exists but is disabled. |
    | `workspace_unavailable` | The requested workspace cannot be loaded or queried. |
+   | `workspace_timeout` | A workspace exceeded its per-workspace deadline during an `all` fan-out. |
    | `workspace_id_conflict` | A qualified id conflicts with an explicit workspace field. |
    | `unsupported_workspace_selector` | A selector such as `all` is not valid for the requested operation. |
 
