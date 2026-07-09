@@ -55,7 +55,9 @@ use crate::get::{get_document, DocumentResponse};
 use crate::models::SourceItem;
 use crate::search::{search_documents, SearchResultItem};
 use crate::sources::{get_sources, SourceStatus};
-use crate::workspace::{RouterError, ServerMode, WorkspaceRouter};
+use crate::workspace::{
+    fan_out, FanOut, RouterError, ServerMode, WorkspaceRouter, ALL_SELECTOR, FAN_OUT_CONCURRENCY,
+};
 
 // ═══════════════════════════════════════════════════════════════════════
 // Connector Trait
@@ -512,9 +514,9 @@ fn schema_with_workspace_selector(mut schema: Value) -> Value {
     schema
 }
 
-/// Build the grouped multi-workspace search response for a single workspace,
-/// tagging every item with `workspace` and a `qualified_id` (R29/R30/R36).
-fn shape_grouped_search(workspace: &str, results: Vec<SearchResultItem>) -> Value {
+/// Build one `{ workspace, items }` group, tagging every item with `workspace`
+/// and a `qualified_id` (R29/R30/R36).
+fn search_group(workspace: &str, results: Vec<SearchResultItem>) -> Value {
     let items: Vec<Value> = results
         .into_iter()
         .map(|item| {
@@ -537,10 +539,97 @@ fn shape_grouped_search(workspace: &str, results: Vec<SearchResultItem>) -> Valu
             obj
         })
         .collect();
+    serde_json::json!({ "workspace": workspace, "items": items })
+}
+
+/// A single-workspace grouped response: one group, no errors (R29/R30).
+fn shape_grouped_search(workspace: &str, results: Vec<SearchResultItem>) -> Value {
+    serde_json::json!({ "results": [ search_group(workspace, results) ], "errors": [] })
+}
+
+/// Build one `errors[]` entry for a failed workspace (R37):
+/// `{ workspace, code, message }`.
+fn error_entry(workspace: &str, err: &RouterError) -> Value {
     serde_json::json!({
-        "results": [ { "workspace": workspace, "items": items } ],
-        "errors": []
+        "workspace": workspace,
+        "code": err.code(),
+        "message": err.to_string(),
     })
+}
+
+/// Fan out a `search` across every enabled workspace (R32–R37): concurrent,
+/// per-workspace deadline, per-workspace `limit`, grouped results, and one
+/// `errors[]` entry per failed/timed-out workspace.
+async fn search_all(
+    ctx: &ToolContext,
+    query: String,
+    mode: String,
+    source: Option<String>,
+    since: Option<String>,
+    limit: i64,
+) -> Result<Value> {
+    let router = ctx.router();
+    let (healthy, seed_errors) = router.resolve_all();
+    let deadline = router.search_deadline();
+    let deadline_ms = deadline.as_millis() as u64;
+
+    let items: Vec<(String, Arc<Config>)> = healthy
+        .iter()
+        .map(|rt| (rt.id.clone(), rt.config.clone()))
+        .collect();
+
+    let outcomes = fan_out(
+        items,
+        deadline,
+        FAN_OUT_CONCURRENCY,
+        move |config: Arc<Config>| {
+            let query = query.clone();
+            let mode = mode.clone();
+            let source = source.clone();
+            let since = since.clone();
+            async move {
+                search_documents(
+                    &config,
+                    &query,
+                    &mode,
+                    source.as_deref(),
+                    since.as_deref(),
+                    Some(limit),
+                    false,
+                )
+                .await
+            }
+        },
+    )
+    .await;
+
+    let mut groups: Vec<Value> = Vec::new();
+    let mut errors: Vec<Value> = seed_errors
+        .iter()
+        .map(|(id, err)| error_entry(id, err))
+        .collect();
+
+    for (id, outcome) in outcomes {
+        match outcome {
+            FanOut::Ok(results) => groups.push(search_group(&id, results)),
+            FanOut::Failed(msg) => errors.push(error_entry(
+                &id,
+                &RouterError::WorkspaceUnavailable {
+                    id: id.clone(),
+                    reason: msg,
+                },
+            )),
+            FanOut::TimedOut => errors.push(error_entry(
+                &id,
+                &RouterError::WorkspaceTimeout {
+                    id: id.clone(),
+                    deadline_ms,
+                },
+            )),
+        }
+    }
+
+    Ok(serde_json::json!({ "results": groups, "errors": errors }))
 }
 
 /// Multi-workspace `search`: resolves the `workspace` selector and groups results.
@@ -581,6 +670,17 @@ impl Tool for RoutedSearchTool {
             .and_then(|s| s.as_str());
 
         let selector = params["workspace"].as_str();
+        if selector == Some(ALL_SELECTOR) {
+            return search_all(
+                ctx,
+                query.to_string(),
+                mode.to_string(),
+                source.map(str::to_string),
+                since.map(str::to_string),
+                limit,
+            )
+            .await;
+        }
         let runtime = ctx.router().resolve(selector)?;
 
         let results = search_documents(
@@ -678,6 +778,18 @@ impl Tool for RoutedSourcesTool {
 
     async fn execute(&self, params: Value, ctx: &ToolContext) -> Result<Value> {
         let selector = params["workspace"].as_str();
+        if selector == Some(ALL_SELECTOR) {
+            let (healthy, seed_errors) = ctx.router().resolve_all();
+            let results: Vec<Value> = healthy
+                .iter()
+                .map(|rt| serde_json::json!({ "workspace": rt.id, "sources": get_sources(&rt.config) }))
+                .collect();
+            let errors: Vec<Value> = seed_errors
+                .iter()
+                .map(|(id, err)| error_entry(id, err))
+                .collect();
+            return Ok(serde_json::json!({ "results": results, "errors": errors }));
+        }
         let runtime = ctx.router().resolve(selector)?;
         let sources = get_sources(&runtime.config);
         Ok(serde_json::json!({
@@ -924,5 +1036,43 @@ impl ToolRegistry {
 impl Default for ToolRegistry {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod phase2_tests {
+    use super::*;
+    use crate::workspace::RouterError;
+
+    #[test]
+    fn search_group_tags_items_with_workspace_and_qualified_id() {
+        let item = SearchResultItem {
+            id: "01ABC".to_string(),
+            score: 0.5,
+            title: Some("T".to_string()),
+            source: "filesystem".to_string(),
+            source_id: "f".to_string(),
+            updated_at: "2026-01-01T00:00:00Z".to_string(),
+            snippet: "snip".to_string(),
+            source_url: None,
+            explain: None,
+        };
+        let group = search_group("beta", vec![item]);
+        assert_eq!(group["workspace"], "beta");
+        let items = group["items"].as_array().unwrap();
+        assert_eq!(items[0]["workspace"], "beta");
+        assert_eq!(items[0]["qualified_id"], "beta:01ABC");
+    }
+
+    #[test]
+    fn error_entry_has_workspace_code_message() {
+        let err = RouterError::WorkspaceTimeout {
+            id: "beta".to_string(),
+            deadline_ms: 5000,
+        };
+        let entry = error_entry("beta", &err);
+        assert_eq!(entry["workspace"], "beta");
+        assert_eq!(entry["code"], "workspace_timeout");
+        assert!(entry["message"].as_str().unwrap().contains("5000"));
     }
 }
