@@ -693,6 +693,8 @@ pub(crate) enum FanOut<T> {
 /// This backs SPEC-0014 R33 (per-workspace deadline) and R37 (failures surfaced,
 /// never silently removed). It is generic over the op so the timeout/concurrency
 /// behavior is unit-tested with injected futures — no real store required.
+///
+/// Input ids must be unique: outcomes are keyed by id, so duplicate ids collide.
 pub(crate) async fn fan_out<I, T, F, Fut>(
     items: Vec<(String, I)>,
     deadline: Duration,
@@ -718,7 +720,7 @@ where
                 .expect("fan-out semaphore is never closed");
             let outcome = match tokio::time::timeout(deadline, op(input)).await {
                 Ok(Ok(value)) => FanOut::Ok(value),
-                Ok(Err(e)) => FanOut::Failed(e.to_string()),
+                Ok(Err(e)) => FanOut::Failed(format!("{e:#}")),
                 Err(_) => FanOut::TimedOut,
             };
             (id, outcome)
@@ -1101,5 +1103,33 @@ mod tests {
         assert!(matches!(&outcomes[0].1, FanOut::Ok(s) if s == "done"));
         assert!(matches!(&outcomes[1].1, FanOut::Failed(m) if m.contains("boom")));
         assert!(matches!(&outcomes[2].1, FanOut::TimedOut));
+    }
+
+    #[tokio::test]
+    async fn fan_out_respects_concurrency_cap() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let inflight = std::sync::Arc::new(AtomicUsize::new(0));
+        let max_seen = std::sync::Arc::new(AtomicUsize::new(0));
+        let items: Vec<(String, ())> = (0..8).map(|i| (i.to_string(), ())).collect();
+        let inflight_op = inflight.clone();
+        let max_op = max_seen.clone();
+        let outcomes = fan_out(items, Duration::from_millis(1000), 2, move |_: ()| {
+            let inflight = inflight_op.clone();
+            let max_seen = max_op.clone();
+            async move {
+                let cur = inflight.fetch_add(1, Ordering::SeqCst) + 1;
+                max_seen.fetch_max(cur, Ordering::SeqCst);
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                inflight.fetch_sub(1, Ordering::SeqCst);
+                Ok::<_, anyhow::Error>(())
+            }
+        })
+        .await;
+        assert_eq!(outcomes.len(), 8);
+        assert!(
+            max_seen.load(Ordering::SeqCst) <= 2,
+            "observed {} concurrent tasks, cap was 2",
+            max_seen.load(Ordering::SeqCst)
+        );
     }
 }

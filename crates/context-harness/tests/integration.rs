@@ -1596,6 +1596,7 @@ fn test_multi_workspace_routing() {
         .iter()
         .map(|g| g["workspace"].as_str().unwrap())
         .collect();
+    assert_eq!(groups.len(), 2, "exactly alpha+beta groups: {ws_ids:?}");
     assert!(
         ws_ids.contains(&"alpha"),
         "alpha present in all-search: {ws_ids:?}"
@@ -1650,6 +1651,11 @@ fn test_multi_workspace_routing() {
         .iter()
         .map(|g| g["workspace"].as_str().unwrap())
         .collect();
+    assert_eq!(
+        src_groups.len(),
+        2,
+        "exactly alpha+beta source groups: {src_ids:?}"
+    );
     assert!(src_ids.contains(&"alpha") && src_ids.contains(&"beta"));
     assert!(!src_ids.contains(&"gamma"));
 

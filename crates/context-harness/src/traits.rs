@@ -547,6 +547,11 @@ fn shape_grouped_search(workspace: &str, results: Vec<SearchResultItem>) -> Valu
     serde_json::json!({ "results": [ search_group(workspace, results) ], "errors": [] })
 }
 
+/// Build one `{ workspace, sources }` group for the `sources` tool.
+fn sources_group(workspace: &str, sources: Vec<SourceStatus>) -> Value {
+    serde_json::json!({ "workspace": workspace, "sources": sources })
+}
+
 /// Build one `errors[]` entry for a failed workspace (R37):
 /// `{ workspace, code, message }`.
 fn error_entry(workspace: &str, err: &RouterError) -> Value {
@@ -604,30 +609,41 @@ async fn search_all(
     .await;
 
     let mut groups: Vec<Value> = Vec::new();
-    let mut errors: Vec<Value> = seed_errors
+    let mut error_pairs: Vec<(String, Value)> = seed_errors
         .iter()
-        .map(|(id, err)| error_entry(id, err))
+        .map(|(id, err)| (id.clone(), error_entry(id, err)))
         .collect();
 
     for (id, outcome) in outcomes {
         match outcome {
             FanOut::Ok(results) => groups.push(search_group(&id, results)),
-            FanOut::Failed(msg) => errors.push(error_entry(
-                &id,
-                &RouterError::WorkspaceUnavailable {
-                    id: id.clone(),
-                    reason: msg,
-                },
+            FanOut::Failed(msg) => error_pairs.push((
+                id.clone(),
+                error_entry(
+                    &id,
+                    &RouterError::WorkspaceUnavailable {
+                        id: id.clone(),
+                        reason: msg,
+                    },
+                ),
             )),
-            FanOut::TimedOut => errors.push(error_entry(
-                &id,
-                &RouterError::WorkspaceTimeout {
-                    id: id.clone(),
-                    deadline_ms,
-                },
+            FanOut::TimedOut => error_pairs.push((
+                id.clone(),
+                error_entry(
+                    &id,
+                    &RouterError::WorkspaceTimeout {
+                        id: id.clone(),
+                        deadline_ms,
+                    },
+                ),
             )),
         }
     }
+
+    // errors[] follows the stable registry order (DESIGN-0008).
+    let ws_order: Vec<String> = ctx.router().list().iter().map(|rt| rt.id.clone()).collect();
+    error_pairs.sort_by_key(|(id, _)| ws_order.iter().position(|w| w == id).unwrap_or(usize::MAX));
+    let errors: Vec<Value> = error_pairs.into_iter().map(|(_, v)| v).collect();
 
     Ok(serde_json::json!({ "results": groups, "errors": errors }))
 }
@@ -782,7 +798,7 @@ impl Tool for RoutedSourcesTool {
             let (healthy, seed_errors) = ctx.router().resolve_all();
             let results: Vec<Value> = healthy
                 .iter()
-                .map(|rt| serde_json::json!({ "workspace": rt.id, "sources": get_sources(&rt.config) }))
+                .map(|rt| sources_group(&rt.id, get_sources(&rt.config)))
                 .collect();
             let errors: Vec<Value> = seed_errors
                 .iter()
@@ -793,7 +809,7 @@ impl Tool for RoutedSourcesTool {
         let runtime = ctx.router().resolve(selector)?;
         let sources = get_sources(&runtime.config);
         Ok(serde_json::json!({
-            "results": [ { "workspace": runtime.id, "sources": sources } ],
+            "results": [ sources_group(&runtime.id, sources) ],
             "errors": []
         }))
     }

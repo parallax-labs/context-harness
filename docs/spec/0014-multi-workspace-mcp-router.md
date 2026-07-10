@@ -351,7 +351,7 @@ Context Harness is a **local-first, single-user** tool. The MCP/REST server has
 posture: one endpoint now fronts every registered store, and an explicit
 `workspace` selector (and, in Phase 2, `workspace = "all"`) reaches any of them
 regardless of session origin (R79). The following constraints define the trust
-boundary for Phase 1:
+boundary for Phases 1 and 2:
 
 T1. **Loopback bind is the load-bearing control.** The shared server SHALL
     default to `127.0.0.1`. A non-loopback bind exposes every registered
