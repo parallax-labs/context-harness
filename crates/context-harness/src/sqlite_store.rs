@@ -34,11 +34,15 @@ impl SqliteStore {
 }
 
 fn fts_query_from_user_text(query: &str) -> String {
+    // Join terms with OR, not a bare space. In FTS5 a space between terms is an
+    // implicit AND, so a natural-language query ("the post about saving tokens…")
+    // requires every word to appear in one document and usually matches nothing.
+    // OR lets BM25 rank by how many (and how rare) the matched terms are.
     query
         .split(|c: char| !(c.is_alphanumeric() || c == '_'))
         .filter(|term| !term.is_empty())
         .collect::<Vec<_>>()
-        .join(" ")
+        .join(" OR ")
 }
 
 fn format_ts_iso(ts: i64) -> String {
