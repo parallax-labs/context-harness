@@ -1582,15 +1582,82 @@ fn test_multi_workspace_routing() {
         "unknown_workspace"
     );
 
-    // `all` is rejected in Phase 1.
+    // `all` fans out across enabled workspaces (Phase 2). Both alpha and beta
+    // docs contain "notes"; gamma is disabled and excluded.
     let all: serde_json::Value = client
         .post(format!("{}/tools/search", base))
-        .json(&serde_json::json!({ "query": "x", "workspace": "all" }))
+        .json(&serde_json::json!({ "query": "notes", "workspace": "all", "limit": 5 }))
         .send()
         .unwrap()
         .json()
         .unwrap();
-    assert_eq!(all["error"]["code"], "unsupported_workspace_selector");
+    let groups = all["result"]["results"].as_array().unwrap();
+    let ws_ids: Vec<&str> = groups
+        .iter()
+        .map(|g| g["workspace"].as_str().unwrap())
+        .collect();
+    assert_eq!(groups.len(), 2, "exactly alpha+beta groups: {ws_ids:?}");
+    assert!(
+        ws_ids.contains(&"alpha"),
+        "alpha present in all-search: {ws_ids:?}"
+    );
+    assert!(
+        ws_ids.contains(&"beta"),
+        "beta present in all-search: {ws_ids:?}"
+    );
+    assert!(
+        !ws_ids.contains(&"gamma"),
+        "disabled gamma excluded: {ws_ids:?}"
+    );
+    assert_eq!(
+        all["result"]["errors"].as_array().unwrap().len(),
+        0,
+        "no failures expected"
+    );
+    // Every item carries workspace + qualified_id (R29/R30).
+    for g in groups {
+        let ws = g["workspace"].as_str().unwrap();
+        for item in g["items"].as_array().unwrap() {
+            assert_eq!(item["workspace"].as_str().unwrap(), ws);
+            assert!(item["qualified_id"]
+                .as_str()
+                .unwrap()
+                .starts_with(&format!("{ws}:")));
+        }
+    }
+
+    // `get` still rejects `all` (R23): a raw id "all" is not a qualified id and
+    // resolving selector "all" is unsupported for get.
+    let get_all = client
+        .post(format!("{}/tools/get", base))
+        .json(&serde_json::json!({ "id": "x", "workspace": "all" }))
+        .send()
+        .unwrap();
+    assert_eq!(
+        get_all.json::<serde_json::Value>().unwrap()["error"]["code"],
+        "unsupported_workspace_selector"
+    );
+
+    // `sources = all` returns one group per enabled workspace.
+    let src_all: serde_json::Value = client
+        .post(format!("{}/tools/sources", base))
+        .json(&serde_json::json!({ "workspace": "all" }))
+        .send()
+        .unwrap()
+        .json()
+        .unwrap();
+    let src_groups = src_all["result"]["results"].as_array().unwrap();
+    let src_ids: Vec<&str> = src_groups
+        .iter()
+        .map(|g| g["workspace"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        src_groups.len(),
+        2,
+        "exactly alpha+beta source groups: {src_ids:?}"
+    );
+    assert!(src_ids.contains(&"alpha") && src_ids.contains(&"beta"));
+    assert!(!src_ids.contains(&"gamma"));
 
     server.kill().ok();
     server.wait().ok();

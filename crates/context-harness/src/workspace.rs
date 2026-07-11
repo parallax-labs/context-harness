@@ -17,16 +17,25 @@
 //! are deferred — `all` currently returns `unsupported_workspace_selector`.
 
 use std::collections::{BTreeMap, HashMap};
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
+use tokio::sync::Semaphore;
+use tokio::task::JoinSet;
 
 use crate::config::Config;
 
 /// The reserved selector meaning "every enabled workspace".
 pub const ALL_SELECTOR: &str = "all";
+
+/// Default per-workspace deadline for an `all` fan-out search (SPEC-0014 R33).
+pub const DEFAULT_SEARCH_DEADLINE_MS: u64 = 5000;
+/// Maximum number of workspaces searched concurrently during an `all` fan-out.
+pub const FAN_OUT_CONCURRENCY: usize = 4;
 
 /// Whether the server emits the pre-router flat shapes (`Compat`) or the
 /// workspace-labeled shapes (`Multi`). Chosen once at startup by activation
@@ -127,6 +136,8 @@ pub enum RouterError {
     WorkspaceIdConflict { field: String, qualified: String },
     /// A selector such as `all` is not valid for the requested operation.
     UnsupportedWorkspaceSelector(String),
+    /// A workspace exceeded its per-workspace deadline during an `all` fan-out.
+    WorkspaceTimeout { id: String, deadline_ms: u64 },
 }
 
 impl RouterError {
@@ -139,6 +150,7 @@ impl RouterError {
             RouterError::WorkspaceUnavailable { .. } => "workspace_unavailable",
             RouterError::WorkspaceIdConflict { .. } => "workspace_id_conflict",
             RouterError::UnsupportedWorkspaceSelector(_) => "unsupported_workspace_selector",
+            RouterError::WorkspaceTimeout { .. } => "workspace_timeout",
         }
     }
 }
@@ -172,6 +184,9 @@ impl std::fmt::Display for RouterError {
             RouterError::UnsupportedWorkspaceSelector(sel) => {
                 write!(f, "selector '{sel}' is not valid for this operation")
             }
+            RouterError::WorkspaceTimeout { id, deadline_ms } => {
+                write!(f, "workspace timed out after {deadline_ms}ms: {id}")
+            }
         }
     }
 }
@@ -185,6 +200,9 @@ pub struct WorkspaceRouter {
     /// Stable iteration order for discovery/listing.
     order: Vec<String>,
     mode: ServerMode,
+    /// Per-workspace deadline for `all` fan-out (R33). Defaults to
+    /// `DEFAULT_SEARCH_DEADLINE_MS`; overridden by `with_search_deadline`.
+    search_deadline: Duration,
 }
 
 impl WorkspaceRouter {
@@ -199,6 +217,7 @@ impl WorkspaceRouter {
             workspaces,
             order: vec![id],
             mode: ServerMode::Compat,
+            search_deadline: Duration::from_millis(DEFAULT_SEARCH_DEADLINE_MS),
         }
     }
 
@@ -218,6 +237,7 @@ impl WorkspaceRouter {
             workspaces,
             order,
             mode: ServerMode::Multi,
+            search_deadline: Duration::from_millis(DEFAULT_SEARCH_DEADLINE_MS),
         }
     }
 
@@ -320,6 +340,50 @@ impl WorkspaceRouter {
         }
     }
 
+    /// The configured per-workspace `all`-search deadline (R33).
+    pub fn search_deadline(&self) -> Duration {
+        self.search_deadline
+    }
+
+    /// Override the per-workspace `all`-search deadline. `None` leaves the
+    /// current value (the default) unchanged. Builder-style so existing
+    /// `multi(...)` call sites need no change.
+    pub fn with_search_deadline(mut self, ms: Option<u64>) -> Self {
+        if let Some(ms) = ms {
+            self.search_deadline = Duration::from_millis(ms);
+        }
+        self
+    }
+
+    /// Resolve the `all` selector (SPEC-0014 R21) into the enabled workspaces,
+    /// partitioned into healthy runtimes (to search) and enabled-but-unavailable
+    /// workspaces as pre-built error entries (R26/R37). Disabled workspaces are
+    /// excluded entirely — they are not part of `all` and are not errors (R7).
+    /// Output follows the stable registry order.
+    pub fn resolve_all(&self) -> (Vec<Arc<WorkspaceRuntime>>, Vec<(String, RouterError)>) {
+        let mut healthy = Vec::new();
+        let mut errors = Vec::new();
+        for id in &self.order {
+            let Some(rt) = self.workspaces.get(id) else {
+                continue;
+            };
+            if !rt.enabled {
+                continue;
+            }
+            match &rt.health {
+                WorkspaceHealth::Ok => healthy.push(rt.clone()),
+                WorkspaceHealth::Unavailable(reason) => errors.push((
+                    id.clone(),
+                    RouterError::WorkspaceUnavailable {
+                        id: id.clone(),
+                        reason: reason.clone(),
+                    },
+                )),
+            }
+        }
+        (healthy, errors)
+    }
+
     /// Split a `get` id into (workspace, raw_id) using qualified-id rules (R40).
     ///
     /// An id is qualified only when it contains `:` and the prefix matches a
@@ -361,12 +425,16 @@ pub struct RegistryDefaults {
     /// Shared server bind address in multi-workspace mode (R16).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bind: Option<String>,
+    /// Per-workspace deadline (ms) for `all` fan-out search (SPEC-0014 R33).
+    /// Overrides the built-in 5000 ms default when set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_deadline_ms: Option<u64>,
 }
 
 impl RegistryDefaults {
     /// Whether no defaults are set (so the `[defaults]` table can be omitted).
     fn is_empty(&self) -> bool {
-        self.workspace.is_none() && self.bind.is_none()
+        self.workspace.is_none() && self.bind.is_none() && self.search_deadline_ms.is_none()
     }
 }
 
@@ -441,10 +509,10 @@ pub fn build_multi_router(registry: &WorkspaceRegistry) -> anyhow::Result<Worksp
         .iter()
         .map(|(id, entry)| build_runtime(id, entry))
         .collect();
-    Ok(WorkspaceRouter::multi(
-        runtimes,
-        registry.defaults.workspace.clone(),
-    ))
+    Ok(
+        WorkspaceRouter::multi(runtimes, registry.defaults.workspace.clone())
+            .with_search_deadline(registry.defaults.search_deadline_ms),
+    )
 }
 
 /// Resolve one registry entry into a runtime, capturing validation/config
@@ -605,6 +673,78 @@ pub fn cmd_remove(path: &Path, id: &str) -> anyhow::Result<()> {
     write_registry(path, &registry)?;
     println!("Removed workspace '{id}'");
     Ok(())
+}
+
+/// Outcome of one workspace's fan-out operation.
+#[derive(Debug)]
+pub(crate) enum FanOut<T> {
+    /// The operation completed within the deadline.
+    Ok(T),
+    /// The operation returned an error (message captured for the `errors[]` entry).
+    Failed(String),
+    /// The operation exceeded the per-item deadline.
+    TimedOut,
+}
+
+/// Run `op` for each `(id, input)` under a concurrency cap and a per-item
+/// deadline, returning outcomes paired with their id in the input order.
+///
+/// No input id is ever dropped: a task that panics is reported as `Failed`.
+/// This backs SPEC-0014 R33 (per-workspace deadline) and R37 (failures surfaced,
+/// never silently removed). It is generic over the op so the timeout/concurrency
+/// behavior is unit-tested with injected futures — no real store required.
+///
+/// Input ids must be unique: outcomes are keyed by id, so duplicate ids collide.
+pub(crate) async fn fan_out<I, T, F, Fut>(
+    items: Vec<(String, I)>,
+    deadline: Duration,
+    max_concurrency: usize,
+    op: F,
+) -> Vec<(String, FanOut<T>)>
+where
+    I: Send + 'static,
+    T: Send + 'static,
+    F: Fn(I) -> Fut + Clone + Send + 'static,
+    Fut: Future<Output = anyhow::Result<T>> + Send + 'static,
+{
+    let order: Vec<String> = items.iter().map(|(id, _)| id.clone()).collect();
+    let sem = Arc::new(Semaphore::new(max_concurrency.max(1)));
+    let mut set: JoinSet<(String, FanOut<T>)> = JoinSet::new();
+    for (id, input) in items {
+        let sem = sem.clone();
+        let op = op.clone();
+        set.spawn(async move {
+            let _permit = sem
+                .acquire_owned()
+                .await
+                .expect("fan-out semaphore is never closed");
+            let outcome = match tokio::time::timeout(deadline, op(input)).await {
+                Ok(Ok(value)) => FanOut::Ok(value),
+                Ok(Err(e)) => FanOut::Failed(format!("{e:#}")),
+                Err(_) => FanOut::TimedOut,
+            };
+            (id, outcome)
+        });
+    }
+
+    let mut by_id: HashMap<String, FanOut<T>> = HashMap::new();
+    while let Some(joined) = set.join_next().await {
+        if let Ok((id, outcome)) = joined {
+            by_id.insert(id, outcome);
+        }
+        // A JoinError (panic/cancel) leaves the id missing; it is reconciled
+        // below as `Failed` so the workspace is never dropped (R37).
+    }
+
+    order
+        .into_iter()
+        .map(|id| {
+            let outcome = by_id
+                .remove(&id)
+                .unwrap_or_else(|| FanOut::Failed("workspace task did not complete".to_string()));
+            (id, outcome)
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -865,5 +1005,131 @@ mod tests {
         let out = reg.to_toml().unwrap();
         let reparsed: WorkspaceRegistry = toml::from_str(&out).unwrap();
         assert_eq!(reparsed.workspaces["a"].root, PathBuf::from("/abs/a"));
+    }
+
+    #[test]
+    fn registry_parses_search_deadline_ms() {
+        let toml = "[defaults]\nworkspace = \"a\"\nsearch_deadline_ms = 1234\n\n\
+                    [workspaces.a]\nroot = \"/abs/a\"\nenabled = true\n";
+        let reg: WorkspaceRegistry = toml::from_str(toml).unwrap();
+        assert_eq!(reg.defaults.search_deadline_ms, Some(1234));
+        // Round-trips and is omitted when unset.
+        let reg2 = WorkspaceRegistry {
+            defaults: RegistryDefaults::default(),
+            workspaces: reg.workspaces.clone(),
+        };
+        let out = toml::to_string(&reg2).unwrap();
+        assert!(
+            !out.contains("search_deadline_ms"),
+            "unset field is omitted"
+        );
+    }
+
+    #[test]
+    fn workspace_timeout_error_code() {
+        let e = RouterError::WorkspaceTimeout {
+            id: "beta".to_string(),
+            deadline_ms: 5000,
+        };
+        assert_eq!(e.code(), "workspace_timeout");
+        assert!(e.to_string().contains("beta"));
+        assert!(e.to_string().contains("5000"));
+    }
+
+    #[test]
+    fn resolve_all_partitions_by_enabled_and_health() {
+        let r = WorkspaceRouter::multi(
+            vec![
+                runtime("a", true, WorkspaceHealth::Ok),
+                runtime("b", false, WorkspaceHealth::Ok), // disabled -> excluded
+                runtime("c", true, WorkspaceHealth::Unavailable("boom".to_string())),
+                runtime("d", true, WorkspaceHealth::Ok),
+            ],
+            None,
+        );
+        let (healthy, errors) = r.resolve_all();
+        // Healthy, in registry order: a, d. Disabled b excluded.
+        assert_eq!(
+            healthy.iter().map(|rt| rt.id.clone()).collect::<Vec<_>>(),
+            vec!["a".to_string(), "d".to_string()]
+        );
+        // c is enabled-but-unavailable -> one error entry.
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].0, "c");
+        assert_eq!(errors[0].1.code(), "workspace_unavailable");
+    }
+
+    #[test]
+    fn with_search_deadline_overrides_default() {
+        let r = WorkspaceRouter::multi(vec![runtime("a", true, WorkspaceHealth::Ok)], None);
+        assert_eq!(
+            r.search_deadline().as_millis(),
+            DEFAULT_SEARCH_DEADLINE_MS as u128
+        );
+        let r = r.with_search_deadline(Some(250));
+        assert_eq!(r.search_deadline().as_millis(), 250);
+        // None leaves it unchanged.
+        let r = r.with_search_deadline(None);
+        assert_eq!(r.search_deadline().as_millis(), 250);
+    }
+
+    #[tokio::test]
+    async fn fan_out_classifies_and_preserves_order() {
+        let items = vec![
+            ("ok".to_string(), 1u32),
+            ("fail".to_string(), 2u32),
+            ("slow".to_string(), 3u32),
+        ];
+        let outcomes = fan_out(items, Duration::from_millis(50), 4, |n: u32| async move {
+            match n {
+                1 => Ok("done".to_string()),
+                2 => Err(anyhow::anyhow!("boom")),
+                _ => {
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                    Ok("late".to_string())
+                }
+            }
+        })
+        .await;
+
+        assert_eq!(
+            outcomes
+                .iter()
+                .map(|(id, _)| id.clone())
+                .collect::<Vec<_>>(),
+            vec!["ok".to_string(), "fail".to_string(), "slow".to_string()],
+            "order follows input order"
+        );
+        assert!(matches!(&outcomes[0].1, FanOut::Ok(s) if s == "done"));
+        assert!(matches!(&outcomes[1].1, FanOut::Failed(m) if m.contains("boom")));
+        assert!(matches!(&outcomes[2].1, FanOut::TimedOut));
+    }
+
+    #[tokio::test]
+    async fn fan_out_respects_concurrency_cap() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let inflight = std::sync::Arc::new(AtomicUsize::new(0));
+        let max_seen = std::sync::Arc::new(AtomicUsize::new(0));
+        let items: Vec<(String, ())> = (0..8).map(|i| (i.to_string(), ())).collect();
+        let inflight_op = inflight.clone();
+        let max_op = max_seen.clone();
+        let outcomes = fan_out(items, Duration::from_millis(1000), 2, move |_: ()| {
+            let inflight = inflight_op.clone();
+            let max_seen = max_op.clone();
+            async move {
+                let cur = inflight.fetch_add(1, Ordering::SeqCst) + 1;
+                max_seen.fetch_max(cur, Ordering::SeqCst);
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                inflight.fetch_sub(1, Ordering::SeqCst);
+                Ok::<_, anyhow::Error>(())
+            }
+        })
+        .await;
+        assert_eq!(outcomes.len(), 8);
+        assert!(
+            max_seen.load(Ordering::SeqCst) <= 2,
+            "observed {} concurrent tasks, cap was 2",
+            max_seen.load(Ordering::SeqCst)
+        );
     }
 }

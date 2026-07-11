@@ -1,6 +1,6 @@
 # DESIGN-0008: Multi-Workspace MCP Router
 
-**Status:** Phase 1 implemented (2026-06-11)
+**Status:** Phase 1 & 2 implemented (2026-07-09)
 **Date:** 2026-06-09
 **Author:** Codex
 
@@ -9,8 +9,10 @@
 > router-aware `search`/`get`/`sources`, the `workspaces` discovery tool,
 > qualified-id `get`, connector-secret redaction, and the loopback trust model.
 > Implemented as "single = a one-workspace router" with the wire contract chosen
-> by mode. **Not yet implemented:** the `all` fan-out (Phase 2) and
-> workspace-local extension routing / request origin (Phase 3, DESIGN-0009).
+> by mode. **Phase 2 (`all` fan-out) is implemented** as designed below
+> ("Phase 2: All-Workspace Fan-Out") on `feature/multi-workspace-router-phase2`
+> (2026-07-09). **Not yet implemented:** workspace-local extension routing /
+> request origin (Phase 3, DESIGN-0009).
 **Related:** [PRD-0011](../prd/0011-multi-workspace-mcp-router.md),
 [SPEC-0014](../spec/0014-multi-workspace-mcp-router.md),
 [SPEC-0012](../spec/0012-storage-and-vector-index-interfaces.md),
@@ -168,6 +170,50 @@ one slow or locked store cannot stall the response, and `limit` applies per
 workspace (there is no global cross-store ranking). Workspaces that fail or time
 out appear in `errors` rather than being silently dropped.
 
+### Phase 2: All-Workspace Fan-Out
+
+`workspace = "all"` fans out across every **enabled** workspace and returns the
+grouped shape above with one group per workspace plus a populated `errors`
+array. Concrete parameters (finalized 2026-07-09):
+
+- **Enabled-only, health-partitioned.** `WorkspaceRouter::resolve_all()` returns
+  the enabled workspaces split into healthy runtimes (searched) and
+  enabled-but-unavailable workspaces (seeded directly as error entries).
+  Disabled workspaces are excluded entirely — they are not part of `all` and are
+  not errors (SPEC-0014 R7/R21/R26). `resolve()` continues to reject `all` for
+  the single-target path; the built-in tools branch on `all` before calling it.
+- **Bounded concurrency.** Fan-out runs under a `tokio::Semaphore` with a
+  concurrency cap of **4** to limit CPU and embedding-model contention when many
+  workspaces are registered.
+- **Per-workspace deadline.** Each workspace search is wrapped in
+  `tokio::time::timeout`. The deadline defaults to **5000 ms** and is
+  configurable via `[defaults].search_deadline_ms` in `workspaces.toml`. A
+  workspace that exceeds its deadline yields a `workspace_timeout` error entry;
+  the overall response is never blocked by one slow or locked store (R33).
+- **Per-workspace `limit`.** The request `limit` is applied independently to
+  each workspace. There is no global cross-store limit and no cross-store score
+  comparison (R34/R35).
+- **Error entries.** Each failed workspace contributes one entry to `errors`
+  with the shape `{ "workspace": "<id>", "code": "<code>", "message": "<text>" }`.
+  Codes: `workspace_timeout` (deadline exceeded) and `workspace_unavailable`
+  (unhealthy runtime, or a search error such as hybrid mode against a workspace
+  with no embeddings). `workspace_timeout` is added to the SPEC-0014 R64 error
+  table. Failures are never silently dropped (R37).
+- **Deterministic ordering.** Groups and error entries follow the registry's
+  stable workspace order.
+- **Testable orchestration.** The concurrency + deadline logic lives in a small
+  fan-out helper in the router module, parameterized by the per-workspace async
+  op. This keeps `search_documents` out of the router (preserving the routing/
+  search decoupling above) and lets the timeout and concurrency behavior be
+  unit-tested by injecting a future that sleeps past the deadline — no real slow
+  store required (satisfies SPEC-0014 AC #7 without flakiness).
+
+`sources = "all"` reuses the same enabled/health partition to produce one
+`{ workspace, sources }` group per healthy workspace and `workspace_unavailable`
+entries for the rest; because `get_sources` is synchronous and cheap it needs no
+deadline or concurrency. `get` does not accept `all` (a qualified id selects the
+workspace instead — R23), so it is unchanged in Phase 2.
+
 ### Qualified IDs
 
 The router should parse document ids as either raw ids or qualified ids:
@@ -296,6 +342,15 @@ simpler to observe and test.
 3. `ctx init` SHALL NOT auto-register the current workspace in
    `workspaces.toml`. Registration is an explicit `ctx workspace add` action,
    keeping multi-workspace behavior opt-in.
+4. Phase 2 `all` fan-out uses a fixed **5000 ms** per-workspace deadline,
+   overridable via `[defaults].search_deadline_ms`, and bounded concurrency with
+   a semaphore cap of **4**. Both are runtime-tuning constants, not part of the
+   wire contract.
+5. Timeout is a distinct failure: deadline-exceeded workspaces return a new
+   `workspace_timeout` error code; all other fan-out failures reuse
+   `workspace_unavailable`.
+6. Phase 2 `all` fan-out covers `search` and `sources` only. `get` continues to
+   reject `all` (use a qualified id), matching SPEC-0014 R23.
 
 ## Open Questions
 
