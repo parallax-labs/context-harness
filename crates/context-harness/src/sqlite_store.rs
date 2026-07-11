@@ -34,11 +34,15 @@ impl SqliteStore {
 }
 
 fn fts_query_from_user_text(query: &str) -> String {
+    // Join terms with OR, not a bare space. In FTS5 a space between terms is an
+    // implicit AND, so a natural-language query ("the post about saving tokens…")
+    // requires every word to appear in one document and usually matches nothing.
+    // OR lets BM25 rank by how many (and how rare) the matched terms are.
     query
         .split(|c: char| !(c.is_alphanumeric() || c == '_'))
         .filter(|term| !term.is_empty())
         .collect::<Vec<_>>()
-        .join(" ")
+        .join(" OR ")
 }
 
 fn format_ts_iso(ts: i64) -> String {
@@ -365,5 +369,49 @@ impl Store for SqliteStore {
         candidates.truncate(limit as usize);
 
         Ok(candidates)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fts_query_from_user_text;
+
+    #[test]
+    fn multi_word_query_joins_terms_with_or() {
+        // The fix: FTS5 treats a space between terms as an implicit AND, so a
+        // natural-language query used to require every word in one document and
+        // usually matched nothing. Terms must be OR-joined instead.
+        assert_eq!(
+            fts_query_from_user_text("the post about saving tokens"),
+            "the OR post OR about OR saving OR tokens"
+        );
+    }
+
+    #[test]
+    fn single_term_query_is_unchanged() {
+        assert_eq!(fts_query_from_user_text("tokens"), "tokens");
+    }
+
+    #[test]
+    fn punctuation_and_hyphens_split_into_or_terms() {
+        assert_eq!(
+            fts_query_from_user_text("saving-tokens, now!"),
+            "saving OR tokens OR now"
+        );
+    }
+
+    #[test]
+    fn underscores_are_kept_within_a_term() {
+        assert_eq!(
+            fts_query_from_user_text("save_tokens here"),
+            "save_tokens OR here"
+        );
+    }
+
+    #[test]
+    fn empty_or_punctuation_only_query_is_empty() {
+        assert_eq!(fts_query_from_user_text(""), "");
+        assert_eq!(fts_query_from_user_text("   "), "");
+        assert_eq!(fts_query_from_user_text("!!! ,.-"), "");
     }
 }

@@ -265,6 +265,76 @@ async fn keyword_search_treats_hyphenated_terms_as_user_text() {
 }
 
 #[tokio::test]
+async fn keyword_search_matches_documents_with_only_some_terms() {
+    // Regression: FTS5 treats a space between terms as an implicit AND, so a
+    // multi-word query where no single document contains every term returned
+    // nothing. OR-joining lets each document match on the terms it does have.
+    let tmp = TempDir::new().unwrap();
+    let store = initialized_store(&tmp).await;
+    seed_document(
+        &store,
+        "doc-saving",
+        "filesystem:test",
+        "saving.md",
+        "notes about saving money and budgets",
+    )
+    .await; // contains "saving", not "tokens"
+    seed_document(
+        &store,
+        "doc-tokens",
+        "filesystem:test",
+        "tokens.md",
+        "notes about tokens and prompts",
+    )
+    .await; // contains "tokens", not "saving"
+
+    let sqlite = SqliteStore::new(store.pool().clone());
+    // No single document contains BOTH "saving" and "tokens".
+    let candidates = sqlite
+        .keyword_search("saving tokens", 10, None, None)
+        .await
+        .unwrap();
+
+    let doc_ids: std::collections::HashSet<&str> =
+        candidates.iter().map(|c| c.document_id.as_str()).collect();
+    assert!(
+        doc_ids.contains("doc-saving"),
+        "OR-join should match the document containing only 'saving': {doc_ids:?}"
+    );
+    assert!(
+        doc_ids.contains("doc-tokens"),
+        "OR-join should match the document containing only 'tokens': {doc_ids:?}"
+    );
+    assert_eq!(doc_ids.len(), 2, "both documents match via OR: {doc_ids:?}");
+}
+
+#[tokio::test]
+async fn keyword_search_matches_when_some_query_terms_are_absent() {
+    // A term present in no document must not suppress the terms that are:
+    // "elephant" matches nothing, "tokens" matches doc-tokens. Implicit-AND
+    // would have returned zero results.
+    let tmp = TempDir::new().unwrap();
+    let store = initialized_store(&tmp).await;
+    seed_document(
+        &store,
+        "doc-tokens",
+        "filesystem:test",
+        "tokens.md",
+        "notes about tokens and prompts",
+    )
+    .await;
+
+    let sqlite = SqliteStore::new(store.pool().clone());
+    let candidates = sqlite
+        .keyword_search("elephant tokens", 10, None, None)
+        .await
+        .unwrap();
+
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidates[0].document_id, "doc-tokens");
+}
+
+#[tokio::test]
 async fn hybrid_search_treats_hyphenated_terms_as_user_text() {
     let tmp = TempDir::new().unwrap();
     let cfg = test_config_without_vector_index(&tmp);
