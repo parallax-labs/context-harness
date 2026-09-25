@@ -540,6 +540,10 @@ Maps to `Agent::resolve()`. Returns messages in the MCP format:
 
 ### 9.1 `ctx agent list`
 
+Standalone resource discovery, `show`, `validate`, and JSON inspection extend
+these commands as specified in [SPEC-0015](0015-agent-resources.md). MCP prompt
+registration retains the behavior defined in this specification.
+
 Lists all configured agents with descriptions and tool counts.
 
 ```
@@ -816,4 +820,3 @@ cargo build --release
 CI enforces all four checks. A commit that fails any of them will block
 the release pipeline. Run them locally before pushing to avoid
 round-tripping through CI.
-

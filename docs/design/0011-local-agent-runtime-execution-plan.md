@@ -33,7 +33,7 @@ acceptance tests and update this checklist as each slice lands.
 | Slice | Deliverables | Acceptance gate | Status |
 |---|---|---|---|
 | 1. Persistence | Four runtime tables; workspace-bound run creation/history; paginated ordered events; terminal transitions; versioned checkpoint save/load | Synthetic run survives reopen/migration; concurrent appends have unique ordered sequences; failures roll back; other workspaces cannot access it | Complete |
-| 2. Agent resources | Standalone TOML definitions; global/workspace precedence; model references, limits and policy parsing; extend existing agent list/show/validate | Old TOML/Lua/Rust agents still resolve; malformed/unknown configuration fails clearly; workspace override tests | Pending |
+| 2. Agent resources | Standalone TOML definitions; global/workspace precedence; model references, limits and policy parsing; extend existing agent list/show/validate | Old TOML/Lua/Rust agents still resolve; malformed/unknown configuration fails clearly; workspace override tests | Complete |
 | 3. Model boundary | Provider-neutral request/response/tool/usage types; registry; deterministic fake; one production provider | Fake and provider contract tests cover tool calls, failures and usage; credentials resolved from environment and excluded from history | Pending |
 | 4. Execution loop | Resolve agent/context/workspace; model/tool iterations through ToolRegistry; ctx agent run/history/inspect; JSON output; turn/time/cancellation limits | Fake model searches/gets context over multiple turns and completes with persisted history; terminal errors recorded | Pending |
 | 5. Developer capabilities | Read/search, git status/diff, patch/process tools; capability metadata; policy intersection; persisted approvals | Read-only policy blocks writes/processes regardless of prompt; path escape tests; non-interactive execution never silently approves | Pending |
@@ -77,8 +77,9 @@ Resolve these before their dependent implementation slices:
 1. Select the first provider and API, including streaming and structured output
    support, before slice 3. The design's OpenAI example is not a finalized API
    contract.
-2. Settle resource version hashes, global/workspace override rules and compatibility
-   mapping for existing agents before slice 2.
+2. Resource hashing, replacement rules and legacy compatibility are resolved by
+   [SPEC-0015](../spec/0015-agent-resources.md). Executable resource projection
+   into MCP remains slice 9.
 3. Define redaction, retention and artifact limits before recording production
    model/tool payloads. The initial storage API accepts caller-provided JSON and
    does not claim automatic redaction.
@@ -109,6 +110,27 @@ smoke tests remain explicit and credential-dependent.
 - Default embedding backends were not built in this slice; runtime persistence
   introduces no embedding or provider dependency.
 
-Next: slice 2, standalone agent resources and compatibility-preserving command
-extensions. Runtime execution, tool invocation lifecycle APIs and safe resume
-remain pending as listed above.
+### Slice 2 decisions and verification (2026-09-25)
+
+- Added strict standalone TOML resources with model aliases, execution limits,
+  capability declarations, provenance and SHA-256 content versions.
+- Workspace replacement requires `agent.override = true` and replaces the whole
+  definition. Explicit/pinned configs load only config-adjacent `agents` files.
+  Legacy name collisions fail combined catalog validation rather than silently
+  replacing existing prompt agents.
+- Added `agent show`, `agent validate`, JSON list/show output and static prompt
+  previews through `agent test`. Targeted legacy Lua tests retain their original
+  behavior even when unrelated definitions are broken.
+- Added [SPEC-0015](../spec/0015-agent-resources.md) as the authoritative contract.
+  Provider/tool availability and runtime authorization are not yet asserted by
+  declaration validation. Existing MCP registration is unchanged.
+- `cargo test --workspace --no-default-features`: 207 passed, 3 ignored
+  performance probes; 11 new resource tests included.
+- `cargo clippy --workspace --all-targets --no-default-features`: completed with
+  only the existing core embedding warning recorded above.
+- Formatting and diff whitespace checks passed. Default embedding backends were
+  not built in this slice.
+
+Next: slice 3, the provider-neutral model boundary, deterministic fake provider
+and first production provider. Runtime execution, tool invocation lifecycle APIs
+and safe resume remain pending as listed above.

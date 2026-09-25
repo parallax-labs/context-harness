@@ -737,6 +737,7 @@ pub async fn test_agent(name: &str, args: Vec<(String, String)>, config: &Config
 }
 
 /// List all configured agents and print their info.
+#[allow(dead_code)] // Retained for library callers; CLI uses the combined catalog.
 pub fn list_agents(config: &Config) -> Result<()> {
     let mut count = 0;
 

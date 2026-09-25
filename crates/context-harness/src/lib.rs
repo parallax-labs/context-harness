@@ -98,6 +98,7 @@
 //! See [`config`] for all available options and [`config::load_config`] for
 //! validation rules.
 
+pub mod agent_resource;
 pub mod agent_script;
 pub mod agent_store;
 pub mod agents;

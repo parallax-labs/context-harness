@@ -97,6 +97,9 @@ pub struct Config {
     /// Agent configurations (all optional).
     #[serde(default)]
     pub agents: AgentsConfig,
+    /// Model aliases for standalone executable-agent resources.
+    #[serde(default)]
+    pub models: std::collections::BTreeMap<String, crate::agent_resource::ModelDefinition>,
     /// Extension registry configurations (all optional).
     #[serde(default)]
     pub registries: HashMap<String, RegistryConfig>,
@@ -131,6 +134,7 @@ impl Config {
             connectors: ConnectorsConfig::default(),
             tools: ToolsConfig::default(),
             agents: AgentsConfig::default(),
+            models: std::collections::BTreeMap::new(),
             registries: HashMap::new(),
         }
     }

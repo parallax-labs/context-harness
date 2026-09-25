@@ -45,6 +45,7 @@
 //! ctx serve mcp --config ./config/ctx.toml
 //! ```
 
+mod agent_resource;
 mod agent_script;
 // Persistence is exposed by the library before runtime CLI wiring lands.
 #[allow(dead_code)]
@@ -406,14 +407,25 @@ enum ToolAction {
 /// Agent management subcommands.
 #[derive(Subcommand)]
 enum AgentAction {
-    /// List all configured agents (TOML and Lua).
-    List,
+    /// List standalone resources and existing TOML/Lua agents.
+    List {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show an agent definition and its resource provenance.
+    Show {
+        name: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Validate agent resources, model references and existing agent definitions.
+    Validate,
     /// Test an agent by resolving its prompt.
     ///
     /// Loads the agent, calls its `resolve()` function with the provided
     /// arguments, and prints the resulting system prompt and messages.
     Test {
-        /// Agent name (as defined in `[agents.inline.<name>]` or `[agents.script.<name>]`).
+        /// Name of a standalone resource, inline TOML agent, or Lua agent.
         name: String,
         /// Agent arguments as `key=value` pairs.
         #[arg(long = "arg", value_parser = parse_key_val)]
@@ -682,6 +694,11 @@ async fn main() -> anyhow::Result<()> {
     }
     let resolved_config = config::load_config_for_cli(cli.config.clone())?;
     let config_path = resolved_config.path.clone();
+    let agent_resource_dirs = if matches!(&cli.command, Commands::Agent { .. }) {
+        agent_resource::cli_resource_directories(&resolved_config)?
+    } else {
+        vec![]
+    };
     let cfg = resolved_config.config;
 
     match cli.command {
@@ -873,11 +890,17 @@ async fn main() -> anyhow::Result<()> {
         // Handled above (before config loading).
         Commands::Workspace { .. } => unreachable!(),
         Commands::Agent { action } => match action {
-            AgentAction::List => {
-                agent_script::list_agents(&cfg)?;
+            AgentAction::List { json } => {
+                agent_resource::list(&cfg, &agent_resource_dirs, json)?;
+            }
+            AgentAction::Show { name, json } => {
+                agent_resource::show(&cfg, &agent_resource_dirs, &name, json)?;
+            }
+            AgentAction::Validate => {
+                agent_resource::validate(&cfg, &agent_resource_dirs)?;
             }
             AgentAction::Test { name, args } => {
-                agent_script::test_agent(&name, args, &cfg).await?;
+                agent_resource::test(&cfg, &agent_resource_dirs, &name, args).await?;
             }
             AgentAction::Init { .. } => {
                 // Handled above (before config loading)
