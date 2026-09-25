@@ -34,7 +34,7 @@ acceptance tests and update this checklist as each slice lands.
 |---|---|---|---|
 | 1. Persistence | Four runtime tables; workspace-bound run creation/history; paginated ordered events; terminal transitions; versioned checkpoint save/load | Synthetic run survives reopen/migration; concurrent appends have unique ordered sequences; failures roll back; other workspaces cannot access it | Complete |
 | 2. Agent resources | Standalone TOML definitions; global/workspace precedence; model references, limits and policy parsing; extend existing agent list/show/validate | Old TOML/Lua/Rust agents still resolve; malformed/unknown configuration fails clearly; workspace override tests | Complete |
-| 3. Model boundary | Provider-neutral request/response/tool/usage types; registry; deterministic fake; one production provider | Fake and provider contract tests cover tool calls, failures and usage; credentials resolved from environment and excluded from history | Pending |
+| 3. Model boundary | Provider-neutral request/response/tool/usage types; registry; deterministic fake; one production provider | Fake and provider contract tests cover tool calls, failures and usage; credentials resolved from environment and excluded from history | Complete |
 | 4. Execution loop | Resolve agent/context/workspace; model/tool iterations through ToolRegistry; ctx agent run/history/inspect; JSON output; turn/time/cancellation limits | Fake model searches/gets context over multiple turns and completes with persisted history; terminal errors recorded | Pending |
 | 5. Developer capabilities | Read/search, git status/diff, patch/process tools; capability metadata; policy intersection; persisted approvals | Read-only policy blocks writes/processes regardless of prompt; path escape tests; non-interactive execution never silently approves | Pending |
 | 6. Resume/artifacts | Typed checkpoint schema; resume command; interruption handling; artifact files and metadata | Crash tests around model calls and tool side effects; no automatic replay of uncertain non-idempotent tool execution; workspace/version checks | Pending |
@@ -74,9 +74,9 @@ proves insufficient.
 
 Resolve these before their dependent implementation slices:
 
-1. Select the first provider and API, including streaming and structured output
-   support, before slice 3. The design's OpenAI example is not a finalized API
-   contract.
+1. The first provider is OpenAI Responses, with non-streaming tool calls and
+   structured output. [SPEC-0016](../spec/0016-model-runtime.md) defines the
+   implemented boundary. Streaming remains a later interface/transport extension.
 2. Resource hashing, replacement rules and legacy compatibility are resolved by
    [SPEC-0015](../spec/0015-agent-resources.md). Executable resource projection
    into MCP remains slice 9.
@@ -131,6 +131,31 @@ smoke tests remain explicit and credential-dependent.
 - Formatting and diff whitespace checks passed. Default embedding backends were
   not built in this slice.
 
-Next: slice 3, the provider-neutral model boundary, deterministic fake provider
-and first production provider. Runtime execution, tool invocation lifecycle APIs
-and safe resume remain pending as listed above.
+### Slice 3 decisions and verification (2026-09-25)
+
+- Added the public `agent_model` library module: neutral request/response types,
+  `ModelProvider`, registry, typed errors, and deterministic scripted fake.
+- Added OpenAI Responses with caller-owned history, function calls and results,
+  opaque reasoning continuation, structured output, usage and explicit finish
+  reasons. No default model is imposed; aliases retain configured model IDs.
+- HTTP calls have bounded response size/time and no automatic retries or
+  redirects. Credentials load lazily from environment. Tests use local fixtures;
+  no live model call was made.
+- Recorded calls bind to existing workspace/run/model identity and persist
+  correlated request/response/failure metadata. Raw prompts, generated text,
+  continuation items and HTTP errors are excluded from events. Conversation
+  persistence and safe recovery remain the checkpoint/runtime layer's job.
+- Added [SPEC-0016](../spec/0016-model-runtime.md). Streaming is deferred;
+  initial generation returns complete responses. The model API can be invoked
+  directly from Rust without an agent loop or a new CLI command.
+- `cargo test --workspace --no-default-features`: 221 passed, 3 ignored
+  performance probes, including 8 adapter tests and 6 model/store integration tests.
+- Final focused adapter tests passed after preserving original tool names in
+  wire descriptions. Formatting and diff checks passed.
+- Clippy completed with only the existing core embedding warning. Default
+  embedding backends and live provider calls were not exercised.
+
+Next: slice 4, the local agent loop and `ctx agent run/history/inspect`, starting
+with built-in context tools, static resources, explicit tool allowlisting and
+bounded execution. Tool invocation lifecycle APIs will join the existing run
+store; developer tools and safe resume remain later slices.
