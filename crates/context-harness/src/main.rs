@@ -46,6 +46,9 @@
 //! ```
 
 mod agent_script;
+// Persistence is exposed by the library before runtime CLI wiring lands.
+#[allow(dead_code)]
+mod agent_store;
 mod agents;
 mod app_store;
 mod chunk;

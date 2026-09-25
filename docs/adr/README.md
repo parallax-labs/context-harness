@@ -32,6 +32,7 @@ including the context, alternatives considered, and consequences of each decisio
 | [0021](0021-vector-index-acceleration.md) | Vector Index Acceleration | Proposed |
 | [0022](0022-xdg-base-directory-compliance.md) | XDG Base Directory Compliance | Proposed |
 | [0023](0023-request-origin-binding.md) | Request Origin via HTTP Header | Proposed |
+| [0024](0024-local-agent-runtime.md) | Optional Local Agent Execution | Accepted |
 
 ## Creating a New ADR
 

@@ -3,6 +3,10 @@
 **Status:** Accepted
 **Date:** Retroactive
 
+**Scope update:** [ADR-0024](0024-local-agent-runtime.md) supersedes this ADR
+as the complete definition of an agent. This decision remains applicable to
+stateless MCP prompt resolution; optional local runtime execution owns its state.
+
 ## Context
 
 Context Harness agents are reusable AI personas that combine a system prompt,

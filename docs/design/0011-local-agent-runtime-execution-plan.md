@@ -1,0 +1,114 @@
+# DESIGN-0011: Local Agent Runtime Execution Plan
+
+**Status:** Planning  
+**Date:** 2026-09-25  
+**Author:** Context Harness contributors  
+**Related:** [DESIGN-0010](0010-local-agent-runtime.md), [ADR-0024](../adr/0024-local-agent-runtime.md)
+
+## Context
+
+Execute DESIGN-0010 incrementally while keeping ingestion, retrieval, existing
+agents, and MCP prompt projection working. The first deliverable is persistence,
+with no LLM, provider credentials, or network service required.
+
+## Proposal
+
+Keep early runtime code in the existing application crate. SQLite runtime history
+is an application responsibility, exposed through `SqliteAppStore::agent_runs`;
+it does not expand the portable core search `Store` trait. Reuse the application's
+pool and migrations. Extract an internal agent crate when the loop and provider
+interfaces establish a useful dependency boundary.
+
+Runs bind to the resolved workspace ID at creation. The store scopes reads and
+writes to that ID. Event sequence allocation, run state updates, and checkpoint
+creation use transactions. Checkpoint state is versioned JSON; runtime code will
+validate its conversation/resource/policy schema before resume. Credentials must
+never be embedded in resource snapshots or event payloads.
+
+## Implementation Plan
+
+Each row is a reviewable delivery slice in dependency order. Add executable
+acceptance tests and update this checklist as each slice lands.
+
+| Slice | Deliverables | Acceptance gate | Status |
+|---|---|---|---|
+| 1. Persistence | Four runtime tables; workspace-bound run creation/history; paginated ordered events; terminal transitions; versioned checkpoint save/load | Synthetic run survives reopen/migration; concurrent appends have unique ordered sequences; failures roll back; other workspaces cannot access it | Complete |
+| 2. Agent resources | Standalone TOML definitions; global/workspace precedence; model references, limits and policy parsing; extend existing agent list/show/validate | Old TOML/Lua/Rust agents still resolve; malformed/unknown configuration fails clearly; workspace override tests | Pending |
+| 3. Model boundary | Provider-neutral request/response/tool/usage types; registry; deterministic fake; one production provider | Fake and provider contract tests cover tool calls, failures and usage; credentials resolved from environment and excluded from history | Pending |
+| 4. Execution loop | Resolve agent/context/workspace; model/tool iterations through ToolRegistry; ctx agent run/history/inspect; JSON output; turn/time/cancellation limits | Fake model searches/gets context over multiple turns and completes with persisted history; terminal errors recorded | Pending |
+| 5. Developer capabilities | Read/search, git status/diff, patch/process tools; capability metadata; policy intersection; persisted approvals | Read-only policy blocks writes/processes regardless of prompt; path escape tests; non-interactive execution never silently approves | Pending |
+| 6. Resume/artifacts | Typed checkpoint schema; resume command; interruption handling; artifact files and metadata | Crash tests around model calls and tool side effects; no automatic replay of uncertain non-idempotent tool execution; workspace/version checks | Pending |
+| 7. MCP client | External server config/lifecycle, tool discovery adapters and namespacing | External fixture tool runs through the same registry/policy/event path; timeout/disconnect handling | Pending |
+| 8. Delegation | Controlled agent.invoke; parent/root run IDs; depth/turn/time budgets; inherited permission ceilings | Child execution is attributable and bounded; child cannot increase parent privileges | Pending |
+| 9. MCP compatibility | Project resource-backed executable agents as stateless MCP prompts | Existing prompt clients and Lua/Rust resolution remain compatible; full regression and end-to-end first-target demo | Pending |
+
+Slices 2 and 3 depend on slice 1; slice 4 joins them. Basic declared-tool
+allowlisting and deny-by-default treatment of privileged/unknown capabilities
+must ship with slice 4, before developer tools in slice 5. MCP compatibility
+regressions run throughout; slice 9 is the final resource projection gate.
+The optional local queue follows these milestones only if direct invocation
+proves insufficient.
+
+### First slice boundaries
+
+- Add `agent_store` in the application crate and idempotent schema installation.
+- Store run metadata, start/terminal events, arbitrary non-lifecycle runtime
+  events, and opaque versioned snapshots. Timestamps use Unix milliseconds.
+- Reserve lifecycle/checkpoint events for atomic state-changing APIs.
+- Add the tool invocation table now; transactional invocation lifecycle APIs
+  arrive with the tool loop (slice 4), when call/result types are defined.
+- Keep terminal runs immutable for now. Resume must define explicit transitions
+  for interrupted runs; it must not rewrite completed history.
+- No CLI run command is advertised until it can actually execute an agent.
+
+## Alternatives Considered
+
+- A new crate immediately adds dependency churn before runtime types stabilize;
+  keep the module boundary extractable instead.
+- Expanding the core Store trait couples portable retrieval consumers to runtime
+  execution. Use an application-level facade over the same database.
+- Reconstructing all state from events complicates resume. Retain both ordered
+  events and snapshots as DESIGN-0010 specifies.
+
+## Open Questions
+
+Resolve these before their dependent implementation slices:
+
+1. Select the first provider and API, including streaming and structured output
+   support, before slice 3. The design's OpenAI example is not a finalized API
+   contract.
+2. Settle resource version hashes, global/workspace override rules and compatibility
+   mapping for existing agents before slice 2.
+3. Define redaction, retention and artifact limits before recording production
+   model/tool payloads. The initial storage API accepts caller-provided JSON and
+   does not claim automatic redaction.
+4. Specify approval trust boundaries for Lua and external MCP tools before slices
+   4–5. Unknown tools must not be classified as read-only by default.
+5. Define checkpoint schema, interruption states, ownership/locking and uncertain
+   tool-result reconciliation before slice 6; a snapshot alone is not safe resume.
+
+## Validation
+
+Use temporary file-backed SQLite databases so reopen, transactions, and concurrent
+writers exercise the production storage mechanism. Run persistence tests plus
+existing app-store/retrieval tests, workspace tests, formatting and Clippy.
+Provider-dependent acceptance will use deterministic fixtures in CI; live model
+smoke tests remain explicit and credential-dependent.
+
+### Slice 1 verification (2026-09-25)
+
+- `cargo test --workspace --no-default-features`: 196 passed, 3 performance
+  probes ignored. Existing ingestion, retrieval, CLI and MCP tests pass.
+- `cargo test -p context-harness --no-default-features --test agent_store`:
+  4 passed, including the final checkpoint-insert rollback assertion.
+- `cargo fmt --all -- --check` and `git diff --check`: passed.
+- `cargo clippy --workspace --all-targets --no-default-features`: completed;
+  the existing `chunks_exact_to_as_chunks` warning in core `embedding.rs:50`
+  remains. The strict `-D warnings` run stops on that warning; no warnings were
+  reported for the new persistence code.
+- Default embedding backends were not built in this slice; runtime persistence
+  introduces no embedding or provider dependency.
+
+Next: slice 2, standalone agent resources and compatibility-preserving command
+extensions. Runtime execution, tool invocation lifecycle APIs and safe resume
+remain pending as listed above.

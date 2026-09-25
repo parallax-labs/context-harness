@@ -206,6 +206,17 @@ pub async fn run_migrations(config: &Config) -> Result<()> {
     .execute(&pool)
     .await?;
 
+    // Install runtime tables atomically and idempotently in the existing DB.
+    let mut tx = pool.begin().await?;
+    // This DDL contains only simple statements (no triggers or embedded
+    // semicolons). Execute separately to retain a Send migration future.
+    for statement in include_str!("agent_store/schema.sql").split(';') {
+        if !statement.trim().is_empty() {
+            sqlx::query(statement).execute(&mut *tx).await?;
+        }
+    }
+    tx.commit().await?;
+
     pool.close().await;
     Ok(())
 }
