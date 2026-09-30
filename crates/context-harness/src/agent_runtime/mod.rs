@@ -4,6 +4,8 @@ mod checkpoint;
 pub mod cli;
 mod developer;
 mod files;
+mod mcp;
+mod mcp_client;
 pub mod policy;
 mod terminal;
 mod tools;
@@ -182,12 +184,21 @@ impl AgentRuntime {
     }
 
     fn declarations(&self, resource: &LoadedAgentResource) -> Result<Vec<ModelTool>> {
+        self.declarations_with(resource, &ToolRegistry::new())
+    }
+
+    fn declarations_with(
+        &self,
+        resource: &LoadedAgentResource,
+        external: &ToolRegistry,
+    ) -> Result<Vec<ModelTool>> {
         let agent = &resource.definition.agent;
         let mut declarations = Vec::new();
         for name in &agent.tools {
             let tool = self
                 .tools
                 .find(name)
+                .or_else(|| external.find(name))
                 .context("unsupported runtime tool declaration")?;
             let capabilities = tool
                 .capabilities()
@@ -219,165 +230,150 @@ impl AgentRuntime {
             agent.execution.max_turns > 0 && agent.execution.timeout_seconds > 0,
             "invalid execution limits"
         );
-        let declarations = self.declarations(resource)?;
-        self.store
-            .append_event(
-                id,
-                "context.resolved",
-                &json!({
-                    "workspace_root": self.root, "agent_version": resource.version,
-                    "tools": agent.tools, "retrieval": "keyword",
-                    "host_policy": {"allow":self.policy.allow, "require_approval":self.policy.require_approval}
-                }),
-            )
-            .await?;
-        let context = ToolContext::new(self.config.clone());
-        let mut request = restored.unwrap_or_else(|| ModelRequest {
-            messages: vec![
-                ModelMessage::System {
-                    content: resource.definition.prompt.system.clone(),
-                },
-                ModelMessage::User {
-                    content: input.into(),
-                },
-            ],
-            tools: declarations,
-            ..Default::default()
-        });
-        for turn in start_turn..agent.execution.max_turns {
-            self.checkpoint(id, resource, &request, turn).await?;
-            let response = self
-                .models
-                .generate_recorded(&self.store, id, &agent.model, &request)
+        let (external, mut sessions) = self.external_tools(id, resource).await?;
+        let result = async {
+            let declarations = self.declarations_with(resource, &external)?;
+            self.store
+                .append_event(
+                    id,
+                    "context.resolved",
+                    &json!({
+                        "workspace_root": self.root, "agent_version": resource.version,
+                        "tools": agent.tools, "retrieval": "keyword",
+                        "host_policy": {"allow":self.policy.allow, "require_approval":self.policy.require_approval}
+                    }),
+                )
                 .await?;
-            match response.finish_reason {
-                FinishReason::Completed => {
-                    if response.text.len() <= 64 * 1024 {
-                        return Ok(response.text);
-                    }
-                    let artifact = files.write_artifact("output.txt", response.text.as_bytes())?;
-                    self.store
-                        .record_artifact(
-                            id,
-                            &artifact.relative_path,
-                            &artifact.sha256,
-                            artifact.size,
-                        )
-                        .await?;
-                    return Ok(format!(
-                        "Output saved to {} ({} bytes; sha256 {})",
-                        artifact.relative_path, artifact.size, artifact.sha256
-                    ));
-                }
-                FinishReason::Length => anyhow::bail!("model output limit reached"),
-                FinishReason::Refusal => anyhow::bail!("model refused the request"),
-                FinishReason::ContentFilter => anyhow::bail!("model response was filtered"),
-                FinishReason::ToolCalls => {}
-            }
-            // Do not execute tools if the run cannot consume their results.
-            ensure!(
-                turn + 1 < agent.execution.max_turns,
-                "maximum model turns reached"
-            );
-            ensure!(
-                response.tool_calls.len() <= MAX_TOOL_CALLS_PER_TURN,
-                "too many tool calls in one turn"
-            );
-            request.messages.push(response.message());
-            for call in response.tool_calls {
-                self.store
-                    .request_tool(id, &call.id, &call.name, &call.arguments)
+            let context = ToolContext::new(self.config.clone());
+            let mut request = restored.unwrap_or_else(|| ModelRequest {
+                messages: vec![
+                    ModelMessage::System {
+                        content: resource.definition.prompt.system.clone(),
+                    },
+                    ModelMessage::User {
+                        content: input.into(),
+                    },
+                ],
+                tools: declarations,
+                ..Default::default()
+            });
+            for turn in start_turn..agent.execution.max_turns {
+                self.checkpoint(id, resource, &request, turn).await?;
+                let response = self
+                    .models
+                    .generate_recorded(&self.store, id, &agent.model, &request)
                     .await?;
-                let tool = self.tools.find(&call.name).context("tool unavailable")?;
-                let authorization = tool
-                    .capabilities()
-                    .map(|caps| self.policy.authorize(&agent.permissions, &caps))
-                    .unwrap_or(Authorization::Denied);
-                let valid = if matches!(call.name.as_str(), "search" | "get") {
-                    tools::validate(&call.name, &call.arguments)
-                } else {
-                    developer::validate(&self.root, &call.name, &call.arguments)
-                };
-                if !agent.tools.contains(&call.name)
-                    || authorization == Authorization::Denied
-                    || valid.is_err()
-                {
-                    self.store
-                        .finish_tool(
-                            id,
-                            &call.id,
-                            ToolOutcome::Denied(
-                                "tool permission or argument validation rejected".into(),
-                            ),
-                        )
-                        .await?;
-                    anyhow::bail!("tool permission or argument validation rejected");
+                match response.finish_reason {
+                    FinishReason::Completed => {
+                        if response.text.len() <= 64 * 1024 {
+                            return Ok(response.text);
+                        }
+                        let artifact = files.write_artifact("output.txt", response.text.as_bytes())?;
+                        self.store
+                            .record_artifact(
+                                id,
+                                &artifact.relative_path,
+                                &artifact.sha256,
+                                artifact.size,
+                            )
+                            .await?;
+                        return Ok(format!(
+                            "Output saved to {} ({} bytes; sha256 {})",
+                            artifact.relative_path, artifact.size, artifact.sha256
+                        ));
+                    }
+                    FinishReason::Length => anyhow::bail!("model output limit reached"),
+                    FinishReason::Refusal => anyhow::bail!("model refused the request"),
+                    FinishReason::ContentFilter => anyhow::bail!("model response was filtered"),
+                    FinishReason::ToolCalls => {}
                 }
-                if let Authorization::Approval(capabilities) = authorization {
+                // Do not execute tools if the run cannot consume their results.
+                ensure!(
+                    turn + 1 < agent.execution.max_turns,
+                    "maximum model turns reached"
+                );
+                ensure!(
+                    response.tool_calls.len() <= MAX_TOOL_CALLS_PER_TURN,
+                    "too many tool calls in one turn"
+                );
+                request.messages.push(response.message());
+                for call in response.tool_calls {
                     self.store
-                        .request_approval(id, &call.id, &capabilities)
+                        .request_tool(id, &call.id, &call.name, &call.arguments)
                         .await?;
-                    let granted = self
-                        .approvals
-                        .approve(&ApprovalRequest {
-                            run_id: id.into(),
-                            call_id: call.id.clone(),
-                            tool: call.name.clone(),
-                            capabilities,
-                            arguments: call.arguments.clone(),
-                        })
-                        .await;
-                    self.store.decide_approval(id, &call.id, granted).await?;
-                    if !granted {
+                    let tool = self.tools.find(&call.name).or_else(|| external.find(&call.name)).context("tool unavailable")?;
+                    let authorization = tool
+                        .capabilities()
+                        .map(|caps| self.policy.authorize(&agent.permissions, &caps))
+                        .unwrap_or(Authorization::Denied);
+                    let valid = if matches!(call.name.as_str(), "search" | "get") {
+                        tools::validate(&call.name, &call.arguments)
+                    } else if call.name.starts_with("mcp.") {
+                        mcp_client::validate_arguments(&call.arguments)
+                    } else {
+                        developer::validate(&self.root, &call.name, &call.arguments)
+                    };
+                    if !agent.tools.contains(&call.name)
+                        || authorization == Authorization::Denied
+                        || valid.is_err()
+                    {
                         self.store
                             .finish_tool(
                                 id,
                                 &call.id,
-                                ToolOutcome::Denied("approval denied".into()),
+                                ToolOutcome::Denied(
+                                    "tool permission or argument validation rejected".into(),
+                                ),
                             )
                             .await?;
-                        anyhow::bail!("tool approval denied");
+                        anyhow::bail!("tool permission or argument validation rejected");
                     }
-                }
-                self.store.start_tool(id, &call.id).await?;
-                let result = tool.execute(call.arguments, &context).await;
-                match result {
-                    Ok(result) => {
-                        let content = serde_json::to_string(&result)?;
-                        if content.len() > MAX_TOOL_RESULT_BYTES {
+                    self.approve_invocation(id, &call.id, &call.name, &call.arguments, authorization).await?;
+                    self.store.start_tool(id, &call.id).await?;
+                    let result = tool.execute(call.arguments, &context).await;
+                    match result {
+                        Ok(result) => {
+                            let content = serde_json::to_string(&result)?;
+                            if content.len() > MAX_TOOL_RESULT_BYTES {
+                                self.store
+                                    .finish_tool(
+                                        id,
+                                        &call.id,
+                                        ToolOutcome::Failed("tool result exceeds 1 MiB".into()),
+                                    )
+                                    .await?;
+                                anyhow::bail!("tool result exceeds 1 MiB");
+                            }
+                            self.store
+                                .finish_tool(id, &call.id, ToolOutcome::Completed(result))
+                                .await?;
+                            request.messages.push(ModelMessage::Tool {
+                                call_id: call.id,
+                                content,
+                            });
+                        }
+                        Err(_) => {
+                            // Tool errors may contain indexed data. Persist a category,
+                            // not arbitrary error strings from tool implementations.
                             self.store
                                 .finish_tool(
                                     id,
                                     &call.id,
-                                    ToolOutcome::Failed("tool result exceeds 1 MiB".into()),
+                                    ToolOutcome::Failed("context tool execution failed".into()),
                                 )
                                 .await?;
-                            anyhow::bail!("tool result exceeds 1 MiB");
+                            anyhow::bail!("context tool execution failed");
                         }
-                        self.store
-                            .finish_tool(id, &call.id, ToolOutcome::Completed(result))
-                            .await?;
-                        request.messages.push(ModelMessage::Tool {
-                            call_id: call.id,
-                            content,
-                        });
-                    }
-                    Err(_) => {
-                        // Tool errors may contain indexed data. Persist a category,
-                        // not arbitrary error strings from tool implementations.
-                        self.store
-                            .finish_tool(
-                                id,
-                                &call.id,
-                                ToolOutcome::Failed("context tool execution failed".into()),
-                            )
-                            .await?;
-                        anyhow::bail!("context tool execution failed");
                     }
                 }
             }
+            anyhow::bail!("maximum model turns reached")
         }
-        anyhow::bail!("maximum model turns reached")
+        .await;
+        for session in &mut sessions {
+            session.close().await;
+        }
+        result
     }
 }
 

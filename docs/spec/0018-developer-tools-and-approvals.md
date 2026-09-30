@@ -6,11 +6,12 @@
 
 ## Permission boundary
 
-The local runtime SHALL expose only its fixed, built-in tool registry. Tool
+The local runtime SHALL expose its built-in registry and the per-run MCP tools
+defined in [SPEC-0020](0020-mcp-client-tools.md). Tool
 capability metadata SHALL be explicit; missing or empty metadata SHALL deny
 execution. The existing `Tool` trait defaults to unknown metadata, so extending
 that trait does not silently grant local execution to existing Lua, Rust or MCP
-tools. Extension loading remains a later slice.
+tools. Lua/arbitrary Rust extension loading remains a later slice.
 
 Effective access SHALL intersect registered tools, agent declarations, agent
 permissions and a host-owned `RuntimePolicy`. Every required capability must be
@@ -20,7 +21,8 @@ The model cannot select or change host policy. Authorization and strict argument
 validation SHALL happen before tool start; undeclared calls SHALL never dispatch.
 
 The default host policy allows `read_only` and requires approval for
-`workspace_write` and `process_execute`. It denies other tool capabilities.
+`workspace_write`, `process_execute` and `external_side_effect`. It denies other
+tool capabilities.
 Resource defaults remain read-only. A resource must explicitly declare privileged
 capabilities, even to request approval. The library defaults to `DenyApprovals`;
 a trusted embedding application may use `with_policy` to supply a narrower or

@@ -55,7 +55,10 @@ async fn read_from_tty(tty: std::fs::File, request: &ApprovalRequest) -> std::io
     if details.len() > 32 * 1024 {
         return Ok(false);
     }
-    let warning = if request.tool == "process.exec" {
+    let warning = if request.tool == "process.exec"
+        || request.tool.starts_with("runtime.mcp.start.")
+        || request.tool.starts_with("mcp.")
+    {
         "\nThis process is not sandboxed: it can access files, credentials, network, and child processes with your user permissions."
     } else {
         ""

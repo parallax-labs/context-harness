@@ -4,6 +4,9 @@
 **Date:** 2026-09-30  
 **Related:** [execution](0017-local-agent-execution.md), [developer tools](0018-developer-tools-and-approvals.md)
 
+MCP-backed runs are excluded from checkpoint/resume as specified in
+[SPEC-0020](0020-mcp-client-tools.md); external session recovery is not implemented.
+
 ## Checkpoint contract
 
 The runtime SHALL persist a versioned snapshot before each model invocation,

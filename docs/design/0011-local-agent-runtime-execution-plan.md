@@ -38,7 +38,7 @@ acceptance tests and update this checklist as each slice lands.
 | 4. Execution loop | Resolve agent/context/workspace; model/tool iterations through ToolRegistry; ctx agent run/history/inspect; JSON output; turn/time/cancellation limits | Fake model searches/gets context over multiple turns and completes with persisted history; terminal errors recorded | Complete |
 | 5. Developer capabilities | Read/search, git status/diff, patch/process tools; capability metadata; policy intersection; persisted approvals | Read-only policy blocks writes/processes regardless of prompt; path escape tests; non-interactive execution never silently approves | Complete |
 | 6. Resume/artifacts | Typed checkpoint schema; resume command; interruption handling; artifact files and metadata | Crash tests around model calls and tool side effects; no automatic replay of uncertain non-idempotent tool execution; workspace/version checks | Complete |
-| 7. MCP client | External server config/lifecycle, tool discovery adapters and namespacing | External fixture tool runs through the same registry/policy/event path; timeout/disconnect handling | Pending |
+| 7. MCP client | External server config/lifecycle, tool discovery adapters and namespacing | External fixture tool runs through the same registry/policy/event path; timeout/disconnect handling | Complete |
 | 8. Delegation | Controlled agent.invoke; parent/root run IDs; depth/turn/time budgets; inherited permission ceilings | Child execution is attributable and bounded; child cannot increase parent privileges | Pending |
 | 9. MCP compatibility | Project resource-backed executable agents as stateless MCP prompts | Existing prompt clients and Lua/Rust resolution remain compatible; full regression and end-to-end first-target demo | Pending |
 
@@ -228,4 +228,26 @@ smoke tests remain explicit and credential-dependent.
   embedding warning. Default embedding backends and live providers were not
   exercised. Recovery/filesystem tests ran on macOS Unix.
 
-Next: slice 7, external MCP clients and capability-aware tool adapters.
+### Slice 7 decisions and verification (2026-09-30)
+
+- Added strict stdio server configuration and per-run client sessions using the
+  pinned MCP SDK. Discovery creates namespaced existing-Tool adapters; only
+  agent-declared tools are advertised to the model.
+- Startup itself passes through durable tool history and approvals before spawning.
+  Every external call requires process and external-side-effect capability;
+  remote read-only hints cannot weaken policy. Default host policy requires
+  approval for both. Non-interactive execution never silently starts a server.
+- Bound frames, pagination/tool counts, arguments/results and RPC timeouts;
+  deny server callbacks, discard stderr, and stop direct children on shutdown.
+- Added [SPEC-0020](../spec/0020-mcp-client-tools.md). External sessions have no
+  checkpoint/resume in this slice; HTTP/OAuth and extension auto-discovery are
+  deferred. Existing MCP server behavior is unchanged.
+
+- `cargo test --workspace --no-default-features`: 297 passed, 3 ignored
+  performance probes. Final focused MCP tests: 8 passed, including two additional
+  tests for denied server callbacks and non-interactive CLI startup denial.
+- Formatting and diff checks passed. Clippy completed with only the existing core
+  embedding warning. Fixtures use local Python stdio; no live server, provider,
+  network call or default embedding backend was exercised.
+
+Next: slice 8, controlled delegation with inherited permission and execution limits.

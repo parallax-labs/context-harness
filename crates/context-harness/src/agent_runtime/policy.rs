@@ -13,7 +13,11 @@ impl Default for RuntimePolicy {
     fn default() -> Self {
         Self {
             allow: vec![Capability::ReadOnly],
-            require_approval: vec![Capability::WorkspaceWrite, Capability::ProcessExecute],
+            require_approval: vec![
+                Capability::WorkspaceWrite,
+                Capability::ProcessExecute,
+                Capability::ExternalSideEffect,
+            ],
         }
     }
 }

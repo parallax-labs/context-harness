@@ -38,6 +38,7 @@ See [SPEC-0000](0000-spec-policy.md) for the full policy.
 | [0017](0017-local-agent-execution.md) | Local Agent Execution | Authoritative |
 | [0018](0018-developer-tools-and-approvals.md) | Developer Tools and Approvals | Authoritative |
 | [0019](0019-checkpoints-recovery-and-artifacts.md) | Checkpoints, Recovery and Artifacts | Authoritative |
+| [0020](0020-mcp-client-tools.md) | MCP Client Tools | Authoritative |
 
 ## Creating a New Spec
 

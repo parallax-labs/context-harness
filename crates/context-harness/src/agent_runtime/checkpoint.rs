@@ -39,6 +39,16 @@ impl AgentRuntime {
         request: &ModelRequest,
         turn: u32,
     ) -> Result<()> {
+        // External process sessions are not reconstructible from a conversation.
+        if resource
+            .definition
+            .agent
+            .tools
+            .iter()
+            .any(|name| name.starts_with("mcp."))
+        {
+            return Ok(());
+        }
         request.validate()?;
         let snapshot = Snapshot {
             run_id: id.into(),
@@ -72,6 +82,15 @@ impl AgentRuntime {
             .get_run(id)
             .await?
             .context("run not found in workspace")?;
+        ensure!(
+            !resource
+                .definition
+                .agent
+                .tools
+                .iter()
+                .any(|name| name.starts_with("mcp.")),
+            "MCP-backed runs cannot resume; external session recovery is unsupported"
+        );
         let files = files::acquire(&self.root, id)?;
         let run = self.store.get_run(id).await?.context("run disappeared")?;
         ensure!(run.status != "completed", "completed runs cannot resume");

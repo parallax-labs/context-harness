@@ -12,8 +12,9 @@ and indexed document retrieval. Legacy TOML/Lua/Rust prompt interfaces and exist
 MCP server behavior SHALL remain available without acquiring an execution loop.
 
 Developer tools, capability metadata and interactive approvals are defined by
-[SPEC-0018](0018-developer-tools-and-approvals.md). MCP client tools, delegation,
-and streaming remain later slices. Recovery is defined by
+[SPEC-0018](0018-developer-tools-and-approvals.md). External stdio MCP tools are
+defined by [SPEC-0020](0020-mcp-client-tools.md). Delegation and streaming remain
+later slices. Recovery is defined by
 [SPEC-0019](0019-checkpoints-recovery-and-artifacts.md).
 
 ## Execution
@@ -69,12 +70,12 @@ indexed context is shared according to that explicit configuration.
 
 ## Tools and permissions
 
-The runtime SHALL own a fixed `ToolRegistry` containing `search` and `get` adapters
-and the developer tools specified in SPEC-0018
-that implement the existing `Tool` trait. It SHALL NOT load Lua/Rust extensions or
-trust an arbitrary tool's name as proof that it is read-only.
+The runtime SHALL own built-in `ToolRegistry` adapters for `search`, `get` and
+the developer tools specified in SPEC-0018. Per-run external MCP adapters follow
+SPEC-0020. All implement the existing `Tool` trait. The runtime SHALL NOT load
+Lua/Rust extensions or trust an arbitrary tool's name as proof that it is read-only.
 
-Both adapters SHALL use a separate SQLite connection pool opened read-only, with
+The `search` and `get` adapters SHALL use a separate SQLite connection pool opened read-only, with
 `query_only` enabled and no database creation. Keyword search SHALL reuse the core
 search algorithm and SQLite store; get SHALL reuse core document retrieval.
 Runtime initialization/history writes remain intentional application operations

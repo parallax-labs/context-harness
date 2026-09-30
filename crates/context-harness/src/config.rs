@@ -60,7 +60,7 @@
 //! - Embedding provider must be one of: `"disabled"`, `"openai"`, `"ollama"`, `"local"`
 
 use anyhow::{Context, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -100,6 +100,9 @@ pub struct Config {
     /// Model aliases for standalone executable-agent resources.
     #[serde(default)]
     pub models: std::collections::BTreeMap<String, crate::agent_resource::ModelDefinition>,
+    /// Named stdio MCP servers available to executable agents.
+    #[serde(default)]
+    pub mcp_servers: std::collections::BTreeMap<String, McpServerConfig>,
     /// Extension registry configurations (all optional).
     #[serde(default)]
     pub registries: HashMap<String, RegistryConfig>,
@@ -135,8 +138,57 @@ impl Config {
             tools: ToolsConfig::default(),
             agents: AgentsConfig::default(),
             models: std::collections::BTreeMap::new(),
+            mcp_servers: std::collections::BTreeMap::new(),
             registries: HashMap::new(),
         }
+    }
+}
+
+/// A stdio MCP process. Execution inherits the environment and uses the run's
+/// workspace root as its working directory; launching requires process permission.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpServerConfig {
+    pub command: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default = "default_mcp_timeout_seconds")]
+    pub timeout_seconds: u64,
+}
+
+fn default_mcp_timeout_seconds() -> u64 {
+    30
+}
+
+impl McpServerConfig {
+    /// Validate both the namespace and bounded process settings without spawning.
+    pub fn validate(&self, name: &str) -> Result<()> {
+        if name.is_empty()
+            || name.len() > 64
+            || !name
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+        {
+            anyhow::bail!(
+                "MCP server name must contain 1..64 ASCII letters, digits, underscores, or hyphens"
+            );
+        }
+        if self.command.trim().is_empty()
+            || self.command.len() > 4096
+            || self.command.contains('\0')
+        {
+            anyhow::bail!("MCP server '{name}' command must contain 1..4096 bytes and no NUL");
+        }
+        if self.args.len() > 128
+            || self.args.iter().any(|arg| arg.contains('\0'))
+            || self.args.iter().map(String::len).sum::<usize>() > 64 * 1024
+        {
+            anyhow::bail!("MCP server '{name}' arguments must contain at most 128 entries and 65536 bytes, with no NUL");
+        }
+        if !(1..=60).contains(&self.timeout_seconds) {
+            anyhow::bail!("MCP server '{name}' timeout_seconds must be in 1..=60");
+        }
+        Ok(())
     }
 }
 
@@ -958,6 +1010,10 @@ fn config_from_value(value: toml::Value) -> Result<Config> {
 }
 
 fn validate_config(config: Config) -> Result<Config> {
+    for (name, server) in &config.mcp_servers {
+        server.validate(name)?;
+    }
+
     // Validate chunking
     if config.chunking.max_tokens == 0 {
         anyhow::bail!("chunking.max_tokens must be > 0");
