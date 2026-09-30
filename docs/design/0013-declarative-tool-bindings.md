@@ -66,6 +66,111 @@ Exact TOML keys, directory layout and descriptor API are open design decisions.
 Examples in the later spec should use only the chosen schema; no runnable-looking
 placeholder configuration is published here.
 
+### Example usage pattern: a release reviewer
+
+A developer wants an agent to compare a proposed release summary with engineering
+notes and indexed release decisions. This example demonstrates resource composition
+without introducing a release-specific tool into the runtime.
+
+**Illustrative future workflow:** the binding declarations below are expressed as a
+table because their file layout and TOML schema are not decided. The agent TOML uses
+existing agent-resource syntax, but its named bindings are not implemented today.
+This is not a runnable configuration or a claim that the binding layer has shipped.
+
+#### 1. The host grants a limited set of capabilities
+
+The host integrator registers trusted file-reader and keyword-retrieval
+implementations. The host grants read access to two fixture directories, `./release`
+and `./engineering-notes`, and retrieval access to an indexed source with the
+illustrative ID `filesystem:release-decisions`. Paths resolve against a configured
+workspace root, never a model-selected working directory. The underlying retrieval
+implementation supports enforcement of the source restriction.
+
+This enrollment is host-owned. A project tool declaration cannot grant itself
+access to another directory or source. No filesystem write, shell execution or
+external process capability is granted.
+
+#### 2. The author declares three named tool bindings
+
+| Public tool name | Registered implementation | Fixed binding | Model-visible arguments |
+|---|---|---|---|
+| `release.read` | Generic scoped file reader | Root: `./release`; bounded UTF-8 output | Relative `path` within that root |
+| `engineering.read` | The same generic scoped file reader | Root: `./engineering-notes`; bounded UTF-8 output | Relative `path` within that root |
+| `decisions.search` | Generic keyword retrieval | Source: `filesystem:release-decisions`; result limit: 5 | `query` |
+
+The actual resource files will encode these bindings using the schema chosen in
+slice 1. The implementation supplies validation and supported restrictions; the
+resource supplies names and fixed settings. Neither the root, source nor fixed
+result limit is a model-overridable argument.
+
+#### 3. The agent selects the bindings
+
+An illustrative agent resource would be:
+
+```toml
+[agent]
+name = "release-reviewer"
+description = "Check release claims against approved project evidence"
+model = "review-model"
+tools = ["release.read", "engineering.read", "decisions.search"]
+
+[agent.execution]
+max_turns = 6
+timeout_seconds = 120
+
+[agent.permissions]
+mode = "read-only"
+
+[prompt]
+system = """
+Review the release summary against engineering notes and release decisions.
+Cite the files or documents supporting each finding. Report unsupported claims
+and missing evidence. Return a review; do not modify files.
+"""
+```
+
+`review-model` refers to a separately configured, supported model alias; this
+example does not prescribe a provider or imply that local Ollama support exists.
+The model choice is independent of the tool-binding composition.
+
+#### 4. Inspect, validate, then invoke
+
+Before execution, the author inspects the effective bindings and checks their
+implementation identities, public schemas, roots/source restrictions, versions and
+resource origins. Static validation rejects unknown implementations, unsupported
+restrictions and name collisions without executing tools or calling a model.
+Exact tool inspection commands will be set in the spec.
+
+After the binding layer is implemented, the existing agent invocation shape can
+run this composition:
+
+```sh
+ctx agent run release-reviewer "Review summary.md for unsupported release claims"
+```
+
+The agent might call `release.read` with `{"path":"summary.md"}` and
+`decisions.search` with `{"query":"supported deployment targets"}`. The runtime
+resolves the selected adapters, validates the effective calls, enforces policy,
+executes through ToolRegistry, and records the public binding and implementation
+identities. It returns a review with evidence references and a durable run ID.
+
+An attempt to supply `root`, override the source, read `../private.txt`, or access
+a symlink outside an enrolled root fails before the requested access occurs.
+The same reader implementation serves both public read tools without runtime
+branches for `release.read` or `engineering.read`.
+
+#### 5. Reuse the capability for another application
+
+A second fixture can bind the same reader to a test-results directory and select
+it from a different agent resource. This requires resource changes, not changes to
+the execution loop. If an application needs a genuinely new operation, an extension
+author implements and registers that capability once; resource authors then bind
+and reuse it through the same contracts. Declarative composition does not generate
+arbitrary executable behavior.
+
+The future wiki manager should follow this pattern after the foundation is verified.
+Its domain behavior and additional integration requirements remain deferred.
+
 ### Resource resolution and identity
 
 Reuse agent-resource configuration provenance: explicit/environment/pinned config
