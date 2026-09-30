@@ -456,6 +456,7 @@ See [`config/ctx.example.toml`](config/ctx.example.toml) for a complete example,
 | [Connectors & registry](https://parallax-labs.github.io/context-harness/docs/connectors/built-in/) | Built-in connectors, [Lua connectors](https://parallax-labs.github.io/context-harness/docs/connectors/lua-connectors/), [extension registry](https://parallax-labs.github.io/context-harness/docs/registry/overview/) |
 | [Guides](https://parallax-labs.github.io/context-harness/docs/guides/agents/) | Agent integration, Cursor, RAG, multi-repo, deployment |
 | [API (Rustdoc)](https://parallax-labs.github.io/context-harness/api/context_harness/) | Generated Rust API docs |
+| [Local agent execution](docs/spec/0017-local-agent-execution.md) | Standalone agent run/history/inspect commands, supported tools, and a local fake-provider example |
 | [Live demo](https://parallax-labs.github.io/context-harness/demo/) | Search a pre-built knowledge base in the browser |
 
 The site also documents the **search widget** (`ctx-search.js`) for adding ⌘K search to static sites — see the [docs](https://parallax-labs.github.io/context-harness/docs/) for an example.

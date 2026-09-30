@@ -58,6 +58,26 @@ pub enum RunOutcome {
     Cancelled,
 }
 
+#[derive(Debug, Serialize, FromRow)]
+pub struct ToolInvocation {
+    pub run_id: String,
+    pub call_id: String,
+    pub requested_sequence: i64,
+    pub tool_name: String,
+    pub arguments: sqlx::types::Json<Value>,
+    pub status: String,
+    pub result: Option<sqlx::types::Json<Value>>,
+    pub error: Option<String>,
+    pub started_at: Option<i64>,
+    pub completed_at: Option<i64>,
+}
+
+pub enum ToolOutcome {
+    Completed(Value),
+    Failed(String),
+    Denied(String),
+}
+
 /// Workspace-scoped persistence facade, sharing the application connection pool.
 #[derive(Clone)]
 pub struct AgentRunStore {
@@ -126,12 +146,14 @@ impl AgentRunStore {
         .await?)
     }
 
-    /// Append a runtime event. Run lifecycle and checkpoint events must use the
+    /// Append a runtime event. Run, tool lifecycle and checkpoint events use the
     /// dedicated operations so the event log and materialized state agree.
     pub async fn append_event(&self, id: &str, event_type: &str, payload: &Value) -> Result<i64> {
         ensure!(!event_type.trim().is_empty(), "event type is required");
         ensure!(
-            !event_type.starts_with("run.") && !event_type.starts_with("checkpoint."),
+            !event_type.starts_with("run.")
+                && !event_type.starts_with("checkpoint.")
+                && !event_type.starts_with("tool."),
             "reserved event type"
         );
         let mut tx = self.pool.begin().await?;
@@ -198,6 +220,31 @@ impl AgentRunStore {
             RunOutcome::Cancelled => ("cancelled", None, None),
         };
         let mut tx = self.pool.begin().await?;
+        // Acquire the write lock before reading invocation state. Terminal state
+        // and cleanup of interrupted calls commit in the same transaction.
+        let found: Option<String> = sqlx::query_scalar("UPDATE agent_runs SET updated_at = updated_at WHERE id = ? AND workspace_id = ? AND status = 'running' RETURNING id")
+            .bind(id).bind(&self.workspace_id).fetch_optional(&mut *tx).await?;
+        ensure!(
+            found.is_some(),
+            "run not found in workspace or already terminal"
+        );
+        let unfinished: Vec<String> = sqlx::query_scalar("SELECT call_id FROM tool_invocations WHERE run_id = ? AND status IN ('requested', 'started') ORDER BY requested_sequence")
+            .bind(id).fetch_all(&mut *tx).await?;
+        ensure!(
+            status != "completed" || unfinished.is_empty(),
+            "cannot complete run with unfinished tools"
+        );
+        for call_id in unfinished {
+            self.append_in(
+                &mut tx,
+                id,
+                "tool.failed",
+                &json!({"call_id": call_id, "error": "run interrupted"}),
+            )
+            .await?;
+            sqlx::query("UPDATE tool_invocations SET status = 'failed', error = 'run interrupted', completed_at = ? WHERE run_id = ? AND call_id = ?")
+                .bind(Utc::now().timestamp_millis()).bind(id).bind(call_id).execute(&mut *tx).await?;
+        }
         self.append_in(
             &mut tx,
             id,
@@ -209,6 +256,77 @@ impl AgentRunStore {
             .bind(status).bind(output).bind(error).bind(id).bind(&self.workspace_id).execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(())
+    }
+
+    pub async fn request_tool(
+        &self,
+        id: &str,
+        call_id: &str,
+        name: &str,
+        arguments: &Value,
+    ) -> Result<()> {
+        ensure!(
+            !call_id.is_empty() && !name.is_empty() && arguments.is_object(),
+            "invalid tool invocation"
+        );
+        let mut tx = self.pool.begin().await?;
+        let sequence = self
+            .append_in(
+                &mut tx,
+                id,
+                "tool.requested",
+                &json!({"call_id": call_id, "tool": name}),
+            )
+            .await?;
+        sqlx::query("INSERT INTO tool_invocations (run_id, call_id, requested_sequence, tool_name, arguments, status) VALUES (?, ?, ?, ?, ?, 'requested')")
+            .bind(id).bind(call_id).bind(sequence).bind(name).bind(sqlx::types::Json(arguments)).execute(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    pub async fn start_tool(&self, id: &str, call_id: &str) -> Result<()> {
+        let mut tx = self.pool.begin().await?;
+        self.append_in(&mut tx, id, "tool.started", &json!({"call_id": call_id}))
+            .await?;
+        let changed = sqlx::query("UPDATE tool_invocations SET status = 'started', started_at = ? WHERE run_id = ? AND call_id = ? AND status = 'requested'")
+            .bind(Utc::now().timestamp_millis()).bind(id).bind(call_id).execute(&mut *tx).await?.rows_affected();
+        ensure!(changed == 1, "tool invocation is not pending");
+        tx.commit().await?;
+        Ok(())
+    }
+
+    pub async fn finish_tool(&self, id: &str, call_id: &str, outcome: ToolOutcome) -> Result<()> {
+        let (status, expected, result, error) = match outcome {
+            ToolOutcome::Completed(result) => (
+                "completed",
+                "started",
+                Some(sqlx::types::Json(result)),
+                None,
+            ),
+            ToolOutcome::Failed(error) => ("failed", "started", None, Some(error)),
+            ToolOutcome::Denied(error) => ("denied", "requested", None, Some(error)),
+        };
+        let mut tx = self.pool.begin().await?;
+        self.append_in(
+            &mut tx,
+            id,
+            &format!("tool.{status}"),
+            &json!({"call_id": call_id, "error": error}),
+        )
+        .await?;
+        let changed = sqlx::query("UPDATE tool_invocations SET status = ?, result = ?, error = ?, completed_at = ? WHERE run_id = ? AND call_id = ? AND status = ?")
+            .bind(status).bind(result).bind(error).bind(Utc::now().timestamp_millis()).bind(id).bind(call_id).bind(expected).execute(&mut *tx).await?.rows_affected();
+        ensure!(changed == 1, "invalid tool invocation transition");
+        tx.commit().await?;
+        Ok(())
+    }
+
+    pub async fn tool_invocations(&self, id: &str) -> Result<Vec<ToolInvocation>> {
+        self.get_run(id)
+            .await?
+            .context("run not found in workspace")?;
+        Ok(sqlx::query_as("SELECT t.* FROM tool_invocations t JOIN agent_runs r ON r.id = t.run_id WHERE t.run_id = ? AND r.workspace_id = ? ORDER BY t.requested_sequence")
+            .bind(id).bind(&self.workspace_id).fetch_all(&self.pool).await?)
     }
 
     async fn append_in(

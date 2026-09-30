@@ -35,6 +35,7 @@ See [SPEC-0000](0000-spec-policy.md) for the full policy.
 | [0014](0014-multi-workspace-mcp-router.md) | Multi-Workspace MCP Router | Draft |
 | [0015](0015-agent-resources.md) | Standalone Agent Resources | Authoritative |
 | [0016](0016-model-runtime.md) | Model Runtime | Authoritative |
+| [0017](0017-local-agent-execution.md) | Local Agent Execution | Authoritative |
 
 ## Creating a New Spec
 

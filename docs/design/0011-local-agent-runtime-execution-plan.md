@@ -35,7 +35,7 @@ acceptance tests and update this checklist as each slice lands.
 | 1. Persistence | Four runtime tables; workspace-bound run creation/history; paginated ordered events; terminal transitions; versioned checkpoint save/load | Synthetic run survives reopen/migration; concurrent appends have unique ordered sequences; failures roll back; other workspaces cannot access it | Complete |
 | 2. Agent resources | Standalone TOML definitions; global/workspace precedence; model references, limits and policy parsing; extend existing agent list/show/validate | Old TOML/Lua/Rust agents still resolve; malformed/unknown configuration fails clearly; workspace override tests | Complete |
 | 3. Model boundary | Provider-neutral request/response/tool/usage types; registry; deterministic fake; one production provider | Fake and provider contract tests cover tool calls, failures and usage; credentials resolved from environment and excluded from history | Complete |
-| 4. Execution loop | Resolve agent/context/workspace; model/tool iterations through ToolRegistry; ctx agent run/history/inspect; JSON output; turn/time/cancellation limits | Fake model searches/gets context over multiple turns and completes with persisted history; terminal errors recorded | Pending |
+| 4. Execution loop | Resolve agent/context/workspace; model/tool iterations through ToolRegistry; ctx agent run/history/inspect; JSON output; turn/time/cancellation limits | Fake model searches/gets context over multiple turns and completes with persisted history; terminal errors recorded | Complete |
 | 5. Developer capabilities | Read/search, git status/diff, patch/process tools; capability metadata; policy intersection; persisted approvals | Read-only policy blocks writes/processes regardless of prompt; path escape tests; non-interactive execution never silently approves | Pending |
 | 6. Resume/artifacts | Typed checkpoint schema; resume command; interruption handling; artifact files and metadata | Crash tests around model calls and tool side effects; no automatic replay of uncertain non-idempotent tool execution; workspace/version checks | Pending |
 | 7. MCP client | External server config/lifecycle, tool discovery adapters and namespacing | External fixture tool runs through the same registry/policy/event path; timeout/disconnect handling | Pending |
@@ -155,7 +155,34 @@ smoke tests remain explicit and credential-dependent.
 - Clippy completed with only the existing core embedding warning. Default
   embedding backends and live provider calls were not exercised.
 
-Next: slice 4, the local agent loop and `ctx agent run/history/inspect`, starting
-with built-in context tools, static resources, explicit tool allowlisting and
-bounded execution. Tool invocation lifecycle APIs will join the existing run
-store; developer tools and safe resume remain later slices.
+### Slice 4 decisions and verification (2026-09-26)
+
+- Added static-resource execution and `ctx agent run/history/inspect`, with JSON
+  output, event pagination, cooperative timeout, Ctrl-C cancellation and model
+  turn limits. Failures return a durable run record when persistence succeeds.
+- Runs bind to a canonical cwd-root identity and the configured database. Shared
+  databases retain separate run histories for different roots. Registered
+  multi-workspace CLI selection is deferred; existing MCP routing is unchanged.
+- Reused `ToolRegistry`, `Tool`, core search and `SqliteStore` through fixed
+  read-only adapters for keyword search/get. The original sources tool starts
+  Git, and semantic/hybrid search can use network/sidecar writes, so those paths
+  are excluded until capability-aware adapters exist.
+- Added transactional invocation lifecycle APIs. Terminal failure/cancellation
+  atomically fails unfinished tools; illegal transitions roll back their events.
+  Metadata events omit arguments/results; invocation rows retain local project
+  data with a 1 MiB serialized successful-result limit. Retention/artifact work
+  remains in the later checkpoint slice.
+- Added [SPEC-0017](../spec/0017-local-agent-execution.md), including a fake-provider
+  CLI example and the distinction between intentional runtime-history writes and
+  model-requested read-only retrieval.
+- `cargo test --workspace --no-default-features`: 243 passed, 3 ignored
+  performance probes. Includes a real indexed search/get flow across three model
+  turns, strict arguments, denied capabilities, execution limits, cancellation,
+  tool lifecycle cleanup, workspace isolation and CLI inspection.
+- Clippy completed with only the existing embedding warning. Formatting and
+  diff checks passed. Default embedding backends and live provider calls were
+  not exercised.
+
+Next: slice 5, developer tools, general capability metadata and approval policy.
+Keep extension capabilities deny-by-default and define workspace/path/process
+boundaries before permitting writes or process execution.

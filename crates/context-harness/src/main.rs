@@ -45,9 +45,12 @@
 //! ctx serve mcp --config ./config/ctx.toml
 //! ```
 
+#[allow(dead_code)]
+mod agent_model;
 mod agent_resource;
+#[allow(dead_code)]
+mod agent_runtime;
 mod agent_script;
-// Persistence is exposed by the library before runtime CLI wiring lands.
 #[allow(dead_code)]
 mod agent_store;
 mod agents;
@@ -407,6 +410,33 @@ enum ToolAction {
 /// Agent management subcommands.
 #[derive(Subcommand)]
 enum AgentAction {
+    /// Execute a standalone agent with local read-only context tools.
+    Run {
+        name: String,
+        input: String,
+        #[arg(long)]
+        json: bool,
+        /// Never prompt for approvals (privileged tools are currently denied in all modes).
+        #[arg(long)]
+        non_interactive: bool,
+    },
+    /// List this workspace's durable run history.
+    History {
+        #[arg(long, default_value_t = 20, value_parser = clap::value_parser!(u32).range(1..=1000))]
+        limit: u32,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Inspect a run and an ordered page of execution events.
+    Inspect {
+        run_id: String,
+        #[arg(long, default_value_t = 0, value_parser = clap::value_parser!(i64).range(0..))]
+        after_sequence: i64,
+        #[arg(long, default_value_t = 200, value_parser = clap::value_parser!(u32).range(1..=1000))]
+        limit: u32,
+        #[arg(long)]
+        json: bool,
+    },
     /// List standalone resources and existing TOML/Lua agents.
     List {
         #[arg(long)]
@@ -890,6 +920,33 @@ async fn main() -> anyhow::Result<()> {
         // Handled above (before config loading).
         Commands::Workspace { .. } => unreachable!(),
         Commands::Agent { action } => match action {
+            AgentAction::Run {
+                name,
+                input,
+                json,
+                non_interactive,
+            } => {
+                agent_runtime::cli::run(
+                    cfg,
+                    &agent_resource_dirs,
+                    &name,
+                    &input,
+                    json,
+                    non_interactive,
+                )
+                .await?;
+            }
+            AgentAction::History { limit, json } => {
+                agent_runtime::cli::history(cfg, limit, json).await?;
+            }
+            AgentAction::Inspect {
+                run_id,
+                after_sequence,
+                limit,
+                json,
+            } => {
+                agent_runtime::cli::inspect(cfg, &run_id, after_sequence, limit, json).await?;
+            }
             AgentAction::List { json } => {
                 agent_resource::list(&cfg, &agent_resource_dirs, json)?;
             }

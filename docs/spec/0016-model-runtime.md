@@ -10,7 +10,8 @@ The application library SHALL provide a model interface independent of the agent
 loop. This slice supports complete, non-streaming calls through a deterministic
 fake and an OpenAI Responses adapter. It does not add CLI execution commands,
 tool execution, automatic retries, streaming transport or checkpoint resume.
-Those remain later runtime work.
+CLI orchestration and restricted context-tool execution are now defined by
+[SPEC-0017](0017-local-agent-execution.md); streaming and resume remain later work.
 
 ## Neutral types and provider contract
 

@@ -100,6 +100,7 @@
 
 pub mod agent_model;
 pub mod agent_resource;
+pub mod agent_runtime;
 pub mod agent_script;
 pub mod agent_store;
 pub mod agents;

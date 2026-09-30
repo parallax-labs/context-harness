@@ -7,10 +7,9 @@
 ## Scope
 
 This spec defines standalone static agent resources and their discovery,
-validation, and CLI inspection. Model calls, execution loops, runtime permission
-enforcement, dynamic initial context, named policy files, delegation and resume
-are later implementation slices. These declarations SHALL NOT imply that
-`ctx agent run` or those capabilities are already implemented.
+validation, and CLI inspection. Model calls are defined by SPEC-0016 and local
+execution by [SPEC-0017](0017-local-agent-execution.md). Dynamic initial context,
+named policy files, delegation and resume remain later implementation slices.
 
 Existing inline TOML, Lua, and Rust prompt agents SHALL retain their existing
 interfaces. Standalone files SHALL NOT be automatically registered as MCP prompts
@@ -26,7 +25,7 @@ A resource SHALL be a UTF-8 TOML file containing `[agent]` and `[prompt]`:
 name = "researcher"
 description = "Answers questions using project context"
 model = "reasoning"
-tools = ["search", "get", "sources"]
+tools = ["search", "get"]
 
 [agent.execution]
 max_turns = 12
