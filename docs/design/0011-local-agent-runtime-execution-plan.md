@@ -1,9 +1,20 @@
 # DESIGN-0011: Local Agent Runtime Execution Plan
 
-**Status:** Complete
+**Status:** Reference
 **Date:** 2026-09-25  
 **Author:** Context Harness contributors  
 **Related:** [DESIGN-0010](0010-local-agent-runtime.md), [ADR-0024](../adr/0024-local-agent-runtime.md)
+
+## Scope clarification (2026-09-30)
+
+The nine slices below describe the implemented initial runtime, not completion of
+all declarative architecture in DESIGN-0010. Tool selection is declarative, but
+standalone tool bindings and runtime integration of configured Lua/Rust extensions
+remain incomplete; local validation still branches on tool names. This gap is now
+tracked by [PRD-0013](../prd/0013-declarative-tool-bindings.md),
+[DESIGN-0013](0013-declarative-tool-bindings.md) and proposed
+[ADR-0025](../adr/0025-declarative-tool-bindings.md). Wiki-manager work is deferred
+until that foundation is complete. The original DESIGN-0010 remains unchanged.
 
 ## Context
 
@@ -294,7 +305,9 @@ smoke tests remain explicit and credential-dependent.
 - Formatting and diff checks passed. Clippy completed with only the existing core
   embedding warning. No live provider or default embedding backend was exercised.
 
-All nine planned slices are complete. Optional queueing, streaming, remote MCP
+All nine initial slices are complete within their documented boundaries; full
+declarative tool composition and runtime extension integration remain follow-up
+engineering in DESIGN-0013. Optional queueing, streaming, remote MCP
 transports, concurrent delegation, automatic retention and recovery of execution
 trees/external sessions remain deferred. Live-provider and default-embedding
 validation are separate from the deterministic acceptance suite.

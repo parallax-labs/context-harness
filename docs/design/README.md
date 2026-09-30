@@ -31,8 +31,8 @@ See [DESIGN-0000](0000-design-policy.md) for the full policy.
 | [0008](0008-multi-workspace-mcp-router.md) | Multi-Workspace MCP Router | Draft |
 | [0009](0009-workspace-scoped-extensions.md) | Workspace-Scoped Extensions and Request Origin | Draft |
 | [0010](0010-local-agent-runtime.md) | Context Harness Local Agent Runtime | Proposed |
-| [0011](0011-local-agent-runtime-execution-plan.md) | Local Agent Runtime Execution Plan | Complete |
-| [0012](0012-local-wiki-curation.md) | Local Wiki Curation from Claude Code | Planning |
+| [0011](0011-local-agent-runtime-execution-plan.md) | Local Agent Runtime Execution Plan | Reference |
+| [0013](0013-declarative-tool-bindings.md) | Declarative Tool Bindings and Runtime Extensions | Planning |
 
 ## Creating a New Design Doc
 
