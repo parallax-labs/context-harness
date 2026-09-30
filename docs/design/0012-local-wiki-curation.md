@@ -3,7 +3,7 @@
 **Status:** Planning
 **Date:** 2026-09-30
 **Author:** Context Harness contributors
-**Related:** [runtime design](0010-local-agent-runtime.md), [runtime execution plan](0011-local-agent-runtime-execution-plan.md), [execution](../spec/0017-local-agent-execution.md), [policy](../spec/0018-developer-tools-and-approvals.md), [recovery](../spec/0019-checkpoints-recovery-and-artifacts.md), [prompt projection](../spec/0022-resource-prompt-projection.md), [PR #33](https://github.com/parallax-labs/context-harness/pull/33)
+**Related:** [PRD-0012](../prd/0012-local-wiki-curation.md), [runtime design](0010-local-agent-runtime.md), [runtime execution plan](0011-local-agent-runtime-execution-plan.md), [execution](../spec/0017-local-agent-execution.md), [policy](../spec/0018-developer-tools-and-approvals.md), [recovery](../spec/0019-checkpoints-recovery-and-artifacts.md), [prompt projection](../spec/0022-resource-prompt-projection.md), [PR #33](https://github.com/parallax-labs/context-harness/pull/33)
 
 ## Context
 
@@ -19,9 +19,30 @@ local inference provider, authorize unattended wiki writes, serialize curation,
 or refresh retrieval after filesystem updates. Completion of DESIGN-0011 means
 runtime infrastructure acceptance, not acceptance of this end-user workflow.
 
-This document plans the next work on the existing `codex/local-agent-runtime`
-branch/PR. It does not claim the proposed commands, configuration, or tools exist.
-The supplied DESIGN-0010 remains unchanged.
+This design supports [PRD-0012](../prd/0012-local-wiki-curation.md), which defines
+product requirements W1–W8. PR #33 adds documentation only for this use case; its
+existing runtime implementation remains available for user testing. Proposed
+commands, configuration and tools below do not exist yet. The supplied DESIGN-0010
+remains unchanged.
+
+### Document chain and delivery boundary
+
+1. **Product intent:** PRD-0012 (Draft) captures the workflow, budget objective,
+   requirements and success measures.
+2. **Design:** this document (Planning) explores the approach and alternatives.
+   Review its open questions before committing to a behavioral contract.
+3. **Decisions and spec:** record settled non-trivial choices in new ADRs, then
+   write the feature spec with exact behavior and testable acceptance criteria.
+   The spec is the next documentation stage; it is deliberately not created here.
+4. **Test and merge the foundation:** the user tests the runtime already in PR #33
+   and merges it. Wiki curation remains unimplemented in that PR.
+5. **Subsequent implementation:** deliver the slices below in follow-up work against
+   the agreed spec, followed by a verified setup/operation runbook and local pilot.
+
+Existing SPEC-0015 through SPEC-0022 describe the runtime foundation. They do not
+serve as the spec for executable wiki curation. Design review and foundation testing
+may proceed independently; implementation waits for both the agreed spec and the
+user's test/merge handoff.
 
 ## Proposal
 
@@ -175,9 +196,11 @@ No savings percentage is promised before a baseline and pilot exist.
 
 ## Implementation Plan
 
-Deliver in this order on the existing branch, updating authoritative specs as each
-slice lands. Each slice includes focused tests and a reviewable commit. Do not
-activate unattended hooks against the user's real wiki until the pilot gate passes.
+The following slices are a future implementation plan, not work to add to PR #33.
+After design review, create the authoritative spec before implementation; after the
+user tests and merges the foundation, deliver these slices in follow-up work. Each
+slice includes spec-linked acceptance tests and a reviewable commit. Do not activate
+unattended hooks against the user's real wiki until the pilot gate passes.
 
 | Slice | Work / likely modules | Acceptance gate | Status |
 |---|---|---|---|
@@ -212,6 +235,23 @@ alongside successful curation examples.
 9. Compare representative Claude tasks before/after, checking useful knowledge,
    paid usage, local latency and human repair effort. Set numerical acceptance
    thresholds from the baseline before claiming a budget win.
+
+### Product requirement traceability
+
+| PRD requirement | Design area | Planned slices |
+|---|---|---|
+| W1: completion-to-MCP delegation | End-to-end path; Claude Code hooks | 4, 6 |
+| W2: local inference, no paid fallback | Local model boundary | 1, 7 |
+| W3: enrolled content and authority | Host-owned wiki authority | 2, 4 |
+| W4: Markdown updates and provenance | Proposals and publication | 2, 3 |
+| W5: duplicates, conflicts and recovery | Jobs and publication journal | 3, 6 |
+| W6: fresh retrieval | Retrieval freshness | 5 |
+| W7: inspect/disable without disruption | MCP status; hook failure handling | 4, 6 |
+| W8: bounded work and measured savings | Model/job limits; budget pilot | 1, 3, 7 |
+
+The subsequent spec should retain W1–W8 references and assign precise behavioral
+requirements to each acceptance test. Resolve authentication, file ownership,
+retry semantics and numerical bounds before declaring that spec authoritative.
 
 ## Alternatives Considered
 
