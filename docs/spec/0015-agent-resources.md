@@ -8,13 +8,14 @@
 
 This spec defines standalone static agent resources and their discovery,
 validation, and CLI inspection. Model calls are defined by SPEC-0016 and local
-execution by [SPEC-0017](0017-local-agent-execution.md). Dynamic initial context,
-named policy files, delegation and resume remain later implementation slices.
+execution by [SPEC-0017](0017-local-agent-execution.md). Dynamic initial context
+and named policy files remain future work; delegation and resume are defined by
+SPEC-0021 and SPEC-0019.
 
 Existing inline TOML, Lua, and Rust prompt agents SHALL retain their existing
-interfaces. Standalone files SHALL NOT be automatically registered as MCP prompts
-in this slice. Library callers MAY adapt a resource with `prompt_agent()` using
-the existing `Agent` trait.
+interfaces. Single-workspace CLI serving projects standalone resources as static
+MCP prompts under [SPEC-0022](0022-resource-prompt-projection.md). Library callers
+MAY adapt a resource with `prompt_agent()` using the existing `Agent` trait.
 
 ## Resource format
 
@@ -139,9 +140,9 @@ resource directories SHALL NOT be imported. For example, an explicit
 The library path resolver SHALL accept an explicit root for future registered
 workspace runtime consumers; it SHALL NOT infer workspace roots from DB paths.
 
-Resource discovery SHALL occur only in agent commands or explicit library calls,
-so an invalid standalone file SHALL NOT break unrelated ingestion/retrieval/MCP
-commands.
+Resource discovery SHALL occur only in agent commands, single-workspace MCP
+serving, or explicit library calls. An invalid standalone file SHALL NOT break
+unrelated ingestion/retrieval or multi-workspace serving commands.
 
 ## Provenance and versioning
 

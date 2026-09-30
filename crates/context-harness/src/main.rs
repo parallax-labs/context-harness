@@ -732,7 +732,10 @@ async fn main() -> anyhow::Result<()> {
     }
     let resolved_config = config::load_config_for_cli(cli.config.clone())?;
     let config_path = resolved_config.path.clone();
-    let agent_resource_dirs = if matches!(&cli.command, Commands::Agent { .. }) {
+    let agent_resource_dirs = if matches!(
+        &cli.command,
+        Commands::Agent { .. } | Commands::Serve { .. }
+    ) {
         agent_resource::cli_resource_directories(&resolved_config)?
     } else {
         vec![]
@@ -868,7 +871,13 @@ async fn main() -> anyhow::Result<()> {
             // returns before single-config resolution; reaching here means
             // compatibility (single-workspace) mode.
             ServeService::Mcp { .. } => {
-                server::run_server(&cfg).await?;
+                server::run_server_with_resources(
+                    &cfg,
+                    std::sync::Arc::new(traits::ToolRegistry::new()),
+                    std::sync::Arc::new(agents::AgentRegistry::new()),
+                    &agent_resource_dirs,
+                )
+                .await?;
             }
         },
         Commands::Connector { action } => match action {

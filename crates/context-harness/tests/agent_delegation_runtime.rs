@@ -471,3 +471,93 @@ async fn exhausted_tree_budget_prevents_later_tools_in_same_turn() {
         1
     );
 }
+
+/// DESIGN-0010 first-target flow with deterministic models and real local tools.
+#[tokio::test]
+async fn implementer_edits_tests_and_delegates_review() {
+    struct DemoApproval;
+    #[async_trait]
+    impl ApprovalHandler for DemoApproval {
+        async fn approve(&self, request: &ApprovalRequest) -> bool {
+            matches!(request.tool.as_str(), "workspace.patch" | "process.exec")
+        }
+    }
+    let tmp = TempDir::new().unwrap();
+    let old = "def valid(limit):\n    return True\n";
+    let new = "def valid(limit):\n    return limit > 0\n";
+    std::fs::write(tmp.path().join("config.py"), old).unwrap();
+    let mut parent = resource(
+        "implementer",
+        Some("reviewer"),
+        &[
+            "workspace.read",
+            "workspace.patch",
+            "process.exec",
+            "agent.invoke",
+        ],
+        8,
+    );
+    parent.definition.agent.permissions.require_approval =
+        vec![Capability::WorkspaceWrite, Capability::ProcessExecute];
+    parent.version = parent.definition.version().unwrap();
+    let child = resource("reviewer", None, &["workspace.read"], 2);
+    let mut responses = vec![
+        call("workspace.read", json!({"path":"config.py"})),
+        call(
+            "workspace.patch",
+            json!({"path":"config.py","old_text":old,"new_text":new}),
+        ),
+        call(
+            "process.exec",
+            json!({"argv":["python3","-B","-c","from config import valid; assert valid(1); assert not valid(0); assert not valid(-1)"]}),
+        ),
+        invoke("reviewer"),
+        ModelResponse::text("Added positive-limit validation; tests and review passed."),
+    ];
+    for (i, response) in responses.iter_mut().enumerate() {
+        for tool in &mut response.tool_calls {
+            tool.id = format!("step-{i}");
+        }
+    }
+    let runtime = runtime(
+        &tmp,
+        vec![child],
+        vec![
+            ("implementer", fake(responses)),
+            (
+                "reviewer",
+                fake(vec![
+                    call("workspace.read", json!({"path":"config.py"})),
+                    ModelResponse::text("Positive limits accepted; nonpositive limits rejected."),
+                ]),
+            ),
+        ],
+    )
+    .await
+    .with_policy(RuntimePolicy::default(), Arc::new(DemoApproval));
+    let (_tx, rx) = watch::channel(false);
+    let run = runtime
+        .run(&parent, "Add validation to the configuration loader", rx)
+        .await
+        .unwrap();
+    assert_eq!(run.status, "completed", "{:?}", run.error);
+    assert_eq!(
+        std::fs::read_to_string(tmp.path().join("config.py")).unwrap(),
+        new
+    );
+    let calls = runtime.store().tool_invocations(&run.id).await.unwrap();
+    assert_eq!(calls.len(), 4);
+    assert!(calls.iter().all(|call| call.status == "completed"));
+    assert_eq!(calls[2].result.as_ref().unwrap()["exit_code"], 0);
+    let child_id = &runtime.store().children(&run.id).await.unwrap()[0].run_id;
+    let review_calls = runtime.store().tool_invocations(child_id).await.unwrap();
+    assert_eq!(review_calls[0].result.as_ref().unwrap()["text"], new);
+    let events = runtime.store().events(&run.id, 0, 100).await.unwrap();
+    assert_eq!(
+        events
+            .iter()
+            .filter(|e| e.event_type == "approval.granted")
+            .count(),
+        2
+    );
+}

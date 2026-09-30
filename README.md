@@ -461,6 +461,7 @@ See [`config/ctx.example.toml`](config/ctx.example.toml) for a complete example,
 | [Checkpoints and recovery](docs/spec/0019-checkpoints-recovery-and-artifacts.md) | Safe resume boundaries, run ownership, and large output artifacts |
 | [MCP client tools](docs/spec/0020-mcp-client-tools.md) | External stdio servers, namespaced tools, and startup/call authorization |
 | [Agent delegation](docs/spec/0021-agent-delegation.md) | Named child agents, inherited permissions, shared budgets, and lineage inspection |
+| [Resource MCP prompts](docs/spec/0022-resource-prompt-projection.md) | Stateless prompt projection of standalone agents for existing clients |
 | [Live demo](https://parallax-labs.github.io/context-harness/demo/) | Search a pre-built knowledge base in the browser |
 
 The site also documents the **search widget** (`ctx-search.js`) for adding ⌘K search to static sites — see the [docs](https://parallax-labs.github.io/context-harness/docs/) for an example.

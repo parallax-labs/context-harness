@@ -40,6 +40,7 @@ See [SPEC-0000](0000-spec-policy.md) for the full policy.
 | [0019](0019-checkpoints-recovery-and-artifacts.md) | Checkpoints, Recovery and Artifacts | Authoritative |
 | [0020](0020-mcp-client-tools.md) | MCP Client Tools | Authoritative |
 | [0021](0021-agent-delegation.md) | Controlled Agent Delegation | Authoritative |
+| [0022](0022-resource-prompt-projection.md) | Resource Prompt Projection | Authoritative |
 
 ## Creating a New Spec
 

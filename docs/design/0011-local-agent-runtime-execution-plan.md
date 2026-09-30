@@ -1,6 +1,6 @@
 # DESIGN-0011: Local Agent Runtime Execution Plan
 
-**Status:** Planning  
+**Status:** Complete
 **Date:** 2026-09-25  
 **Author:** Context Harness contributors  
 **Related:** [DESIGN-0010](0010-local-agent-runtime.md), [ADR-0024](../adr/0024-local-agent-runtime.md)
@@ -40,7 +40,7 @@ acceptance tests and update this checklist as each slice lands.
 | 6. Resume/artifacts | Typed checkpoint schema; resume command; interruption handling; artifact files and metadata | Crash tests around model calls and tool side effects; no automatic replay of uncertain non-idempotent tool execution; workspace/version checks | Complete |
 | 7. MCP client | External server config/lifecycle, tool discovery adapters and namespacing | External fixture tool runs through the same registry/policy/event path; timeout/disconnect handling | Complete |
 | 8. Delegation | Controlled agent.invoke; parent/root run IDs; depth/turn/time budgets; inherited permission ceilings | Child execution is attributable and bounded; child cannot increase parent privileges | Complete |
-| 9. MCP compatibility | Project resource-backed executable agents as stateless MCP prompts | Existing prompt clients and Lua/Rust resolution remain compatible; full regression and end-to-end first-target demo | Pending |
+| 9. MCP compatibility | Project resource-backed executable agents as stateless MCP prompts | Existing prompt clients and Lua/Rust resolution remain compatible; full regression and end-to-end first-target demo | Complete |
 
 Slices 2 and 3 depend on slice 1; slice 4 joins them. Basic declared-tool
 allowlisting and deny-by-default treatment of privileged/unknown capabilities
@@ -70,21 +70,24 @@ proves insufficient.
 - Reconstructing all state from events complicates resume. Retain both ordered
   events and snapshots as DESIGN-0010 specifies.
 
-## Open Questions
+## Decisions and deferred work
 
-Resolve these before their dependent implementation slices:
+The implementation resolves the original sequencing questions as follows:
 
 1. The first provider is OpenAI Responses, with non-streaming tool calls and
    structured output. [SPEC-0016](../spec/0016-model-runtime.md) defines the
    implemented boundary. Streaming remains a later interface/transport extension.
 2. Resource hashing, replacement rules and legacy compatibility are resolved by
-   [SPEC-0015](../spec/0015-agent-resources.md). Executable resource projection
-   into MCP remains slice 9.
-3. Define redaction, retention and artifact limits before recording production
-   model/tool payloads. The initial storage API accepts caller-provided JSON and
-   does not claim automatic redaction.
-4. Specify approval trust boundaries for Lua and external MCP tools before slices
-   4–5. Unknown tools must not be classified as read-only by default.
+   [SPEC-0015](../spec/0015-agent-resources.md). Stateless executable-resource projection
+   into MCP is defined by [SPEC-0022](../spec/0022-resource-prompt-projection.md).
+3. Model events retain metadata; tool rows and checkpoints retain local project
+   data. [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md) defines
+   size limits, filesystem ownership and privacy boundaries. Automatic redaction
+   and retention pruning remain future work.
+4. [SPEC-0018](../spec/0018-developer-tools-and-approvals.md) defines host policy
+   and invocation approvals; [SPEC-0020](../spec/0020-mcp-client-tools.md) applies
+   them before external startup and calls. Unknown tools remain denied, and Lua
+   tools are not automatically exposed to the runtime.
 5. Checkpoint schema, ownership and conservative recovery are defined by
    [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md). Uncertain tool
    activity requires manual reconciliation; it is never automatically replayed.
@@ -271,4 +274,27 @@ smoke tests remain explicit and credential-dependent.
 - Formatting and diff checks passed. Clippy completed with only the existing core
   embedding warning. No live providers or default embedding backends exercised.
 
-Next: slice 9, stateless MCP prompt projection for standalone resources and final compatibility validation.
+### Slice 9 decisions and verification (2026-09-30)
+
+- Single-workspace CLI serving discovers standalone resources with the same
+  provenance and isolation as agent commands, projecting static prompts through
+  the existing Agent registry. Model calls, permissions and runtime-only tools
+  are not activated by prompt resolution.
+- Resource collisions with legacy/registry/Rust agents fail startup. Existing
+  library entry points preserve opt-in discovery; multi-workspace serving retains
+  its built-in-only behavior. Added [SPEC-0022](../spec/0022-resource-prompt-projection.md).
+- Protocol tests cover MCP initialization/list/get; CLI tests cover explicit and
+  environment config isolation plus legacy Lua/inline compatibility. A deterministic
+  implementer demo patches a temporary config, runs real local tests with approval,
+  delegates review, and verifies durable results and lineage.
+
+- `cargo test --workspace --no-default-features`: 322 passed, 3 ignored
+  performance probes. Final focused projection tests also passed after strengthening
+  the collision rollback assertion.
+- Formatting and diff checks passed. Clippy completed with only the existing core
+  embedding warning. No live provider or default embedding backend was exercised.
+
+All nine planned slices are complete. Optional queueing, streaming, remote MCP
+transports, concurrent delegation, automatic retention and recovery of execution
+trees/external sessions remain deferred. Live-provider and default-embedding
+validation are separate from the deterministic acceptance suite.
