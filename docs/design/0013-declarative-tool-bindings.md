@@ -1,6 +1,6 @@
 # DESIGN-0013: Declarative Tool Bindings and Runtime Extensions
 
-**Status:** Planning
+**Status:** Approved for implementation
 **Date:** 2026-09-30
 **Author:** Context Harness contributors
 **Related:** [PRD-0013](../prd/0013-declarative-tool-bindings.md), [ADR-0025](../adr/0025-declarative-tool-bindings.md), [DESIGN-0010](0010-local-agent-runtime.md), [DESIGN-0011](0011-local-agent-runtime-execution-plan.md)
@@ -62,9 +62,9 @@ required arguments, change incompatible types, or silently override implementati
 validation. Initially support fixed parameters and explicit scoping, not arbitrary
 expression evaluation, shell interpolation or a general workflow language.
 
-Exact TOML keys, directory layout and descriptor API are open design decisions.
-Examples in the later spec should use only the chosen schema; no runnable-looking
-placeholder configuration is published here.
+The exact TOML schema, directory layout, descriptor/factory boundary, authority
+rules, backend trust modes, CLI surface, and identity/recovery behavior are resolved
+by [SPEC-0023](../spec/0023-declarative-tool-bindings.md).
 
 ### Example usage pattern: a release reviewer
 
@@ -255,7 +255,7 @@ agreed spec; do not begin the slices below in this documentation update.
 
 | Slice | Deliverable | Requirement / acceptance gate | Status |
 |---|---|---|---|
-| 1. Contracts | Descriptor, factory, bound-tool and authority contracts; chosen resource schema | D1/D3/D4: distinguish implemented capabilities from declarations; reject unenforceable scopes | Pending |
+| 1. Contracts | Descriptor, factory, bound-tool and authority contracts; chosen resource schema | D1/D3/D4: distinguish implemented capabilities from declarations; reject unenforceable scopes | In progress |
 | 2. Resolution | Resource parser, layered discovery, aliases, provenance and identities | D1/D2/D6: deterministic results, explicit isolation, collision/override tests, side-effect-free inspection | Pending |
 | 3. Runtime integration | Host-supplied catalog and generic adapter validation/dispatch; compatibility bindings | D3/D5/D8: second fixture tool requires no name branch; built-ins retain argument/policy behavior | Pending |
 | 4. Extension backends | Rust API, Lua authority adapter and MCP alias validation | D4/D5/D8: approved extensions use common lifecycle; unknown authority denied; remote schema drift detected | Pending |
@@ -298,9 +298,9 @@ fixture or a fake provider response alone.
 - Build a general workflow/configuration language: unnecessary for fixed tool binding;
   defer arbitrary transformations and expressions.
 
-## Open Questions
+## Resolved Questions
 
-Resolve before creating the authoritative spec:
+The six decision groups below are resolved normatively by SPEC-0023:
 
 1. Exact resource schema/version, discovery directories, reserved namespaces and
    compatibility/override rules for existing script configuration and MCP names.
@@ -322,8 +322,8 @@ Resolve before creating the authoritative spec:
   activate hooks, download models or grant unattended writes.
 - Current source anchors and missing functionality are in the audit above; completed
   initial slices remain recorded in DESIGN-0011 with a scope qualification.
-- Next action: review/resolve the six open decision groups, then write the spec. Spec
-  requirements should reference D1–D8 and the acceptance matrix before coding begins.
+- Next action: implement slice 1 against SPEC-0023, then proceed through the remaining
+  slices only after each focused acceptance gate passes.
 - After the foundation passes, revisit the wiki manager as the first real application.
   Its later design will still need local inference, executable MCP exposure, hook
   delivery, publication/reindexing and budget measurement; this milestone does not
