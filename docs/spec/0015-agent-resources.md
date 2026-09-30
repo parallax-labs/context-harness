@@ -83,7 +83,8 @@ alias declarations for valid names and fields.
 ## Permission declarations
 
 The recognized capabilities SHALL be `read_only`, `workspace_write`,
-`process_execute`, `network`, and `external_side_effect`.
+`process_execute`, `network`, `external_side_effect`, and `agent_delegate`.
+Named delegation settings are defined by [SPEC-0021](0021-agent-delegation.md).
 
 Omitting permissions SHALL mean an allowed capability set of `["read_only"]` and
 no approval capabilities. The only named `mode` currently supported SHALL be

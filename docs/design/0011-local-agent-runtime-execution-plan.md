@@ -39,7 +39,7 @@ acceptance tests and update this checklist as each slice lands.
 | 5. Developer capabilities | Read/search, git status/diff, patch/process tools; capability metadata; policy intersection; persisted approvals | Read-only policy blocks writes/processes regardless of prompt; path escape tests; non-interactive execution never silently approves | Complete |
 | 6. Resume/artifacts | Typed checkpoint schema; resume command; interruption handling; artifact files and metadata | Crash tests around model calls and tool side effects; no automatic replay of uncertain non-idempotent tool execution; workspace/version checks | Complete |
 | 7. MCP client | External server config/lifecycle, tool discovery adapters and namespacing | External fixture tool runs through the same registry/policy/event path; timeout/disconnect handling | Complete |
-| 8. Delegation | Controlled agent.invoke; parent/root run IDs; depth/turn/time budgets; inherited permission ceilings | Child execution is attributable and bounded; child cannot increase parent privileges | Pending |
+| 8. Delegation | Controlled agent.invoke; parent/root run IDs; depth/turn/time budgets; inherited permission ceilings | Child execution is attributable and bounded; child cannot increase parent privileges | Complete |
 | 9. MCP compatibility | Project resource-backed executable agents as stateless MCP prompts | Existing prompt clients and Lua/Rust resolution remain compatible; full regression and end-to-end first-target demo | Pending |
 
 Slices 2 and 3 depend on slice 1; slice 4 joins them. Basic declared-tool
@@ -250,4 +250,25 @@ smoke tests remain explicit and credential-dependent.
   embedding warning. Fixtures use local Python stdio; no live server, provider,
   network call or default embedding backend was exercised.
 
-Next: slice 8, controlled delegation with inherited permission and execution limits.
+### Slice 8 decisions and verification (2026-09-30)
+
+- Added explicit named `agent.invoke` delegation through the existing tool
+  lifecycle, strict resource allowlists and the `agent_delegate` capability.
+- Each child gets its own durable identity and lineage. Permissions can only
+  narrow; inherited approvals remain required. Root turn/time budgets cover the
+  whole tree, with per-child limits, depth four and cycle rejection.
+- Parent terminal cleanup atomically closes running descendants, pending tools
+  and approvals. Inspection exposes parent/root/child identities and remains
+  read-only for older databases without lineage metadata.
+- Added [SPEC-0021](../spec/0021-agent-delegation.md). Tree/session recovery is
+  deliberately unsupported; independent child resume cannot reset authority or
+  shared budgets. Delegation is sequential, with no workflow engine.
+
+- `cargo test --workspace --no-default-features`: 317 passed, 3 ignored
+  performance probes. Includes resource/store/runtime delegation tests, inherited
+  approval and privilege checks, shared deadline/turn enforcement, and read-only
+  legacy lineage inspection.
+- Formatting and diff checks passed. Clippy completed with only the existing core
+  embedding warning. No live providers or default embedding backends exercised.
+
+Next: slice 9, stateless MCP prompt projection for standalone resources and final compatibility validation.

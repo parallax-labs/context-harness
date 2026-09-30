@@ -12,7 +12,7 @@ pub struct RuntimePolicy {
 impl Default for RuntimePolicy {
     fn default() -> Self {
         Self {
-            allow: vec![Capability::ReadOnly],
+            allow: vec![Capability::ReadOnly, Capability::AgentDelegate],
             require_approval: vec![
                 Capability::WorkspaceWrite,
                 Capability::ProcessExecute,

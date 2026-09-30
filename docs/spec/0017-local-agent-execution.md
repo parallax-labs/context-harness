@@ -13,8 +13,8 @@ MCP server behavior SHALL remain available without acquiring an execution loop.
 
 Developer tools, capability metadata and interactive approvals are defined by
 [SPEC-0018](0018-developer-tools-and-approvals.md). External stdio MCP tools are
-defined by [SPEC-0020](0020-mcp-client-tools.md). Delegation and streaming remain
-later slices. Recovery is defined by
+defined by [SPEC-0020](0020-mcp-client-tools.md). Controlled delegation is defined by [SPEC-0021](0021-agent-delegation.md). Streaming
+remains a later extension. Recovery is defined by
 [SPEC-0019](0019-checkpoints-recovery-and-artifacts.md).
 
 ## Execution
@@ -152,7 +152,7 @@ to 200 events, ordered by sequence, with an exclusive `after-sequence` cursor.
 Both limits SHALL accept 1–1000; the event cursor SHALL be nonnegative.
 
 Inspection JSON SHALL contain `run`, `events`, `tool_invocations` (status metadata
-only), `artifacts` metadata and `next_after_sequence`. A full event page SHALL return its final sequence
+only), `artifacts` metadata, `lineage`, direct `children`, and `next_after_sequence`. A full event page SHALL return its final sequence
 as a cursor; the next page can be empty. The history output SHALL be an array of run
 records. Tool arguments/results remain in SQLite and are omitted from CLI inspect
 output to avoid embedding large document payloads in inspection output.

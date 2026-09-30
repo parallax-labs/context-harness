@@ -20,7 +20,7 @@ that invocation requires approval. A denied capability cannot be approved away.
 The model cannot select or change host policy. Authorization and strict argument
 validation SHALL happen before tool start; undeclared calls SHALL never dispatch.
 
-The default host policy allows `read_only` and requires approval for
+The default host policy allows `read_only` and `agent_delegate` and requires approval for
 `workspace_write`, `process_execute` and `external_side_effect`. It denies other
 tool capabilities.
 Resource defaults remain read-only. A resource must explicitly declare privileged

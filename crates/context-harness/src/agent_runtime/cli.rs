@@ -12,18 +12,15 @@ pub async fn run(
     json_output: bool,
     non_interactive: bool,
 ) -> Result<()> {
-    let mut resources = load_resources(directories, &config)?;
+    let resources = load_resources(directories, &config)?;
     let resource = resources
-        .remove(name)
+        .get(name)
+        .cloned()
         .context("standalone agent not found; legacy agents remain prompt-only")?;
-    let alias = &resource.definition.agent.model;
-    let definition = config
-        .models
-        .get(alias)
-        .context("model alias not found")?
-        .clone();
-    let models = ModelRegistry::from_config(&BTreeMap::from([(alias.clone(), definition)]))?;
-    let mut runtime = AgentRuntime::new(config, &std::env::current_dir()?, models).await?;
+    let models = catalog_models(&config, &resources, name)?;
+    let mut runtime = AgentRuntime::new(config, &std::env::current_dir()?, models)
+        .await?
+        .with_resources(resources);
     if !non_interactive {
         runtime = runtime.with_policy(
             RuntimePolicy::default(),
@@ -38,6 +35,39 @@ pub async fn run(
     let result = runtime.run(&resource, input, receiver).await;
     signal.abort();
     print_run(result?, json_output)
+}
+
+fn catalog_models(
+    config: &Config,
+    resources: &BTreeMap<String, LoadedAgentResource>,
+    root: &str,
+) -> Result<ModelRegistry> {
+    let mut names = vec![root.to_owned()];
+    let mut visited = std::collections::HashSet::new();
+    let mut definitions = BTreeMap::new();
+    while let Some(name) = names.pop() {
+        if !visited.insert(name.clone()) {
+            continue;
+        }
+        ensure!(
+            visited.len() <= 256,
+            "delegation catalog exceeds 256 reachable agents"
+        );
+        let resource = resources
+            .get(&name)
+            .context("delegation target not found")?;
+        let agent = &resource.definition.agent;
+        definitions.insert(
+            agent.model.clone(),
+            config
+                .models
+                .get(&agent.model)
+                .context("model alias not found")?
+                .clone(),
+        );
+        names.extend(agent.delegation.allow.iter().cloned());
+    }
+    ModelRegistry::from_config(&definitions)
 }
 
 fn print_run(run: AgentRun, json_output: bool) -> Result<()> {
@@ -155,6 +185,8 @@ pub async fn inspect(
         .context("run not found in this workspace")?;
     let events = store.events(id, after_sequence, limit).await?;
     let artifacts = store.artifacts(id).await?;
+    let lineage = store.lineage(id).await?;
+    let children = store.children(id).await?;
     let invocations: Vec<Value> = store
         .tool_invocations(id)
         .await?
@@ -175,7 +207,7 @@ pub async fn inspect(
         println!(
             "{}",
             serde_json::to_string_pretty(
-                &json!({"run":run, "events":events, "tool_invocations":invocations, "next_after_sequence":cursor, "artifacts":artifacts})
+                &json!({"run":run, "events":events, "tool_invocations":invocations, "next_after_sequence":cursor, "artifacts":artifacts, "lineage":lineage, "children":children})
             )?
         );
     } else {
@@ -183,6 +215,13 @@ pub async fn inspect(
             "Run: {}\nAgent: {}\nModel: {}\nWorkspace: {}\nStatus: {}",
             run.id, run.agent_name, run.model, run.workspace_id, run.status
         );
+        println!(
+            "Root: {}\nParent: {:?}\nDepth: {}",
+            lineage.root_run_id, lineage.parent_run_id, lineage.depth
+        );
+        for child in children {
+            println!("Child: {}", child.run_id);
+        }
         for event in events {
             println!(
                 "{:>5}  {:>8}ms  {}  {}",

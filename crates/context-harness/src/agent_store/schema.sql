@@ -49,3 +49,16 @@ CREATE TABLE IF NOT EXISTS agent_checkpoints (
     PRIMARY KEY (run_id, sequence),
     FOREIGN KEY (run_id, sequence) REFERENCES agent_events(run_id, sequence)
 );
+
+CREATE TABLE IF NOT EXISTS agent_run_lineage (
+    run_id TEXT PRIMARY KEY REFERENCES agent_runs(id),
+    parent_run_id TEXT REFERENCES agent_runs(id),
+    root_run_id TEXT NOT NULL REFERENCES agent_runs(id),
+    depth INTEGER NOT NULL CHECK (depth BETWEEN 0 AND 4),
+    parent_call_id TEXT,
+    UNIQUE (parent_run_id, parent_call_id),
+    FOREIGN KEY (parent_run_id, parent_call_id) REFERENCES tool_invocations(run_id, call_id),
+    CHECK ((depth = 0 AND parent_run_id IS NULL AND parent_call_id IS NULL AND root_run_id = run_id)
+        OR (depth > 0 AND parent_run_id IS NOT NULL AND parent_call_id IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS idx_agent_run_lineage_root ON agent_run_lineage(root_run_id);

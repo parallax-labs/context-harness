@@ -68,6 +68,46 @@ pub struct AgentSettings {
     pub execution: ExecutionLimits,
     #[serde(default)]
     pub permissions: Permissions,
+    #[serde(default, skip_serializing_if = "DelegationSettings::is_empty")]
+    pub delegation: DelegationSettings,
+}
+
+/// Explicit agent targets that the runtime may resolve for `agent.invoke`.
+/// Empty settings are omitted from version snapshots for backwards compatibility.
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct DelegationSettings {
+    pub allow: Vec<String>,
+}
+
+impl DelegationSettings {
+    fn is_empty(&self) -> bool {
+        self.allow.is_empty()
+    }
+
+    fn validate(&self, agent_name: &str, tools: &[String]) -> Result<()> {
+        ensure!(
+            self.allow.len() <= 32,
+            "delegation allows at most 32 agents"
+        );
+        ensure!(
+            self.allow.iter().all(|name| identifier(name)),
+            "invalid delegation agent name"
+        );
+        ensure!(
+            self.allow.iter().collect::<HashSet<_>>().len() == self.allow.len(),
+            "duplicate delegation agent name"
+        );
+        ensure!(
+            !self.allow.iter().any(|name| name == agent_name),
+            "an agent cannot delegate to itself"
+        );
+        ensure!(
+            tools.iter().any(|tool| tool == "agent.invoke") == !self.is_empty(),
+            "agent.invoke and a nonempty delegation.allow must be declared together"
+        );
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -96,6 +136,7 @@ impl Default for ExecutionLimits {
 #[serde(rename_all = "snake_case")]
 pub enum Capability {
     ReadOnly,
+    AgentDelegate,
     WorkspaceWrite,
     ProcessExecute,
     Network,
@@ -181,6 +222,10 @@ impl AgentResource {
             "duplicate tool name"
         );
         resource.agent.permissions.validate()?;
+        resource
+            .agent
+            .delegation
+            .validate(&resource.agent.name, tools)?;
         Ok(resource)
     }
 

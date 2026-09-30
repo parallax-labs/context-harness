@@ -30,6 +30,16 @@ pub struct AgentRun {
     pub last_sequence: i64,
 }
 
+/// Immutable ancestry of a run. Legacy runs without a row are treated as roots.
+#[derive(Debug, Serialize, FromRow)]
+pub struct RunLineage {
+    pub run_id: String,
+    pub parent_run_id: Option<String>,
+    pub root_run_id: String,
+    pub depth: i64,
+    pub parent_call_id: Option<String>,
+}
+
 /// One immutable event; sequence numbers are local to a run and start at one.
 #[derive(Debug, Serialize, FromRow)]
 pub struct AgentEvent {
@@ -126,6 +136,11 @@ impl AgentRunStore {
         sqlx::query("INSERT INTO agent_runs (id, workspace_id, agent_name, agent_version, model, status, created_at, updated_at, input) VALUES (?, ?, ?, ?, ?, 'running', ?, ?, ?)")
             .bind(&id).bind(&self.workspace_id).bind(agent_name).bind(agent_version).bind(model).bind(now).bind(now).bind(input)
             .execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO agent_run_lineage (run_id, root_run_id, depth) VALUES (?, ?, 0)")
+            .bind(&id)
+            .bind(&id)
+            .execute(&mut *tx)
+            .await?;
         self.append_in(
             &mut tx,
             &id,
@@ -135,6 +150,92 @@ impl AgentRunStore {
         .await?;
         tx.commit().await?;
         self.get_run(&id).await?.context("created run missing")
+    }
+
+    pub async fn lineage(&self, id: &str) -> Result<RunLineage> {
+        if !self.has_lineage_table().await? {
+            self.get_run(id)
+                .await?
+                .context("run not found in workspace")?;
+            return Ok(RunLineage {
+                run_id: id.to_owned(),
+                parent_run_id: None,
+                root_run_id: id.to_owned(),
+                depth: 0,
+                parent_call_id: None,
+            });
+        }
+        sqlx::query_as("SELECT r.id AS run_id, l.parent_run_id, COALESCE(l.root_run_id, r.id) AS root_run_id, COALESCE(l.depth, 0) AS depth, l.parent_call_id FROM agent_runs r LEFT JOIN agent_run_lineage l ON l.run_id = r.id WHERE r.id = ? AND r.workspace_id = ?")
+            .bind(id).bind(&self.workspace_id).fetch_optional(&self.pool).await?.context("run not found in workspace")
+    }
+
+    pub async fn children(&self, id: &str) -> Result<Vec<RunLineage>> {
+        self.get_run(id)
+            .await?
+            .context("run not found in workspace")?;
+        if !self.has_lineage_table().await? {
+            return Ok(Vec::new());
+        }
+        Ok(sqlx::query_as("SELECT l.* FROM agent_run_lineage l JOIN agent_runs r ON r.id = l.run_id WHERE l.parent_run_id = ? AND r.workspace_id = ? ORDER BY r.created_at, r.id")
+            .bind(id).bind(&self.workspace_id).fetch_all(&self.pool).await?)
+    }
+
+    async fn has_lineage_table(&self) -> Result<bool> {
+        Ok(sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'agent_run_lineage')")
+            .fetch_one(&self.pool).await?)
+    }
+
+    /// Bind exactly one child to a started delegation invocation atomically.
+    pub async fn create_child_run(
+        &self,
+        parent_id: &str,
+        call_id: &str,
+        agent_name: &str,
+        agent_version: &str,
+        model: &str,
+        input: &str,
+    ) -> Result<AgentRun> {
+        ensure!(
+            !agent_name.trim().is_empty()
+                && !agent_version.trim().is_empty()
+                && !model.trim().is_empty(),
+            "agent identity is required"
+        );
+        let mut tx = self.pool.begin().await?;
+        let found: Option<String> = sqlx::query_scalar("UPDATE agent_runs SET updated_at = updated_at WHERE id = ? AND workspace_id = ? AND status = 'running' RETURNING id")
+            .bind(parent_id).bind(&self.workspace_id).fetch_optional(&mut *tx).await?;
+        ensure!(
+            found.is_some(),
+            "parent not found in workspace or already terminal"
+        );
+        let started: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tool_invocations WHERE run_id = ? AND call_id = ? AND tool_name = 'agent.invoke' AND status = 'started')")
+            .bind(parent_id).bind(call_id).fetch_one(&mut *tx).await?;
+        ensure!(started, "delegation invocation is not started");
+        let lineage: Option<RunLineage> =
+            sqlx::query_as("SELECT * FROM agent_run_lineage WHERE run_id = ?")
+                .bind(parent_id)
+                .fetch_optional(&mut *tx)
+                .await?;
+        let (root, depth) = lineage
+            .map(|l| (l.root_run_id, l.depth + 1))
+            .unwrap_or((parent_id.to_owned(), 1));
+        ensure!(depth <= 4, "maximum delegation depth exceeded");
+        let id = Uuid::new_v4().to_string();
+        let now = Utc::now().timestamp_millis();
+        sqlx::query("INSERT INTO agent_runs (id, workspace_id, agent_name, agent_version, model, status, created_at, updated_at, input) VALUES (?, ?, ?, ?, ?, 'running', ?, ?, ?)")
+            .bind(&id).bind(&self.workspace_id).bind(agent_name).bind(agent_version).bind(model).bind(now).bind(now).bind(input).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO agent_run_lineage (run_id, parent_run_id, root_run_id, depth, parent_call_id) VALUES (?, ?, ?, ?, ?)")
+            .bind(&id).bind(parent_id).bind(&root).bind(depth).bind(call_id).execute(&mut *tx).await?;
+        self.append_in(
+            &mut tx,
+            parent_id,
+            "delegation.started",
+            &json!({"call_id": call_id, "child_run_id": id}),
+        )
+        .await?;
+        self.append_in(&mut tx, &id, "run.created", &json!({"agent": agent_name, "model": model, "workspace_id": self.workspace_id, "parent_run_id": parent_id, "root_run_id": root, "depth": depth})).await?;
+        tx.commit().await?;
+        self.get_run(&id).await?.context("created child missing")
     }
 
     pub async fn get_run(&self, id: &str) -> Result<Option<AgentRun>> {
@@ -167,7 +268,8 @@ impl AgentRunStore {
                 && !event_type.starts_with("checkpoint.")
                 && !event_type.starts_with("tool.")
                 && !event_type.starts_with("approval.")
-                && !event_type.starts_with("artifact."),
+                && !event_type.starts_with("artifact.")
+                && !event_type.starts_with("delegation."),
             "reserved event type"
         );
         let mut tx = self.pool.begin().await?;
@@ -236,6 +338,12 @@ impl AgentRunStore {
             .bind(id).bind(&self.workspace_id).bind(expected_sequence).fetch_optional(&mut *tx).await?;
         let previous = previous
             .context("run not found in workspace, completed, or changed since validation")?;
+        let delegated: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM agent_run_lineage WHERE (run_id = ? AND parent_run_id IS NOT NULL) OR parent_run_id = ?)")
+            .bind(id).bind(id).fetch_one(&mut *tx).await?;
+        ensure!(
+            !delegated,
+            "cannot resume delegated child or parent with descendants"
+        );
         let unsafe_tools: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tool_invocations WHERE run_id = ? AND status != 'completed')")
             .bind(id).fetch_one(&mut *tx).await?;
         ensure!(
@@ -343,35 +451,68 @@ impl AgentRunStore {
             found.is_some(),
             "run not found in workspace or already terminal"
         );
+        let descendants: Vec<String> = sqlx::query_scalar("WITH RECURSIVE descendants(id) AS (SELECT run_id FROM agent_run_lineage WHERE parent_run_id = ? UNION ALL SELECT l.run_id FROM agent_run_lineage l JOIN descendants d ON l.parent_run_id = d.id) SELECT r.id FROM descendants d JOIN agent_runs r ON r.id = d.id WHERE r.workspace_id = ? AND r.status = 'running'")
+            .bind(id).bind(&self.workspace_id).fetch_all(&mut *tx).await?;
+        ensure!(
+            status != "completed" || descendants.is_empty(),
+            "cannot complete run with active descendants"
+        );
+        for child in descendants {
+            self.finish_in(
+                &mut tx,
+                &child,
+                status,
+                None,
+                if status == "failed" {
+                    Some("ancestor run interrupted")
+                } else {
+                    None
+                },
+            )
+            .await?;
+        }
+        self.finish_in(&mut tx, id, status, output.as_deref(), error.as_deref())
+            .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    async fn finish_in(
+        &self,
+        tx: &mut Transaction<'_, Sqlite>,
+        id: &str,
+        status: &str,
+        output: Option<&str>,
+        error: Option<&str>,
+    ) -> Result<()> {
         let unfinished: Vec<String> = sqlx::query_scalar("SELECT call_id FROM tool_invocations WHERE run_id = ? AND status IN ('requested', 'started') ORDER BY requested_sequence")
-            .bind(id).fetch_all(&mut *tx).await?;
+            .bind(id).fetch_all(&mut **tx).await?;
         ensure!(
             status != "completed" || unfinished.is_empty(),
             "cannot complete run with unfinished tools"
         );
         for call_id in unfinished {
-            self.deny_pending_approval(&mut tx, id, &call_id, "run interrupted")
+            self.deny_pending_approval(tx, id, &call_id, "run interrupted")
                 .await?;
             self.append_in(
-                &mut tx,
+                tx,
                 id,
                 "tool.failed",
                 &json!({"call_id": call_id, "error": "run interrupted"}),
             )
             .await?;
             sqlx::query("UPDATE tool_invocations SET status = 'failed', error = 'run interrupted', completed_at = ? WHERE run_id = ? AND call_id = ?")
-                .bind(Utc::now().timestamp_millis()).bind(id).bind(call_id).execute(&mut *tx).await?;
+                .bind(Utc::now().timestamp_millis()).bind(id).bind(call_id).execute(&mut **tx).await?;
         }
         self.append_in(
-            &mut tx,
+            tx,
             id,
             &format!("run.{status}"),
             &json!({"output": output, "error": error}),
         )
         .await?;
         sqlx::query("UPDATE agent_runs SET status = ?, output = ?, error = ?, completed_at = updated_at WHERE id = ? AND workspace_id = ?")
-            .bind(status).bind(output).bind(error).bind(id).bind(&self.workspace_id).execute(&mut *tx).await?;
-        tx.commit().await?;
+            .bind(status).bind(output).bind(error).bind(id).bind(&self.workspace_id).execute(&mut **tx).await?;
         Ok(())
     }
 

@@ -39,13 +39,20 @@ impl AgentRuntime {
         request: &ModelRequest,
         turn: u32,
     ) -> Result<()> {
-        // External process sessions are not reconstructible from a conversation.
+        // External sessions and delegated budgets cannot be recovered independently.
+        if self
+            .execution
+            .as_ref()
+            .is_some_and(|context| context.ancestry.len() > 1)
+        {
+            return Ok(());
+        }
         if resource
             .definition
             .agent
             .tools
             .iter()
-            .any(|name| name.starts_with("mcp."))
+            .any(|name| name.starts_with("mcp.") || name == "agent.invoke")
         {
             return Ok(());
         }
@@ -88,8 +95,12 @@ impl AgentRuntime {
                 .agent
                 .tools
                 .iter()
-                .any(|name| name.starts_with("mcp.")),
-            "MCP-backed runs cannot resume; external session recovery is unsupported"
+                .any(|name| name.starts_with("mcp.") || name == "agent.invoke"),
+            "MCP-backed or delegating runs cannot resume; tree/session recovery is unsupported"
+        );
+        ensure!(
+            self.store.lineage(id).await?.parent_run_id.is_none(),
+            "delegated child runs cannot resume independently"
         );
         let files = files::acquire(&self.root, id)?;
         let run = self.store.get_run(id).await?.context("run disappeared")?;

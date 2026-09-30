@@ -2,6 +2,7 @@
 //! intentionally writable; model-requested retrieval uses read-only connections.
 mod checkpoint;
 pub mod cli;
+mod delegation;
 mod developer;
 mod files;
 mod mcp;
@@ -42,14 +43,17 @@ pub fn workspace_id(root: &Path) -> Result<String> {
     ))
 }
 
+#[derive(Clone)]
 pub struct AgentRuntime {
     config: Arc<Config>,
     root: PathBuf,
     store: AgentRunStore,
-    tools: ToolRegistry,
-    models: ModelRegistry,
+    tools: Arc<ToolRegistry>,
+    models: Arc<ModelRegistry>,
     policy: RuntimePolicy,
     approvals: Arc<dyn ApprovalHandler>,
+    resources: Arc<std::collections::BTreeMap<String, LoadedAgentResource>>,
+    execution: Option<delegation::ExecutionContext>,
 }
 impl AgentRuntime {
     /// Initialize runtime history and bind all context reads to this config/DB.
@@ -63,12 +67,15 @@ impl AgentRuntime {
         let store = app.agent_runs(&workspace_id(&root)?)?;
         let mut tools = tools::registry(&config).await?;
         developer::register(&mut tools, &root)?;
+        tools.register(Box::new(delegation::InvokeTool));
         Ok(Self {
             config: Arc::new(config),
             root,
             store,
-            tools,
-            models,
+            tools: Arc::new(tools),
+            models: Arc::new(models),
+            resources: Arc::new(Default::default()),
+            execution: None,
             policy: RuntimePolicy::default(),
             approvals: Arc::new(DenyApprovals),
         })
@@ -124,7 +131,17 @@ impl AgentRuntime {
                     .context("run disappeared");
             }
         };
-        self.drive(&run, resource, None, 0, cancel, &files).await
+        let mut runtime = self.clone();
+        runtime.execution = Some(delegation::ExecutionContext {
+            remaining: Arc::new(std::sync::atomic::AtomicU32::new(agent.execution.max_turns)),
+            deadline: run.created_at.saturating_add(
+                i64::try_from(agent.execution.timeout_seconds)
+                    .unwrap_or(i64::MAX)
+                    .saturating_mul(1000),
+            ),
+            ancestry: vec![agent.name.clone()],
+        });
+        runtime.drive(&run, resource, None, 0, cancel, &files).await
     }
 
     async fn drive(
@@ -178,6 +195,10 @@ impl AgentRuntime {
             .created_at
             .checked_add(budget)
             .context("timeout is too large")?;
+        let deadline = self
+            .execution
+            .as_ref()
+            .map_or(deadline, |context| deadline.min(context.deadline));
         let remaining = deadline.saturating_sub(chrono::Utc::now().timestamp_millis());
         ensure!(remaining > 0, "original run deadline has expired");
         Ok(Duration::from_millis(remaining as u64))
@@ -195,6 +216,17 @@ impl AgentRuntime {
         let agent = &resource.definition.agent;
         let mut declarations = Vec::new();
         for name in &agent.tools {
+            if name == "agent.invoke" {
+                ensure!(
+                    !agent.delegation.allow.is_empty()
+                        && agent
+                            .delegation
+                            .allow
+                            .iter()
+                            .all(|name| self.resources.contains_key(name)),
+                    "delegation targets unavailable"
+                );
+            }
             let tool = self
                 .tools
                 .find(name)
@@ -207,10 +239,14 @@ impl AgentRuntime {
                 self.policy.authorize(&agent.permissions, &capabilities) != Authorization::Denied,
                 "tool capability is not permitted by agent and host policy"
             );
+            let mut parameters = tool.parameters_schema();
+            if name == "agent.invoke" {
+                parameters["properties"]["agent"]["enum"] = json!(agent.delegation.allow);
+            }
             declarations.push(ModelTool {
                 name: name.clone(),
                 description: tool.description().into(),
-                parameters: tool.parameters_schema(),
+                parameters,
             });
         }
         Ok(declarations)
@@ -259,6 +295,7 @@ impl AgentRuntime {
             });
             for turn in start_turn..agent.execution.max_turns {
                 self.checkpoint(id, resource, &request, turn).await?;
+                if let Some(context) = &self.execution { context.consume()?; }
                 let response = self
                     .models
                     .generate_recorded(&self.store, id, &agent.model, &request)
@@ -287,6 +324,9 @@ impl AgentRuntime {
                     FinishReason::ContentFilter => anyhow::bail!("model response was filtered"),
                     FinishReason::ToolCalls => {}
                 }
+                if let Some(context) = &self.execution {
+                    ensure!(context.remaining.load(std::sync::atomic::Ordering::SeqCst) > 0, "shared model turn budget exhausted");
+                }
                 // Do not execute tools if the run cannot consume their results.
                 ensure!(
                     turn + 1 < agent.execution.max_turns,
@@ -298,6 +338,9 @@ impl AgentRuntime {
                 );
                 request.messages.push(response.message());
                 for call in response.tool_calls {
+                    if let Some(context) = &self.execution {
+                        ensure!(context.remaining.load(std::sync::atomic::Ordering::SeqCst) > 0, "shared model turn budget exhausted");
+                    }
                     self.store
                         .request_tool(id, &call.id, &call.name, &call.arguments)
                         .await?;
@@ -308,6 +351,8 @@ impl AgentRuntime {
                         .unwrap_or(Authorization::Denied);
                     let valid = if matches!(call.name.as_str(), "search" | "get") {
                         tools::validate(&call.name, &call.arguments)
+                    } else if call.name == "agent.invoke" {
+                        self.validate_delegation(resource, &call.arguments)
                     } else if call.name.starts_with("mcp.") {
                         mcp_client::validate_arguments(&call.arguments)
                     } else {
@@ -330,7 +375,9 @@ impl AgentRuntime {
                     }
                     self.approve_invocation(id, &call.id, &call.name, &call.arguments, authorization).await?;
                     self.store.start_tool(id, &call.id).await?;
-                    let result = tool.execute(call.arguments, &context).await;
+                    let result = if call.name == "agent.invoke" {
+                        self.invoke(id, &call.id, resource, call.arguments).await
+                    } else {tool.execute(call.arguments, &context).await};
                     match result {
                         Ok(result) => {
                             let content = serde_json::to_string(&result)?;
