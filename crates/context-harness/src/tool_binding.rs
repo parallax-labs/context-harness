@@ -4,14 +4,20 @@
 //! trusted factories does not load scripts, start processes, open a database, or
 //! resolve secrets.
 
-use crate::{agent_resource::Capability, traits::Tool};
-use anyhow::{ensure, Context, Result};
+use crate::{
+    agent_resource::{Capability, ResourceDirectory, ResourceScope},
+    config::{Config, ResolvedConfig},
+    ctx_dirs::{self, ConfigSourceKind},
+    traits::Tool,
+};
+use anyhow::{bail, ensure, Context, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, HashSet},
+    fs,
     path::{Component, Path, PathBuf},
     sync::Arc,
 };
@@ -125,6 +131,159 @@ impl ToolBindingResource {
     }
 }
 
+/// Choose tool resource paths using the same explicit-config isolation as agents.
+pub fn resource_directories(
+    resolved: &ResolvedConfig,
+    root: &Path,
+    global: &Path,
+) -> Vec<ResourceDirectory> {
+    if matches!(
+        resolved.source,
+        ConfigSourceKind::Explicit | ConfigSourceKind::Env
+    ) {
+        return resolved
+            .path
+            .as_ref()
+            .map(|path| {
+                let path = if path.is_absolute() {
+                    path.clone()
+                } else {
+                    root.join(path)
+                };
+                ResourceDirectory {
+                    path: path.parent().unwrap_or(root).join("tools"),
+                    scope: ResourceScope::Explicit,
+                }
+            })
+            .into_iter()
+            .collect();
+    }
+    vec![
+        ResourceDirectory {
+            path: global.join("tools"),
+            scope: ResourceScope::Global,
+        },
+        ResourceDirectory {
+            path: root.join(".ctx/tools"),
+            scope: ResourceScope::Workspace,
+        },
+    ]
+}
+
+pub fn cli_resource_directories(resolved: &ResolvedConfig) -> Result<Vec<ResourceDirectory>> {
+    Ok(resource_directories(
+        resolved,
+        &std::env::current_dir()?,
+        &ctx_dirs::config_dir(),
+    ))
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LoadedToolResource {
+    pub path: PathBuf,
+    pub scope: ResourceScope,
+    pub resource_version: String,
+    pub definition: ToolBindingResource,
+}
+
+/// Load sorted layers and replace whole resources only when explicitly requested.
+pub fn load_resources(
+    directories: &[ResourceDirectory],
+    config: &Config,
+) -> Result<BTreeMap<String, LoadedToolResource>> {
+    load_resources_selected(directories, config, None)
+}
+
+pub fn load_named_resource(
+    directories: &[ResourceDirectory],
+    config: &Config,
+    name: &str,
+) -> Result<BTreeMap<String, LoadedToolResource>> {
+    validate_identifier(name, "tool name")?;
+    load_resources_selected(directories, config, Some(name))
+}
+
+fn load_resources_selected(
+    directories: &[ResourceDirectory],
+    config: &Config,
+    selected: Option<&str>,
+) -> Result<BTreeMap<String, LoadedToolResource>> {
+    let mut resources: BTreeMap<String, LoadedToolResource> = BTreeMap::new();
+    let mut visited = HashSet::new();
+    for directory in directories {
+        let canonical = match directory.path.canonicalize() {
+            Ok(path) => path,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => {
+                return Err(error).with_context(|| format!("reading {}", directory.path.display()))
+            }
+        };
+        if !visited.insert(canonical.clone()) {
+            continue;
+        }
+        let mut paths = fs::read_dir(&canonical)
+            .with_context(|| format!("reading {}", canonical.display()))?
+            .map(|entry| entry.map(|entry| entry.path()))
+            .collect::<std::io::Result<Vec<_>>>()?;
+        paths.sort();
+        let mut names = HashSet::new();
+        for path in paths.into_iter().filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "toml")
+        }) {
+            let content =
+                fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+            if let Some(selected) = selected {
+                let declared_name =
+                    toml::from_str::<toml::Value>(&content)
+                        .ok()
+                        .and_then(|value| {
+                            value
+                                .get("tool")
+                                .and_then(|tool| tool.get("name"))
+                                .and_then(toml::Value::as_str)
+                                .map(str::to_owned)
+                        });
+                if declared_name.as_deref() != Some(selected) {
+                    continue;
+                }
+            }
+            let definition = ToolBindingResource::parse(&content)
+                .with_context(|| format!("tool resource {}", path.display()))?;
+            let name = &definition.tool.name;
+            ensure!(
+                names.insert(name.clone()),
+                "duplicate tool binding '{name}' in {}",
+                canonical.display()
+            );
+            ensure!(
+                !config.tools.script.contains_key(name),
+                "tool resource {} conflicts with legacy Lua tool '{name}'; rename or migrate it",
+                path.display()
+            );
+            if let Some(previous) = resources.get(name) {
+                ensure!(
+                    definition.tool.override_existing,
+                    "tool binding '{name}' in {} shadows {}; set tool.override = true to replace it",
+                    path.display(),
+                    previous.path.display()
+                );
+            }
+            let resource_version = definition.resource_version()?;
+            resources.insert(
+                name.clone(),
+                LoadedToolResource {
+                    path,
+                    scope: directory.scope,
+                    resource_version,
+                    definition,
+                },
+            );
+        }
+    }
+    Ok(resources)
+}
+
 fn validate_identifier(value: &str, label: &str) -> Result<()> {
     let mut chars = value.chars();
     ensure!(
@@ -196,6 +355,30 @@ pub struct ToolImplementationDescriptor {
     pub capabilities: Vec<Capability>,
     pub supported_restrictions: Vec<RestrictionKind>,
     pub trust_class: ToolTrustClass,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ResolvedToolBinding {
+    pub name: String,
+    pub description: String,
+    pub implementation_description: String,
+    pub implementation_id: String,
+    pub implementation_version: String,
+    pub trust_class: ToolTrustClass,
+    pub capabilities: Vec<Capability>,
+    pub public_schema: Value,
+    pub config: Value,
+    pub fixed: Value,
+    pub restrictions: BindingRestrictions,
+    pub binding_version: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ResolvedToolResource {
+    pub path: PathBuf,
+    pub scope: ResourceScope,
+    pub resource_version: String,
+    pub binding: ResolvedToolBinding,
 }
 
 impl ToolImplementationDescriptor {
@@ -329,6 +512,10 @@ pub struct ToolBindingRequest {
 #[async_trait]
 pub trait ToolImplementationFactory: Send + Sync {
     fn descriptor(&self) -> &ToolImplementationDescriptor;
+    /// Implementation-specific checks that require no execution or secret access.
+    fn validate_binding(&self, _resource: &ToolBindingResource) -> Result<()> {
+        Ok(())
+    }
     async fn bind(&self, request: ToolBindingRequest) -> Result<Box<dyn Tool>>;
 }
 
@@ -361,6 +548,373 @@ impl ToolImplementationCatalog {
     pub fn descriptors(&self) -> impl Iterator<Item = &ToolImplementationDescriptor> {
         self.factories.values().map(|factory| factory.descriptor())
     }
+
+    pub fn resolve(&self, resource: &ToolBindingResource) -> Result<ResolvedToolBinding> {
+        let factory = self.find(&resource.tool.implementation).with_context(|| {
+            format!(
+                "unknown tool implementation '{}'",
+                resource.tool.implementation
+            )
+        })?;
+        let descriptor = factory.descriptor();
+        for restriction in resource.restrictions.kinds() {
+            ensure!(
+                descriptor.supported_restrictions.contains(&restriction),
+                "implementation '{}' cannot enforce restriction '{restriction:?}'",
+                descriptor.id
+            );
+        }
+        let config = toml_table_to_json(&resource.config)?;
+        let fixed = toml_table_to_json(&resource.fixed)?;
+        validate_schema_value(&descriptor.config_schema, &config, "config")?;
+        validate_fixed(&descriptor.input_schema, &fixed)?;
+        factory.validate_binding(resource)?;
+        let public_schema = derive_public_schema(&descriptor.input_schema, &resource.fixed)?;
+        let description = resource
+            .tool
+            .description
+            .clone()
+            .unwrap_or_else(|| descriptor.default_public_description.clone());
+        let identity = serde_json::json!({
+            "resource": resource,
+            "implementation_id": descriptor.id,
+            "implementation_version": descriptor.version,
+            "input_schema": descriptor.input_schema,
+            "public_schema": public_schema,
+            "config": config,
+            "fixed": fixed,
+            "restrictions": resource.restrictions,
+        });
+        let binding_version = format!(
+            "sha256:{:x}",
+            Sha256::digest(serde_json::to_vec(&identity)?)
+        );
+        Ok(ResolvedToolBinding {
+            name: resource.tool.name.clone(),
+            description,
+            implementation_description: descriptor.implementation_description.clone(),
+            implementation_id: descriptor.id.clone(),
+            implementation_version: descriptor.version.clone(),
+            trust_class: descriptor.trust_class,
+            capabilities: descriptor.capabilities.clone(),
+            public_schema,
+            config,
+            fixed,
+            restrictions: resource.restrictions.clone(),
+            binding_version,
+        })
+    }
+}
+
+pub fn resolve_resources(
+    loaded: BTreeMap<String, LoadedToolResource>,
+    catalog: &ToolImplementationCatalog,
+) -> Result<BTreeMap<String, ResolvedToolResource>> {
+    loaded
+        .into_iter()
+        .map(|(name, loaded)| {
+            let binding = catalog
+                .resolve(&loaded.definition)
+                .with_context(|| format!("resolving tool resource {}", loaded.path.display()))?;
+            Ok((
+                name,
+                ResolvedToolResource {
+                    path: loaded.path,
+                    scope: loaded.scope,
+                    resource_version: loaded.resource_version,
+                    binding,
+                },
+            ))
+        })
+        .collect()
+}
+
+struct MetadataFactory {
+    descriptor: ToolImplementationDescriptor,
+}
+
+#[async_trait]
+impl ToolImplementationFactory for MetadataFactory {
+    fn descriptor(&self) -> &ToolImplementationDescriptor {
+        &self.descriptor
+    }
+
+    fn validate_binding(&self, resource: &ToolBindingResource) -> Result<()> {
+        match self.descriptor.id.as_str() {
+            "builtin.scoped_file_read" => {
+                let root = resource
+                    .config
+                    .get("root")
+                    .and_then(toml::Value::as_str)
+                    .context("config.root must be a string")?;
+                let root = normalize_resource_path(root)?;
+                ensure!(
+                    resource
+                        .restrictions
+                        .paths
+                        .iter()
+                        .map(|path| normalize_resource_path(path))
+                        .collect::<Result<Vec<_>>>()?
+                        .contains(&root),
+                    "config.root must be included in restrictions.paths"
+                );
+            }
+            "builtin.retrieval.search" | "builtin.retrieval.get" => {
+                let source = resource
+                    .config
+                    .get("source")
+                    .and_then(toml::Value::as_str)
+                    .context("config.source must be a string")?;
+                ensure!(
+                    resource
+                        .restrictions
+                        .sources
+                        .iter()
+                        .any(|allowed| allowed == source),
+                    "config.source must be included in restrictions.sources"
+                );
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    async fn bind(&self, _request: ToolBindingRequest) -> Result<Box<dyn Tool>> {
+        bail!("tool implementation is not connected to runtime dispatch yet")
+    }
+}
+
+/// Catalog of core implementations available for static resource authoring.
+/// Runtime factories replace these metadata-only entries in the integration slice.
+pub fn core_metadata_catalog() -> Result<ToolImplementationCatalog> {
+    let mut catalog = ToolImplementationCatalog::new();
+    for descriptor in [
+        ToolImplementationDescriptor {
+            id: "builtin.scoped_file_read".into(),
+            version: format!("{}:1", env!("CARGO_PKG_VERSION")),
+            implementation_description:
+                "Read bounded UTF-8 files through a host-scoped path accessor".into(),
+            default_public_description: "Read a scoped UTF-8 file".into(),
+            config_schema: serde_json::json!({
+                "type": "object",
+                "properties": {"root": {"type": "string", "minLength": 1}},
+                "required": ["root"],
+                "additionalProperties": false
+            }),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "minLength": 1},
+                    "max_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576}
+                },
+                "required": ["path"],
+                "additionalProperties": false
+            }),
+            capabilities: vec![Capability::ReadOnly],
+            supported_restrictions: vec![RestrictionKind::Paths, RestrictionKind::MaxOutputBytes],
+            trust_class: ToolTrustClass::Builtin,
+        },
+        ToolImplementationDescriptor {
+            id: "builtin.retrieval.search".into(),
+            version: format!("{}:1", env!("CARGO_PKG_VERSION")),
+            implementation_description:
+                "Search indexed context through a host-scoped source accessor".into(),
+            default_public_description: "Search scoped indexed context".into(),
+            config_schema: serde_json::json!({
+                "type": "object",
+                "properties": {"source": {"type": "string", "minLength": 1, "maxLength": 1024}},
+                "required": ["source"],
+                "additionalProperties": false
+            }),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "minLength": 1, "maxLength": 8192},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 100}
+                },
+                "required": ["query"],
+                "additionalProperties": false
+            }),
+            capabilities: vec![Capability::ReadOnly],
+            supported_restrictions: vec![RestrictionKind::Sources, RestrictionKind::MaxOutputBytes],
+            trust_class: ToolTrustClass::Builtin,
+        },
+        ToolImplementationDescriptor {
+            id: "builtin.retrieval.get".into(),
+            version: format!("{}:1", env!("CARGO_PKG_VERSION")),
+            implementation_description:
+                "Retrieve indexed context through a host-scoped source accessor".into(),
+            default_public_description: "Get a scoped indexed document".into(),
+            config_schema: serde_json::json!({
+                "type": "object",
+                "properties": {"source": {"type": "string", "minLength": 1, "maxLength": 1024}},
+                "required": ["source"],
+                "additionalProperties": false
+            }),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {"id": {"type": "string", "minLength": 1, "maxLength": 128}},
+                "required": ["id"],
+                "additionalProperties": false
+            }),
+            capabilities: vec![Capability::ReadOnly],
+            supported_restrictions: vec![RestrictionKind::Sources, RestrictionKind::MaxOutputBytes],
+            trust_class: ToolTrustClass::Builtin,
+        },
+    ] {
+        catalog.register(Arc::new(MetadataFactory { descriptor }))?;
+    }
+    Ok(catalog)
+}
+
+impl BindingRestrictions {
+    fn kinds(&self) -> impl Iterator<Item = RestrictionKind> {
+        let mut kinds = Vec::with_capacity(3);
+        if !self.paths.is_empty() {
+            kinds.push(RestrictionKind::Paths);
+        }
+        if !self.sources.is_empty() {
+            kinds.push(RestrictionKind::Sources);
+        }
+        if self.max_output_bytes.is_some() {
+            kinds.push(RestrictionKind::MaxOutputBytes);
+        }
+        kinds.into_iter()
+    }
+}
+
+fn toml_table_to_json(table: &toml::Table) -> Result<Value> {
+    serde_json::to_value(table).context("serializing tool binding table")
+}
+
+fn schema_properties(schema: &Value) -> Result<&serde_json::Map<String, Value>> {
+    schema
+        .get("properties")
+        .and_then(Value::as_object)
+        .context("schema properties must be an object")
+}
+
+fn validate_fixed(schema: &Value, fixed: &Value) -> Result<()> {
+    let properties = schema_properties(schema)?;
+    let fixed = fixed
+        .as_object()
+        .context("fixed arguments must be an object")?;
+    for (name, value) in fixed {
+        let property = properties
+            .get(name)
+            .with_context(|| format!("fixed argument '{name}' is not in the input schema"))?;
+        validate_schema_value(property, value, &format!("fixed.{name}"))?;
+    }
+    Ok(())
+}
+
+fn derive_public_schema(schema: &Value, fixed: &toml::Table) -> Result<Value> {
+    let mut public = schema.clone();
+    let object = public
+        .as_object_mut()
+        .context("input schema must be an object")?;
+    let properties = object
+        .get_mut("properties")
+        .and_then(Value::as_object_mut)
+        .context("input schema properties must be an object")?;
+    for name in fixed.keys() {
+        ensure!(
+            properties.remove(name).is_some(),
+            "fixed argument '{name}' is not in the input schema"
+        );
+    }
+    if let Some(required) = object.get_mut("required").and_then(Value::as_array_mut) {
+        required.retain(|name| !name.as_str().is_some_and(|name| fixed.contains_key(name)));
+    }
+    Ok(public)
+}
+
+/// Validate the strict schema subset used by built-in descriptors. Factories
+/// remain responsible for semantic checks and any additional Draft 2020-12 keywords.
+fn validate_schema_value(schema: &Value, value: &Value, label: &str) -> Result<()> {
+    if is_secret_reference(value) {
+        ensure!(
+            schema.get("x-secret").and_then(Value::as_bool) == Some(true),
+            "{label} does not permit a secret reference"
+        );
+        return Ok(());
+    }
+    if let Some(expected) = schema.get("type").and_then(Value::as_str) {
+        let matches = match expected {
+            "object" => value.is_object(),
+            "array" => value.is_array(),
+            "string" => value.is_string(),
+            "integer" => value.as_i64().is_some() || value.as_u64().is_some(),
+            "number" => value.is_number(),
+            "boolean" => value.is_boolean(),
+            "null" => value.is_null(),
+            _ => bail!("{label} uses unsupported schema type '{expected}'"),
+        };
+        ensure!(matches, "{label} does not match schema type '{expected}'");
+    }
+    if let Some(choices) = schema.get("enum").and_then(Value::as_array) {
+        ensure!(choices.contains(value), "{label} is not an allowed value");
+    }
+    if let Some(number) = value.as_f64() {
+        if let Some(minimum) = schema.get("minimum").and_then(Value::as_f64) {
+            ensure!(number >= minimum, "{label} is below its minimum");
+        }
+        if let Some(maximum) = schema.get("maximum").and_then(Value::as_f64) {
+            ensure!(number <= maximum, "{label} exceeds its maximum");
+        }
+    }
+    if let Some(string) = value.as_str() {
+        let length = string.chars().count() as u64;
+        if let Some(minimum) = schema.get("minLength").and_then(Value::as_u64) {
+            ensure!(length >= minimum, "{label} is shorter than its minimum");
+        }
+        if let Some(maximum) = schema.get("maxLength").and_then(Value::as_u64) {
+            ensure!(length <= maximum, "{label} exceeds its maximum length");
+        }
+    }
+    if let Some(object) = value.as_object() {
+        let properties = schema
+            .get("properties")
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default();
+        if schema.get("additionalProperties").and_then(Value::as_bool) == Some(false) {
+            ensure!(
+                object.keys().all(|name| properties.contains_key(name)),
+                "{label} contains an unknown field"
+            );
+        }
+        if let Some(required) = schema.get("required").and_then(Value::as_array) {
+            for name in required.iter().filter_map(Value::as_str) {
+                ensure!(object.contains_key(name), "{label}.{name} is required");
+            }
+        }
+        for (name, item) in object {
+            if let Some(property) = properties.get(name) {
+                validate_schema_value(property, item, &format!("{label}.{name}"))?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn is_secret_reference(value: &Value) -> bool {
+    let Some(object) = value.as_object() else {
+        return false;
+    };
+    object.len() == 1
+        && object
+            .get("env")
+            .and_then(Value::as_str)
+            .is_some_and(valid_environment_name)
+}
+
+fn valid_environment_name(value: &str) -> bool {
+    let mut chars = value.chars();
+    chars
+        .next()
+        .is_some_and(|character| character.is_ascii_alphabetic() || character == '_')
+        && chars.all(|character| character.is_ascii_alphanumeric() || character == '_')
 }
 
 #[cfg(test)]

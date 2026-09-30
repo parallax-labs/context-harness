@@ -82,6 +82,8 @@ mod server;
 mod sources;
 mod sqlite_store;
 mod stats;
+#[allow(dead_code)]
+mod tool_binding;
 mod tool_script;
 #[allow(dead_code)]
 mod traits;
@@ -89,6 +91,7 @@ mod vector_index;
 #[allow(dead_code)]
 mod workspace;
 
+use anyhow::{ensure, Context};
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{generate, Shell};
 use std::path::PathBuf;
@@ -405,6 +408,32 @@ enum ToolAction {
     },
     /// List all configured tools (built-in and Lua).
     List,
+    /// Inspect and validate standalone declarative tool bindings.
+    Bindings {
+        #[command(subcommand)]
+        action: ToolBindingsAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum ToolBindingsAction {
+    /// List resolved standalone bindings without executing implementations.
+    List {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show one resolved standalone binding.
+    Show {
+        name: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Validate standalone binding declarations without executing them.
+    Validate {
+        name: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Agent management subcommands.
@@ -740,6 +769,16 @@ async fn main() -> anyhow::Result<()> {
     } else {
         vec![]
     };
+    let tool_resource_dirs = if matches!(
+        &cli.command,
+        Commands::Tool {
+            action: ToolAction::Bindings { .. }
+        }
+    ) {
+        tool_binding::cli_resource_directories(&resolved_config)?
+    } else {
+        vec![]
+    };
     let cfg = resolved_config.config;
 
     match cli.command {
@@ -899,6 +938,101 @@ async fn main() -> anyhow::Result<()> {
             }
             ToolAction::List => {
                 tool_script::list_tools(&cfg)?;
+            }
+            ToolAction::Bindings { action } => {
+                let catalog = tool_binding::core_metadata_catalog()?;
+                let selected = match &action {
+                    ToolBindingsAction::Show { name, .. } => Some(name.as_str()),
+                    ToolBindingsAction::Validate {
+                        name: Some(name), ..
+                    } => Some(name.as_str()),
+                    _ => None,
+                };
+                let loaded = if let Some(name) = selected {
+                    tool_binding::load_named_resource(&tool_resource_dirs, &cfg, name)?
+                } else {
+                    tool_binding::load_resources(&tool_resource_dirs, &cfg)?
+                };
+                let resolved = tool_binding::resolve_resources(loaded, &catalog)?;
+                match action {
+                    ToolBindingsAction::List { json } => {
+                        if json {
+                            println!("{}", serde_json::to_string_pretty(&resolved)?);
+                        } else {
+                            for item in resolved.values() {
+                                println!(
+                                    "{} — {} [{} {}]",
+                                    item.binding.name,
+                                    item.binding.description,
+                                    item.binding.implementation_id,
+                                    item.binding.implementation_version
+                                );
+                            }
+                        }
+                    }
+                    ToolBindingsAction::Show { name, json } => {
+                        let item = resolved
+                            .get(&name)
+                            .with_context(|| format!("unknown tool binding '{name}'"))?;
+                        if json {
+                            println!("{}", serde_json::to_string_pretty(item)?);
+                        } else {
+                            println!("Tool: {}", item.binding.name);
+                            println!("Description: {}", item.binding.description);
+                            println!(
+                                "Implementation description: {}",
+                                item.binding.implementation_description
+                            );
+                            println!(
+                                "Implementation: {} {}",
+                                item.binding.implementation_id, item.binding.implementation_version
+                            );
+                            println!("Scope: {:?}", item.scope);
+                            println!("Path: {}", item.path.display());
+                            println!("Binding version: {}", item.binding.binding_version);
+                            println!("Trust: {:?}", item.binding.trust_class);
+                            println!(
+                                "Capabilities: {}",
+                                serde_json::to_string(&item.binding.capabilities)?
+                            );
+                            println!(
+                                "Restrictions: {}",
+                                serde_json::to_string(&item.binding.restrictions)?
+                            );
+                            println!(
+                                "Configuration: {}",
+                                serde_json::to_string(&item.binding.config)?
+                            );
+                            println!(
+                                "Fixed arguments: {}",
+                                serde_json::to_string(&item.binding.fixed)?
+                            );
+                            println!(
+                                "Public schema: {}",
+                                serde_json::to_string_pretty(&item.binding.public_schema)?
+                            );
+                        }
+                    }
+                    ToolBindingsAction::Validate { name, json } => {
+                        if let Some(name) = name.as_deref() {
+                            ensure!(resolved.contains_key(name), "unknown tool binding '{name}'");
+                        }
+                        if json {
+                            println!(
+                                "{}",
+                                serde_json::json!({
+                                    "valid": true,
+                                    "bindings": resolved.len(),
+                                    "name": name
+                                })
+                            );
+                        } else if let Some(name) = name.as_deref() {
+                            println!("Validated tool binding '{name}'.");
+                        } else {
+                            println!("Validated {} tool bindings.", resolved.len());
+                        }
+                    }
+                }
             }
             ToolAction::Init { .. } => {
                 // Handled above (before config loading)

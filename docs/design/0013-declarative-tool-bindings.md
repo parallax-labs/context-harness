@@ -255,8 +255,8 @@ agreed spec; do not begin the slices below in this documentation update.
 
 | Slice | Deliverable | Requirement / acceptance gate | Status |
 |---|---|---|---|
-| 1. Contracts | Descriptor, factory, bound-tool and authority contracts; chosen resource schema | D1/D3/D4: distinguish implemented capabilities from declarations; reject unenforceable scopes | In progress |
-| 2. Resolution | Resource parser, layered discovery, aliases, provenance and identities | D1/D2/D6: deterministic results, explicit isolation, collision/override tests, side-effect-free inspection | Pending |
+| 1. Contracts | Descriptor, factory, bound-tool and authority contracts; chosen resource schema | D1/D3/D4: distinguish implemented capabilities from declarations; reject unenforceable scopes | Complete |
+| 2. Resolution | Resource parser, layered discovery, aliases, provenance and identities | D1/D2/D6: deterministic results, explicit isolation, collision/override tests, side-effect-free inspection | In progress |
 | 3. Runtime integration | Host-supplied catalog and generic adapter validation/dispatch; compatibility bindings | D3/D5/D8: second fixture tool requires no name branch; built-ins retain argument/policy behavior | Pending |
 | 4. Extension backends | Rust API, Lua authority adapter and MCP alias validation | D4/D5/D8: approved extensions use common lifecycle; unknown authority denied; remote schema drift detected | Pending |
 | 5. History/recovery | Binding metadata, checkpoint compatibility and legacy migration | D6/D7/D8: redacted inspection; changed implementation/config cannot silently resume | Pending |
