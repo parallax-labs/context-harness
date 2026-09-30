@@ -1,7 +1,9 @@
 //! Bounded direct execution of static agent resources. Runtime persistence is
 //! intentionally writable; model-requested retrieval uses read-only connections.
+mod checkpoint;
 pub mod cli;
 mod developer;
+mod files;
 pub mod policy;
 mod terminal;
 mod tools;
@@ -93,7 +95,7 @@ impl AgentRuntime {
         &self,
         resource: &LoadedAgentResource,
         input: &str,
-        mut cancel: watch::Receiver<bool>,
+        cancel: watch::Receiver<bool>,
     ) -> Result<AgentRun> {
         ensure!(
             !input.trim().is_empty() && input.len() <= 64 * 1024,
@@ -104,10 +106,51 @@ impl AgentRuntime {
             .store
             .create_run(&agent.name, &resource.version, &agent.model, input)
             .await?;
+        let files = match files::acquire(&self.root, &run.id) {
+            Ok(files) => files,
+            Err(_) => {
+                self.store
+                    .finish_run(
+                        &run.id,
+                        RunOutcome::Failed("run ownership is unavailable".into()),
+                    )
+                    .await?;
+                return self
+                    .store
+                    .get_run(&run.id)
+                    .await?
+                    .context("run disappeared");
+            }
+        };
+        self.drive(&run, resource, None, 0, cancel, &files).await
+    }
+
+    async fn drive(
+        &self,
+        run: &AgentRun,
+        resource: &LoadedAgentResource,
+        request: Option<ModelRequest>,
+        start_turn: u32,
+        mut cancel: watch::Receiver<bool>,
+        files: &files::RunFiles,
+    ) -> Result<AgentRun> {
+        let remaining = match self.remaining_time(run, resource) {
+            Ok(remaining) => remaining,
+            Err(error) => {
+                self.store
+                    .finish_run(&run.id, RunOutcome::Failed(error.to_string()))
+                    .await?;
+                return self
+                    .store
+                    .get_run(&run.id)
+                    .await?
+                    .context("run disappeared");
+            }
+        };
         let outcome = tokio::select! {
             biased;
             _ = cancelled(&mut cancel) => RunOutcome::Cancelled,
-            result = tokio::time::timeout(Duration::from_secs(agent.execution.timeout_seconds), self.execute(&run.id, resource, input)) => {
+            result = tokio::time::timeout(remaining, self.execute(&run.id, resource, &run.input, request, start_turn, files)) => {
                 match result {
                     Ok(Ok(output)) => RunOutcome::Completed(output),
                     Ok(Err(error)) => RunOutcome::Failed(error.to_string()),
@@ -125,17 +168,21 @@ impl AgentRuntime {
             .context("run disappeared")
     }
 
-    async fn execute(
-        &self,
-        id: &str,
-        resource: &LoadedAgentResource,
-        input: &str,
-    ) -> Result<String> {
+    fn remaining_time(&self, run: &AgentRun, resource: &LoadedAgentResource) -> Result<Duration> {
+        let budget = i64::try_from(resource.definition.agent.execution.timeout_seconds)?
+            .checked_mul(1000)
+            .context("timeout is too large")?;
+        let deadline = run
+            .created_at
+            .checked_add(budget)
+            .context("timeout is too large")?;
+        let remaining = deadline.saturating_sub(chrono::Utc::now().timestamp_millis());
+        ensure!(remaining > 0, "original run deadline has expired");
+        Ok(Duration::from_millis(remaining as u64))
+    }
+
+    fn declarations(&self, resource: &LoadedAgentResource) -> Result<Vec<ModelTool>> {
         let agent = &resource.definition.agent;
-        ensure!(
-            agent.execution.max_turns > 0 && agent.execution.timeout_seconds > 0,
-            "invalid execution limits"
-        );
         let mut declarations = Vec::new();
         for name in &agent.tools {
             let tool = self
@@ -155,6 +202,24 @@ impl AgentRuntime {
                 parameters: tool.parameters_schema(),
             });
         }
+        Ok(declarations)
+    }
+
+    async fn execute(
+        &self,
+        id: &str,
+        resource: &LoadedAgentResource,
+        input: &str,
+        restored: Option<ModelRequest>,
+        start_turn: u32,
+        files: &files::RunFiles,
+    ) -> Result<String> {
+        let agent = &resource.definition.agent;
+        ensure!(
+            agent.execution.max_turns > 0 && agent.execution.timeout_seconds > 0,
+            "invalid execution limits"
+        );
+        let declarations = self.declarations(resource)?;
         self.store
             .append_event(
                 id,
@@ -167,7 +232,7 @@ impl AgentRuntime {
             )
             .await?;
         let context = ToolContext::new(self.config.clone());
-        let mut request = ModelRequest {
+        let mut request = restored.unwrap_or_else(|| ModelRequest {
             messages: vec![
                 ModelMessage::System {
                     content: resource.definition.prompt.system.clone(),
@@ -178,14 +243,32 @@ impl AgentRuntime {
             ],
             tools: declarations,
             ..Default::default()
-        };
-        for turn in 0..agent.execution.max_turns {
+        });
+        for turn in start_turn..agent.execution.max_turns {
+            self.checkpoint(id, resource, &request, turn).await?;
             let response = self
                 .models
                 .generate_recorded(&self.store, id, &agent.model, &request)
                 .await?;
             match response.finish_reason {
-                FinishReason::Completed => return Ok(response.text),
+                FinishReason::Completed => {
+                    if response.text.len() <= 64 * 1024 {
+                        return Ok(response.text);
+                    }
+                    let artifact = files.write_artifact("output.txt", response.text.as_bytes())?;
+                    self.store
+                        .record_artifact(
+                            id,
+                            &artifact.relative_path,
+                            &artifact.sha256,
+                            artifact.size,
+                        )
+                        .await?;
+                    return Ok(format!(
+                        "Output saved to {} ({} bytes; sha256 {})",
+                        artifact.relative_path, artifact.size, artifact.sha256
+                    ));
+                }
                 FinishReason::Length => anyhow::bail!("model output limit reached"),
                 FinishReason::Refusal => anyhow::bail!("model refused the request"),
                 FinishReason::ContentFilter => anyhow::bail!("model response was filtered"),

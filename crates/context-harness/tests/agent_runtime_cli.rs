@@ -82,7 +82,7 @@ fn cli_run_history_and_paged_inspect_work_without_credentials() {
         ),
         true,
     );
-    assert_eq!(page2["events"][0]["event_type"], "model.requested");
+    assert_eq!(page2["events"][0]["event_type"], "checkpoint.created");
     assert_eq!(
         page2["events"].as_array().unwrap().last().unwrap()["event_type"],
         "run.completed"

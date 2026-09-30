@@ -420,6 +420,14 @@ enum AgentAction {
         #[arg(long)]
         non_interactive: bool,
     },
+    /// Resume an interrupted run from its latest safe checkpoint.
+    Resume {
+        run_id: String,
+        #[arg(long)]
+        json: bool,
+        #[arg(long)]
+        non_interactive: bool,
+    },
     /// List this workspace's durable run history.
     History {
         #[arg(long, default_value_t = 20, value_parser = clap::value_parser!(u32).range(1..=1000))]
@@ -931,6 +939,20 @@ async fn main() -> anyhow::Result<()> {
                     &agent_resource_dirs,
                     &name,
                     &input,
+                    json,
+                    non_interactive,
+                )
+                .await?;
+            }
+            AgentAction::Resume {
+                run_id,
+                json,
+                non_interactive,
+            } => {
+                agent_runtime::cli::resume(
+                    cfg,
+                    &agent_resource_dirs,
+                    &run_id,
                     json,
                     non_interactive,
                 )

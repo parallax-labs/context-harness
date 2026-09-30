@@ -458,6 +458,7 @@ See [`config/ctx.example.toml`](config/ctx.example.toml) for a complete example,
 | [API (Rustdoc)](https://parallax-labs.github.io/context-harness/api/context_harness/) | Generated Rust API docs |
 | [Local agent execution](docs/spec/0017-local-agent-execution.md) | Standalone agent run/history/inspect commands, supported tools, and a local fake-provider example |
 | [Developer tools and approvals](docs/spec/0018-developer-tools-and-approvals.md) | Workspace/Git tools, patch and process permissions, and interactive approval |
+| [Checkpoints and recovery](docs/spec/0019-checkpoints-recovery-and-artifacts.md) | Safe resume boundaries, run ownership, and large output artifacts |
 | [Live demo](https://parallax-labs.github.io/context-harness/demo/) | Search a pre-built knowledge base in the browser |
 
 The site also documents the **search widget** (`ctx-search.js`) for adding ⌘K search to static sites — see the [docs](https://parallax-labs.github.io/context-harness/docs/) for an example.

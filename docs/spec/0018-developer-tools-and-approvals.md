@@ -43,7 +43,8 @@ All arguments SHALL be strict JSON objects; unknown fields are errors.
 
 Workspace paths SHALL be relative to the canonical bound root. Absolute paths,
 parent components, `.git` metadata paths, and symlinks resolving outside the root
-SHALL be rejected. Existing paths only are supported; patching does not create or
+SHALL be rejected. Patching runtime `.ctx/runs` paths is forbidden. Existing paths only are supported;
+patching does not create or
 delete files. Patch SHALL reject ambiguous matches, including overlapping
 matches; Unix hard-linked files SHALL be rejected. Checks are repeated at
 execution, after approval. These checks do not provide OS isolation against
@@ -98,7 +99,8 @@ approval. Approval decisions remain visible in `ctx agent inspect` events.
 The runtime SHALL persist approval before starting the tool. A denied request
 fails that invocation and run. Granting approval does not guarantee a tool will
 run or succeed; cancellation, validation and persistence errors can intervene.
-Safe crash recovery/replay remains a later slice.
+Conservative recovery without uncertain side-effect replay is defined by
+[SPEC-0019](0019-checkpoints-recovery-and-artifacts.md).
 
 ## CLI behavior
 

@@ -335,6 +335,12 @@ impl ModelRegistry {
         Ok(())
     }
 
+    /// Stable, non-secret binding used to validate persisted runtime checkpoints.
+    pub fn identity(&self, alias: &str) -> anyhow::Result<(&str, &str)> {
+        let model = self.models.get(alias).context("unknown model alias")?;
+        Ok((&model.provider_name, &model.model_name))
+    }
+
     pub async fn generate(
         &self,
         alias: &str,

@@ -37,7 +37,7 @@ acceptance tests and update this checklist as each slice lands.
 | 3. Model boundary | Provider-neutral request/response/tool/usage types; registry; deterministic fake; one production provider | Fake and provider contract tests cover tool calls, failures and usage; credentials resolved from environment and excluded from history | Complete |
 | 4. Execution loop | Resolve agent/context/workspace; model/tool iterations through ToolRegistry; ctx agent run/history/inspect; JSON output; turn/time/cancellation limits | Fake model searches/gets context over multiple turns and completes with persisted history; terminal errors recorded | Complete |
 | 5. Developer capabilities | Read/search, git status/diff, patch/process tools; capability metadata; policy intersection; persisted approvals | Read-only policy blocks writes/processes regardless of prompt; path escape tests; non-interactive execution never silently approves | Complete |
-| 6. Resume/artifacts | Typed checkpoint schema; resume command; interruption handling; artifact files and metadata | Crash tests around model calls and tool side effects; no automatic replay of uncertain non-idempotent tool execution; workspace/version checks | Pending |
+| 6. Resume/artifacts | Typed checkpoint schema; resume command; interruption handling; artifact files and metadata | Crash tests around model calls and tool side effects; no automatic replay of uncertain non-idempotent tool execution; workspace/version checks | Complete |
 | 7. MCP client | External server config/lifecycle, tool discovery adapters and namespacing | External fixture tool runs through the same registry/policy/event path; timeout/disconnect handling | Pending |
 | 8. Delegation | Controlled agent.invoke; parent/root run IDs; depth/turn/time budgets; inherited permission ceilings | Child execution is attributable and bounded; child cannot increase parent privileges | Pending |
 | 9. MCP compatibility | Project resource-backed executable agents as stateless MCP prompts | Existing prompt clients and Lua/Rust resolution remain compatible; full regression and end-to-end first-target demo | Pending |
@@ -85,8 +85,9 @@ Resolve these before their dependent implementation slices:
    does not claim automatic redaction.
 4. Specify approval trust boundaries for Lua and external MCP tools before slices
    4–5. Unknown tools must not be classified as read-only by default.
-5. Define checkpoint schema, interruption states, ownership/locking and uncertain
-   tool-result reconciliation before slice 6; a snapshot alone is not safe resume.
+5. Checkpoint schema, ownership and conservative recovery are defined by
+   [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md). Uncertain tool
+   activity requires manual reconciliation; it is never automatically replayed.
 
 ## Validation
 
@@ -206,5 +207,25 @@ smoke tests remain explicit and credential-dependent.
   core embedding warning. Default embedding backends and live providers were
   not exercised.
 
-Next: slice 6, typed checkpoints, recovery semantics and artifact persistence.
-Never automatically replay uncertain side effects after interruption.
+### Slice 6 decisions and verification (2026-09-30)
+
+- Added bounded typed conversation checkpoints at model boundaries and
+  `ctx agent resume`, with resource/model/config/policy binding validation.
+- Resume restores completed tool results, counts all model attempts, and retains
+  the original absolute deadline. Any unsafe activity after the latest snapshot
+  requires manual reconciliation; no uncertain tool is replayed.
+- Added exclusive Unix run ownership, optimistic transactional reopening and
+  append-only artifact metadata. Large final responses become immutable local
+  files with SHA-256/size references; inspect lists their metadata.
+- Added [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md), including
+  timeout/downtime behavior, unsupported platforms, local transcript privacy,
+  orphan files and unsandboxed-process limitations.
+
+- `cargo test --workspace --no-default-features`: 287 passed, 3 ignored
+  performance probes, including recovery CLI, interrupted tool/model execution,
+  ownership conflicts and unsafe paths, binding validation and artifact integrity.
+- Formatting and diff checks passed; Clippy completed with only the existing core
+  embedding warning. Default embedding backends and live providers were not
+  exercised. Recovery/filesystem tests ran on macOS Unix.
+
+Next: slice 7, external MCP clients and capability-aware tool adapters.

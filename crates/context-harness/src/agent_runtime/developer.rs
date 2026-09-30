@@ -144,7 +144,7 @@ pub(super) fn validate(root: &Path, name: &str, args: &Value) -> Result<()> {
         }
         "workspace.patch" => {
             let a: PatchArgs = serde_json::from_value(args.clone())?;
-            relative(&a.path)?;
+            writable(root, &a.path)?;
             ensure!(
                 !a.old_text.is_empty()
                     && a.old_text.len() <= FILE_LIMIT
@@ -178,6 +178,23 @@ pub(super) fn validate(root: &Path, name: &str, args: &Value) -> Result<()> {
         confined(root, path)?;
     }
     Ok(())
+}
+fn writable(root: &Path, path: &str) -> Result<PathBuf> {
+    let path = confined(root, path)?;
+    let parts: Vec<_> = path.strip_prefix(root)?.components().collect();
+    ensure!(
+        !(parts.len() >= 2
+            && parts[0]
+                .as_os_str()
+                .to_string_lossy()
+                .eq_ignore_ascii_case(".ctx")
+            && parts[1]
+                .as_os_str()
+                .to_string_lossy()
+                .eq_ignore_ascii_case("runs")),
+        "runtime history and artifacts cannot be patched"
+    );
+    Ok(path)
 }
 fn read_file(path: &Path) -> Result<String> {
     use std::io::Read;
@@ -377,7 +394,7 @@ impl DeveloperTool {
             }
             "workspace.patch" => {
                 let a: PatchArgs = serde_json::from_value(args)?;
-                let path = confined(&self.root, &a.path)?;
+                let path = writable(&self.root, &a.path)?;
                 #[cfg(unix)]
                 {
                     use std::os::unix::fs::MetadataExt;
@@ -528,6 +545,14 @@ mod tests {
             .execute_validated(json!({"path":"overlap","old_text":"aa","new_text":"x"}))
             .await
             .is_err());
+        std::fs::create_dir_all(root.path().join(".ctx/runs")).unwrap();
+        std::fs::write(root.path().join(".ctx/runs/history"), "old").unwrap();
+        assert!(validate(
+            root.path(),
+            "workspace.patch",
+            &json!({"path":".ctx/runs/history", "old_text":"old", "new_text":"new"})
+        )
+        .is_err());
         std::fs::write(root.path().join("big"), vec![b'a'; FILE_LIMIT + 1]).unwrap();
         assert!(tool("workspace.read", root.path())
             .execute_validated(json!({"path":"big"}))

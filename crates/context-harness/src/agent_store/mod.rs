@@ -7,7 +7,7 @@
 use crate::agent_resource::Capability;
 use anyhow::{ensure, Context, Result};
 use chrono::Utc;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::{FromRow, Sqlite, SqlitePool, Transaction};
 use uuid::Uuid;
@@ -78,6 +78,17 @@ pub enum ToolOutcome {
     Failed(String),
     Denied(String),
 }
+
+/// Metadata for an immutable file stored beneath a run's artifact directory.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ArtifactMetadata {
+    pub sequence: i64,
+    pub relative_path: String,
+    pub sha256: String,
+    pub size: u64,
+}
+
+pub const MAX_ARTIFACT_BYTES: u64 = 16 * 1024 * 1024;
 
 /// Workspace-scoped persistence facade, sharing the application connection pool.
 #[derive(Clone)]
@@ -155,7 +166,8 @@ impl AgentRunStore {
             !event_type.starts_with("run.")
                 && !event_type.starts_with("checkpoint.")
                 && !event_type.starts_with("tool.")
-                && !event_type.starts_with("approval."),
+                && !event_type.starts_with("approval.")
+                && !event_type.starts_with("artifact."),
             "reserved event type"
         );
         let mut tx = self.pool.begin().await?;
@@ -214,7 +226,108 @@ impl AgentRunStore {
             .bind(id).bind(&self.workspace_id).fetch_optional(&self.pool).await?)
     }
 
-    /// Terminal runs are immutable through this API, including their event log.
+    /// Reopen only an unchanged, recoverable run. The caller must also hold the
+    /// runtime's exclusive execution lock and validate its checkpoint before
+    /// calling this method; the sequence guard prevents stale validation.
+    pub async fn reopen_run(&self, id: &str, expected_sequence: i64) -> Result<AgentRun> {
+        ensure!(expected_sequence > 0, "invalid expected run sequence");
+        let mut tx = self.pool.begin().await?;
+        let previous: Option<String> = sqlx::query_scalar("UPDATE agent_runs SET updated_at = updated_at WHERE id = ? AND workspace_id = ? AND last_sequence = ? AND status IN ('running', 'failed', 'cancelled') RETURNING status")
+            .bind(id).bind(&self.workspace_id).bind(expected_sequence).fetch_optional(&mut *tx).await?;
+        let previous = previous
+            .context("run not found in workspace, completed, or changed since validation")?;
+        let unsafe_tools: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tool_invocations WHERE run_id = ? AND status != 'completed')")
+            .bind(id).fetch_one(&mut *tx).await?;
+        ensure!(
+            !unsafe_tools,
+            "cannot resume run with incomplete, failed, or denied tool invocations"
+        );
+        sqlx::query("UPDATE agent_runs SET status = 'running', output = NULL, error = NULL, completed_at = NULL WHERE id = ? AND workspace_id = ?")
+            .bind(id).bind(&self.workspace_id).execute(&mut *tx).await?;
+        self.append_in(
+            &mut tx,
+            id,
+            "run.resumed",
+            &json!({"previous_status": previous, "previous_sequence": expected_sequence}),
+        )
+        .await?;
+        let run = sqlx::query_as("SELECT * FROM agent_runs WHERE id = ? AND workspace_id = ?")
+            .bind(id)
+            .bind(&self.workspace_id)
+            .fetch_one(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(run)
+    }
+
+    /// Record metadata after the caller durably publishes the artifact file.
+    /// Paths are normalized relative to the workspace root. File
+    /// contents and filesystem containment are validated by the runtime.
+    pub async fn record_artifact(
+        &self,
+        id: &str,
+        relative_path: &str,
+        sha256: &str,
+        size: u64,
+    ) -> Result<i64> {
+        ensure!(
+            !relative_path.is_empty()
+                && relative_path.len() <= 1024
+                && !relative_path.contains(['\\', ':'])
+                && !relative_path.chars().any(char::is_control)
+                && relative_path
+                    .split('/')
+                    .all(|part| !part.is_empty() && part != "." && part != ".."),
+            "artifact path must be normalized and relative"
+        );
+        ensure!(
+            sha256.len() == 64
+                && sha256
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)),
+            "invalid artifact SHA256"
+        );
+        ensure!(size <= MAX_ARTIFACT_BYTES, "artifact exceeds size limit");
+        let mut tx = self.pool.begin().await?;
+        // Acquire the write lock before checking for a conflicting path.
+        let found: Option<String> = sqlx::query_scalar("UPDATE agent_runs SET updated_at = updated_at WHERE id = ? AND workspace_id = ? AND status = 'running' RETURNING id")
+            .bind(id).bind(&self.workspace_id).fetch_optional(&mut *tx).await?;
+        ensure!(
+            found.is_some(),
+            "run not found in workspace or already terminal"
+        );
+        let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM agent_events WHERE run_id = ? AND event_type = 'artifact.created' AND json_extract(payload, '$.relative_path') = ?)")
+            .bind(id).bind(relative_path).fetch_one(&mut *tx).await?;
+        ensure!(!exists, "artifact path already recorded");
+        let sequence = self
+            .append_in(
+                &mut tx,
+                id,
+                "artifact.created",
+                &json!({"relative_path": relative_path, "sha256": sha256, "size": size}),
+            )
+            .await?;
+        tx.commit().await?;
+        Ok(sequence)
+    }
+
+    pub async fn artifacts(&self, id: &str) -> Result<Vec<ArtifactMetadata>> {
+        self.get_run(id)
+            .await?
+            .context("run not found in workspace")?;
+        let events: Vec<AgentEvent> = sqlx::query_as("SELECT e.* FROM agent_events e JOIN agent_runs r ON r.id = e.run_id WHERE e.run_id = ? AND r.workspace_id = ? AND e.event_type = 'artifact.created' ORDER BY e.sequence")
+            .bind(id).bind(&self.workspace_id).fetch_all(&self.pool).await?;
+        events
+            .into_iter()
+            .map(|event| {
+                let mut payload = event.payload.0;
+                payload["sequence"] = json!(event.sequence);
+                serde_json::from_value(payload).context("invalid artifact metadata")
+            })
+            .collect()
+    }
+
+    /// Terminal runs reject ordinary writes; recovery requires `reopen_run`.
     pub async fn finish_run(&self, id: &str, outcome: RunOutcome) -> Result<()> {
         let (status, output, error) = match outcome {
             RunOutcome::Completed(output) => ("completed", Some(output), None),

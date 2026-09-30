@@ -13,7 +13,8 @@ MCP server behavior SHALL remain available without acquiring an execution loop.
 
 Developer tools, capability metadata and interactive approvals are defined by
 [SPEC-0018](0018-developer-tools-and-approvals.md). MCP client tools, delegation,
-streaming and safe resume remain later slices.
+and streaming remain later slices. Recovery is defined by
+[SPEC-0019](0019-checkpoints-recovery-and-artifacts.md).
 
 ## Execution
 
@@ -49,8 +50,7 @@ without a cancellation value SHALL NOT cancel a run.
 
 If final persistence fails, the call SHALL return a storage error with the run ID;
 it SHALL NOT claim that terminal state was durably recorded. Abrupt process death
-can leave a run marked running. This slice does not implement crash recovery or
-resume.
+can leave a run marked running. Recovery eligibility and ownership are defined by SPEC-0019.
 
 ## Workspace binding
 
@@ -128,13 +128,14 @@ Invocation rows SHALL retain arguments and successful results as local execution
 data. Their events SHALL retain call identity and status rather than copying
 arguments/results. Run input and final output are also persisted. These records
 can contain project content; this slice does not add a retention/purge policy.
-Model conversation snapshots are not yet persisted, so this history does not
-claim resumability.
+Versioned conversation snapshots and conservative resume eligibility are defined
+by SPEC-0019. Large final output artifacts follow that spec as well.
 
 ## CLI
 
 ```text
 ctx agent run <name> <input> [--json] [--non-interactive]
+ctx agent resume <run-id> [--json] [--non-interactive]
 ctx agent history [--limit N] [--json]
 ctx agent inspect <run-id> [--after-sequence N] [--limit N] [--json]
 ```
@@ -150,7 +151,7 @@ to 200 events, ordered by sequence, with an exclusive `after-sequence` cursor.
 Both limits SHALL accept 1–1000; the event cursor SHALL be nonnegative.
 
 Inspection JSON SHALL contain `run`, `events`, `tool_invocations` (status metadata
-only) and `next_after_sequence`. A full event page SHALL return its final sequence
+only), `artifacts` metadata and `next_after_sequence`. A full event page SHALL return its final sequence
 as a cursor; the next page can be empty. The history output SHALL be an array of run
 records. Tool arguments/results remain in SQLite and are omitted from CLI inspect
 output to avoid embedding large document payloads in inspection output.
