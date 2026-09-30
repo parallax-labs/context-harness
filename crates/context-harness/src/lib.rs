@@ -98,7 +98,11 @@
 //! See [`config`] for all available options and [`config::load_config`] for
 //! validation rules.
 
+pub mod agent_model;
+pub mod agent_resource;
+pub mod agent_runtime;
 pub mod agent_script;
+pub mod agent_store;
 pub mod agents;
 pub mod app_store;
 pub mod chunk;

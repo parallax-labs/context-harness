@@ -1,0 +1,313 @@
+# DESIGN-0011: Local Agent Runtime Execution Plan
+
+**Status:** Reference
+**Date:** 2026-09-25  
+**Author:** Context Harness contributors  
+**Related:** [DESIGN-0010](0010-local-agent-runtime.md), [ADR-0024](../adr/0024-local-agent-runtime.md)
+
+## Scope clarification (2026-09-30)
+
+The nine slices below describe the implemented initial runtime, not completion of
+all declarative architecture in DESIGN-0010. Tool selection is declarative, but
+standalone tool bindings and runtime integration of configured Lua/Rust extensions
+remain incomplete; local validation still branches on tool names. This gap is now
+tracked by [PRD-0013](../prd/0013-declarative-tool-bindings.md),
+[DESIGN-0013](0013-declarative-tool-bindings.md) and proposed
+[ADR-0025](../adr/0025-declarative-tool-bindings.md). Wiki-manager work is deferred
+until that foundation is complete. The original DESIGN-0010 remains unchanged.
+
+## Context
+
+Execute DESIGN-0010 incrementally while keeping ingestion, retrieval, existing
+agents, and MCP prompt projection working. The first deliverable is persistence,
+with no LLM, provider credentials, or network service required.
+
+## Proposal
+
+Keep early runtime code in the existing application crate. SQLite runtime history
+is an application responsibility, exposed through `SqliteAppStore::agent_runs`;
+it does not expand the portable core search `Store` trait. Reuse the application's
+pool and migrations. Extract an internal agent crate when the loop and provider
+interfaces establish a useful dependency boundary.
+
+Runs bind to the resolved workspace ID at creation. The store scopes reads and
+writes to that ID. Event sequence allocation, run state updates, and checkpoint
+creation use transactions. Checkpoint state is versioned JSON; runtime code will
+validate its conversation/resource/policy schema before resume. Credentials must
+never be embedded in resource snapshots or event payloads.
+
+## Implementation Plan
+
+Each row is a reviewable delivery slice in dependency order. Add executable
+acceptance tests and update this checklist as each slice lands.
+
+| Slice | Deliverables | Acceptance gate | Status |
+|---|---|---|---|
+| 1. Persistence | Four runtime tables; workspace-bound run creation/history; paginated ordered events; terminal transitions; versioned checkpoint save/load | Synthetic run survives reopen/migration; concurrent appends have unique ordered sequences; failures roll back; other workspaces cannot access it | Complete |
+| 2. Agent resources | Standalone TOML definitions; global/workspace precedence; model references, limits and policy parsing; extend existing agent list/show/validate | Old TOML/Lua/Rust agents still resolve; malformed/unknown configuration fails clearly; workspace override tests | Complete |
+| 3. Model boundary | Provider-neutral request/response/tool/usage types; registry; deterministic fake; one production provider | Fake and provider contract tests cover tool calls, failures and usage; credentials resolved from environment and excluded from history | Complete |
+| 4. Execution loop | Resolve agent/context/workspace; model/tool iterations through ToolRegistry; ctx agent run/history/inspect; JSON output; turn/time/cancellation limits | Fake model searches/gets context over multiple turns and completes with persisted history; terminal errors recorded | Complete |
+| 5. Developer capabilities | Read/search, git status/diff, patch/process tools; capability metadata; policy intersection; persisted approvals | Read-only policy blocks writes/processes regardless of prompt; path escape tests; non-interactive execution never silently approves | Complete |
+| 6. Resume/artifacts | Typed checkpoint schema; resume command; interruption handling; artifact files and metadata | Crash tests around model calls and tool side effects; no automatic replay of uncertain non-idempotent tool execution; workspace/version checks | Complete |
+| 7. MCP client | External server config/lifecycle, tool discovery adapters and namespacing | External fixture tool runs through the same registry/policy/event path; timeout/disconnect handling | Complete |
+| 8. Delegation | Controlled agent.invoke; parent/root run IDs; depth/turn/time budgets; inherited permission ceilings | Child execution is attributable and bounded; child cannot increase parent privileges | Complete |
+| 9. MCP compatibility | Project resource-backed executable agents as stateless MCP prompts | Existing prompt clients and Lua/Rust resolution remain compatible; full regression and end-to-end first-target demo | Complete |
+
+Slices 2 and 3 depend on slice 1; slice 4 joins them. Basic declared-tool
+allowlisting and deny-by-default treatment of privileged/unknown capabilities
+must ship with slice 4, before developer tools in slice 5. MCP compatibility
+regressions run throughout; slice 9 is the final resource projection gate.
+The optional local queue follows these milestones only if direct invocation
+proves insufficient.
+
+### First slice boundaries
+
+- Add `agent_store` in the application crate and idempotent schema installation.
+- Store run metadata, start/terminal events, arbitrary non-lifecycle runtime
+  events, and opaque versioned snapshots. Timestamps use Unix milliseconds.
+- Reserve lifecycle/checkpoint events for atomic state-changing APIs.
+- Add the tool invocation table now; transactional invocation lifecycle APIs
+  arrive with the tool loop (slice 4), when call/result types are defined.
+- Keep terminal runs immutable for now. Resume must define explicit transitions
+  for interrupted runs; it must not rewrite completed history.
+- No CLI run command is advertised until it can actually execute an agent.
+
+## Alternatives Considered
+
+- A new crate immediately adds dependency churn before runtime types stabilize;
+  keep the module boundary extractable instead.
+- Expanding the core Store trait couples portable retrieval consumers to runtime
+  execution. Use an application-level facade over the same database.
+- Reconstructing all state from events complicates resume. Retain both ordered
+  events and snapshots as DESIGN-0010 specifies.
+
+## Decisions and deferred work
+
+The implementation resolves the original sequencing questions as follows:
+
+1. The first provider is OpenAI Responses, with non-streaming tool calls and
+   structured output. [SPEC-0016](../spec/0016-model-runtime.md) defines the
+   implemented boundary. Streaming remains a later interface/transport extension.
+2. Resource hashing, replacement rules and legacy compatibility are resolved by
+   [SPEC-0015](../spec/0015-agent-resources.md). Stateless executable-resource projection
+   into MCP is defined by [SPEC-0022](../spec/0022-resource-prompt-projection.md).
+3. Model events retain metadata; tool rows and checkpoints retain local project
+   data. [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md) defines
+   size limits, filesystem ownership and privacy boundaries. Automatic redaction
+   and retention pruning remain future work.
+4. [SPEC-0018](../spec/0018-developer-tools-and-approvals.md) defines host policy
+   and invocation approvals; [SPEC-0020](../spec/0020-mcp-client-tools.md) applies
+   them before external startup and calls. Unknown tools remain denied, and Lua
+   tools are not automatically exposed to the runtime.
+5. Checkpoint schema, ownership and conservative recovery are defined by
+   [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md). Uncertain tool
+   activity requires manual reconciliation; it is never automatically replayed.
+
+## Validation
+
+Use temporary file-backed SQLite databases so reopen, transactions, and concurrent
+writers exercise the production storage mechanism. Run persistence tests plus
+existing app-store/retrieval tests, workspace tests, formatting and Clippy.
+Provider-dependent acceptance will use deterministic fixtures in CI; live model
+smoke tests remain explicit and credential-dependent.
+
+### Slice 1 verification (2026-09-25)
+
+- `cargo test --workspace --no-default-features`: 196 passed, 3 performance
+  probes ignored. Existing ingestion, retrieval, CLI and MCP tests pass.
+- `cargo test -p context-harness --no-default-features --test agent_store`:
+  4 passed, including the final checkpoint-insert rollback assertion.
+- `cargo fmt --all -- --check` and `git diff --check`: passed.
+- `cargo clippy --workspace --all-targets --no-default-features`: completed;
+  the existing `chunks_exact_to_as_chunks` warning in core `embedding.rs:50`
+  remains. The strict `-D warnings` run stops on that warning; no warnings were
+  reported for the new persistence code.
+- Default embedding backends were not built in this slice; runtime persistence
+  introduces no embedding or provider dependency.
+
+### Slice 2 decisions and verification (2026-09-25)
+
+- Added strict standalone TOML resources with model aliases, execution limits,
+  capability declarations, provenance and SHA-256 content versions.
+- Workspace replacement requires `agent.override = true` and replaces the whole
+  definition. Explicit/pinned configs load only config-adjacent `agents` files.
+  Legacy name collisions fail combined catalog validation rather than silently
+  replacing existing prompt agents.
+- Added `agent show`, `agent validate`, JSON list/show output and static prompt
+  previews through `agent test`. Targeted legacy Lua tests retain their original
+  behavior even when unrelated definitions are broken.
+- Added [SPEC-0015](../spec/0015-agent-resources.md) as the authoritative contract.
+  Provider/tool availability and runtime authorization are not yet asserted by
+  declaration validation. Existing MCP registration is unchanged.
+- `cargo test --workspace --no-default-features`: 207 passed, 3 ignored
+  performance probes; 11 new resource tests included.
+- `cargo clippy --workspace --all-targets --no-default-features`: completed with
+  only the existing core embedding warning recorded above.
+- Formatting and diff whitespace checks passed. Default embedding backends were
+  not built in this slice.
+
+### Slice 3 decisions and verification (2026-09-25)
+
+- Added the public `agent_model` library module: neutral request/response types,
+  `ModelProvider`, registry, typed errors, and deterministic scripted fake.
+- Added OpenAI Responses with caller-owned history, function calls and results,
+  opaque reasoning continuation, structured output, usage and explicit finish
+  reasons. No default model is imposed; aliases retain configured model IDs.
+- HTTP calls have bounded response size/time and no automatic retries or
+  redirects. Credentials load lazily from environment. Tests use local fixtures;
+  no live model call was made.
+- Recorded calls bind to existing workspace/run/model identity and persist
+  correlated request/response/failure metadata. Raw prompts, generated text,
+  continuation items and HTTP errors are excluded from events. Conversation
+  persistence and safe recovery remain the checkpoint/runtime layer's job.
+- Added [SPEC-0016](../spec/0016-model-runtime.md). Streaming is deferred;
+  initial generation returns complete responses. The model API can be invoked
+  directly from Rust without an agent loop or a new CLI command.
+- `cargo test --workspace --no-default-features`: 221 passed, 3 ignored
+  performance probes, including 8 adapter tests and 6 model/store integration tests.
+- Final focused adapter tests passed after preserving original tool names in
+  wire descriptions. Formatting and diff checks passed.
+- Clippy completed with only the existing core embedding warning. Default
+  embedding backends and live provider calls were not exercised.
+
+### Slice 4 decisions and verification (2026-09-26)
+
+- Added static-resource execution and `ctx agent run/history/inspect`, with JSON
+  output, event pagination, cooperative timeout, Ctrl-C cancellation and model
+  turn limits. Failures return a durable run record when persistence succeeds.
+- Runs bind to a canonical cwd-root identity and the configured database. Shared
+  databases retain separate run histories for different roots. Registered
+  multi-workspace CLI selection is deferred; existing MCP routing is unchanged.
+- Reused `ToolRegistry`, `Tool`, core search and `SqliteStore` through fixed
+  read-only adapters for keyword search/get. The original sources tool starts
+  Git, and semantic/hybrid search can use network/sidecar writes, so those paths
+  are excluded until capability-aware adapters exist.
+- Added transactional invocation lifecycle APIs. Terminal failure/cancellation
+  atomically fails unfinished tools; illegal transitions roll back their events.
+  Metadata events omit arguments/results; invocation rows retain local project
+  data with a 1 MiB serialized successful-result limit. Retention/artifact work
+  remains in the later checkpoint slice.
+- Added [SPEC-0017](../spec/0017-local-agent-execution.md), including a fake-provider
+  CLI example and the distinction between intentional runtime-history writes and
+  model-requested read-only retrieval.
+- `cargo test --workspace --no-default-features`: 243 passed, 3 ignored
+  performance probes. Includes a real indexed search/get flow across three model
+  turns, strict arguments, denied capabilities, execution limits, cancellation,
+  tool lifecycle cleanup, workspace isolation and CLI inspection.
+- Clippy completed with only the existing embedding warning. Formatting and
+  diff checks passed. Default embedding backends and live provider calls were
+  not exercised.
+
+### Slice 5 decisions and verification (2026-09-30)
+
+- Added workspace read/search/patch, Git status/diff and explicit argv process
+  execution through the existing Tool registry. Unknown capability metadata stays
+  denied; existing MCP extension behavior is unchanged.
+- Intersect agent permission declarations with a host-owned policy. Default host
+  policy permits reads and requires per-invocation approval for writes/processes.
+  Non-interactive execution denies required approvals; resources cannot widen the
+  host policy. Trusted library integrations may supply a policy and approval UI.
+- Persist approval lifecycle events atomically; terminal cancellation denies
+  pending approvals before failing unfinished tools. Unix terminal prompts escape
+  arguments, discard queued consent and remain cancellable.
+- Added [SPEC-0018](../spec/0018-developer-tools-and-approvals.md), documenting
+  bounded path/file/process behavior, unsandboxed process privilege, direct-child
+  termination, and the lack of filesystem race/crash isolation.
+
+- `cargo test --workspace --no-default-features`: 266 passed, 3 ignored
+  performance probes. Final focused runtime tests passed after terminal escaping
+  and overlapping patch-match hardening.
+- Formatting and diff checks passed. Clippy completed with only the existing
+  core embedding warning. Default embedding backends and live providers were
+  not exercised.
+
+### Slice 6 decisions and verification (2026-09-30)
+
+- Added bounded typed conversation checkpoints at model boundaries and
+  `ctx agent resume`, with resource/model/config/policy binding validation.
+- Resume restores completed tool results, counts all model attempts, and retains
+  the original absolute deadline. Any unsafe activity after the latest snapshot
+  requires manual reconciliation; no uncertain tool is replayed.
+- Added exclusive Unix run ownership, optimistic transactional reopening and
+  append-only artifact metadata. Large final responses become immutable local
+  files with SHA-256/size references; inspect lists their metadata.
+- Added [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md), including
+  timeout/downtime behavior, unsupported platforms, local transcript privacy,
+  orphan files and unsandboxed-process limitations.
+
+- `cargo test --workspace --no-default-features`: 287 passed, 3 ignored
+  performance probes, including recovery CLI, interrupted tool/model execution,
+  ownership conflicts and unsafe paths, binding validation and artifact integrity.
+- Formatting and diff checks passed; Clippy completed with only the existing core
+  embedding warning. Default embedding backends and live providers were not
+  exercised. Recovery/filesystem tests ran on macOS Unix.
+
+### Slice 7 decisions and verification (2026-09-30)
+
+- Added strict stdio server configuration and per-run client sessions using the
+  pinned MCP SDK. Discovery creates namespaced existing-Tool adapters; only
+  agent-declared tools are advertised to the model.
+- Startup itself passes through durable tool history and approvals before spawning.
+  Every external call requires process and external-side-effect capability;
+  remote read-only hints cannot weaken policy. Default host policy requires
+  approval for both. Non-interactive execution never silently starts a server.
+- Bound frames, pagination/tool counts, arguments/results and RPC timeouts;
+  deny server callbacks, discard stderr, and stop direct children on shutdown.
+- Added [SPEC-0020](../spec/0020-mcp-client-tools.md). External sessions have no
+  checkpoint/resume in this slice; HTTP/OAuth and extension auto-discovery are
+  deferred. Existing MCP server behavior is unchanged.
+
+- `cargo test --workspace --no-default-features`: 297 passed, 3 ignored
+  performance probes. Final focused MCP tests: 8 passed, including two additional
+  tests for denied server callbacks and non-interactive CLI startup denial.
+- Formatting and diff checks passed. Clippy completed with only the existing core
+  embedding warning. Fixtures use local Python stdio; no live server, provider,
+  network call or default embedding backend was exercised.
+
+### Slice 8 decisions and verification (2026-09-30)
+
+- Added explicit named `agent.invoke` delegation through the existing tool
+  lifecycle, strict resource allowlists and the `agent_delegate` capability.
+- Each child gets its own durable identity and lineage. Permissions can only
+  narrow; inherited approvals remain required. Root turn/time budgets cover the
+  whole tree, with per-child limits, depth four and cycle rejection.
+- Parent terminal cleanup atomically closes running descendants, pending tools
+  and approvals. Inspection exposes parent/root/child identities and remains
+  read-only for older databases without lineage metadata.
+- Added [SPEC-0021](../spec/0021-agent-delegation.md). Tree/session recovery is
+  deliberately unsupported; independent child resume cannot reset authority or
+  shared budgets. Delegation is sequential, with no workflow engine.
+
+- `cargo test --workspace --no-default-features`: 317 passed, 3 ignored
+  performance probes. Includes resource/store/runtime delegation tests, inherited
+  approval and privilege checks, shared deadline/turn enforcement, and read-only
+  legacy lineage inspection.
+- Formatting and diff checks passed. Clippy completed with only the existing core
+  embedding warning. No live providers or default embedding backends exercised.
+
+### Slice 9 decisions and verification (2026-09-30)
+
+- Single-workspace CLI serving discovers standalone resources with the same
+  provenance and isolation as agent commands, projecting static prompts through
+  the existing Agent registry. Model calls, permissions and runtime-only tools
+  are not activated by prompt resolution.
+- Resource collisions with legacy/registry/Rust agents fail startup. Existing
+  library entry points preserve opt-in discovery; multi-workspace serving retains
+  its built-in-only behavior. Added [SPEC-0022](../spec/0022-resource-prompt-projection.md).
+- Protocol tests cover MCP initialization/list/get; CLI tests cover explicit and
+  environment config isolation plus legacy Lua/inline compatibility. A deterministic
+  implementer demo patches a temporary config, runs real local tests with approval,
+  delegates review, and verifies durable results and lineage.
+
+- `cargo test --workspace --no-default-features`: 322 passed, 3 ignored
+  performance probes. Final focused projection tests also passed after strengthening
+  the collision rollback assertion.
+- Formatting and diff checks passed. Clippy completed with only the existing core
+  embedding warning. No live provider or default embedding backend was exercised.
+
+All nine initial slices are complete within their documented boundaries; full
+declarative tool composition and runtime extension integration remain follow-up
+engineering in DESIGN-0013. Optional queueing, streaming, remote MCP
+transports, concurrent delegation, automatic retention and recovery of execution
+trees/external sessions remain deferred. Live-provider and default-embedding
+validation are separate from the deterministic acceptance suite.

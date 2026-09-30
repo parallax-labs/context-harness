@@ -122,6 +122,12 @@ impl SqliteAppStore {
         &self.pool
     }
 
+    /// Runtime history uses the same canonical database as ingestion/retrieval.
+    #[allow(dead_code)]
+    pub fn agent_runs(&self, workspace_id: &str) -> Result<crate::agent_store::AgentRunStore> {
+        crate::agent_store::AgentRunStore::new(self.pool.clone(), workspace_id)
+    }
+
     pub async fn close(&self) {
         self.pool.close().await;
     }

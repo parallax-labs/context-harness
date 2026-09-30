@@ -106,6 +106,7 @@ type ExtState = (Arc<ToolRegistry>, Arc<AgentRegistry>);
 /// # Returns
 ///
 /// Returns `Ok(())` when the server shuts down, or an error if binding fails.
+#[allow(dead_code)] // Public library entry point; the CLI supplies resource directories.
 pub async fn run_server(config: &Config) -> anyhow::Result<()> {
     run_server_with_extensions(
         config,
@@ -140,10 +141,23 @@ pub async fn run_server(config: &Config) -> anyhow::Result<()> {
 /// # Ok(())
 /// # }
 /// ```
+#[allow(dead_code)] // Public library entry point.
 pub async fn run_server_with_extensions(
     config: &Config,
     extra_tools: Arc<ToolRegistry>,
     extra_agents: Arc<AgentRegistry>,
+) -> anyhow::Result<()> {
+    run_server_with_resources(config, extra_tools, extra_agents, &[]).await
+}
+
+/// Start a single-workspace server with explicitly selected standalone resources.
+/// Resources project static prompts only; no runtime, credentials, or client
+/// processes are initialized. Existing library entry points do not discover cwd.
+pub async fn run_server_with_resources(
+    config: &Config,
+    extra_tools: Arc<ToolRegistry>,
+    extra_agents: Arc<AgentRegistry>,
+    directories: &[crate::agent_resource::ResourceDirectory],
 ) -> anyhow::Result<()> {
     let bind_addr = config.server.bind.clone();
     let config = Arc::new(config.clone());
@@ -235,6 +249,13 @@ pub async fn run_server_with_extensions(
             }
         }
     }
+
+    register_resource_prompts(
+        config.as_ref(),
+        directories,
+        &mut agent_registry,
+        &extra_agents,
+    )?;
 
     let agent_count = agent_registry.len() + extra_agents.len();
     if agent_count > 0 {
@@ -713,4 +734,25 @@ async fn handle_resolve_agent(
     Ok(Json(serde_json::to_value(prompt).map_err(|e| {
         tool_error(format!("failed to serialize agent prompt: {}", e))
     })?))
+}
+
+/// Register standalone prompt projections, rejecting collisions with all legacy
+/// sources (including registry Lua and caller-provided Rust agents) atomically.
+pub fn register_resource_prompts(
+    config: &Config,
+    directories: &[crate::agent_resource::ResourceDirectory],
+    agents: &mut AgentRegistry,
+    extra_agents: &AgentRegistry,
+) -> anyhow::Result<()> {
+    let resources = crate::agent_resource::load_resources(directories, config)?;
+    for name in resources.keys() {
+        anyhow::ensure!(
+            agents.find(name).is_none() && extra_agents.find(name).is_none(),
+            "agent resource conflicts with registered agent '{name}'; rename the resource or legacy agent"
+        );
+    }
+    for resource in resources.into_values() {
+        agents.register(Box::new(resource.definition.prompt_agent()));
+    }
+    Ok(())
 }

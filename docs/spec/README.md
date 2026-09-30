@@ -33,6 +33,14 @@ See [SPEC-0000](0000-spec-policy.md) for the full policy.
 | [0012](0012-storage-and-vector-index-interfaces.md) | Storage and Vector Index Interfaces | Authoritative |
 | [0013](0013-config-resolution.md) | Config Resolution and Directory Layout | Draft |
 | [0014](0014-multi-workspace-mcp-router.md) | Multi-Workspace MCP Router | Draft |
+| [0015](0015-agent-resources.md) | Standalone Agent Resources | Authoritative |
+| [0016](0016-model-runtime.md) | Model Runtime | Authoritative |
+| [0017](0017-local-agent-execution.md) | Local Agent Execution | Authoritative |
+| [0018](0018-developer-tools-and-approvals.md) | Developer Tools and Approvals | Authoritative |
+| [0019](0019-checkpoints-recovery-and-artifacts.md) | Checkpoints, Recovery and Artifacts | Authoritative |
+| [0020](0020-mcp-client-tools.md) | MCP Client Tools | Authoritative |
+| [0021](0021-agent-delegation.md) | Controlled Agent Delegation | Authoritative |
+| [0022](0022-resource-prompt-projection.md) | Resource Prompt Projection | Authoritative |
 
 ## Creating a New Spec
 

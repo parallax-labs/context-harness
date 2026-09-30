@@ -45,7 +45,14 @@
 //! ctx serve mcp --config ./config/ctx.toml
 //! ```
 
+#[allow(dead_code)]
+mod agent_model;
+mod agent_resource;
+#[allow(dead_code)]
+mod agent_runtime;
 mod agent_script;
+#[allow(dead_code)]
+mod agent_store;
 mod agents;
 mod app_store;
 mod chunk;
@@ -403,14 +410,60 @@ enum ToolAction {
 /// Agent management subcommands.
 #[derive(Subcommand)]
 enum AgentAction {
-    /// List all configured agents (TOML and Lua).
-    List,
+    /// Execute a standalone agent with policy-controlled local tools.
+    Run {
+        name: String,
+        input: String,
+        #[arg(long)]
+        json: bool,
+        /// Never prompt; deny tool calls that require approval.
+        #[arg(long)]
+        non_interactive: bool,
+    },
+    /// Resume an interrupted run from its latest safe checkpoint.
+    Resume {
+        run_id: String,
+        #[arg(long)]
+        json: bool,
+        #[arg(long)]
+        non_interactive: bool,
+    },
+    /// List this workspace's durable run history.
+    History {
+        #[arg(long, default_value_t = 20, value_parser = clap::value_parser!(u32).range(1..=1000))]
+        limit: u32,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Inspect a run and an ordered page of execution events.
+    Inspect {
+        run_id: String,
+        #[arg(long, default_value_t = 0, value_parser = clap::value_parser!(i64).range(0..))]
+        after_sequence: i64,
+        #[arg(long, default_value_t = 200, value_parser = clap::value_parser!(u32).range(1..=1000))]
+        limit: u32,
+        #[arg(long)]
+        json: bool,
+    },
+    /// List standalone resources and existing TOML/Lua agents.
+    List {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show an agent definition and its resource provenance.
+    Show {
+        name: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Validate agent resources, model references and existing agent definitions.
+    Validate,
     /// Test an agent by resolving its prompt.
     ///
     /// Loads the agent, calls its `resolve()` function with the provided
     /// arguments, and prints the resulting system prompt and messages.
     Test {
-        /// Agent name (as defined in `[agents.inline.<name>]` or `[agents.script.<name>]`).
+        /// Name of a standalone resource, inline TOML agent, or Lua agent.
         name: String,
         /// Agent arguments as `key=value` pairs.
         #[arg(long = "arg", value_parser = parse_key_val)]
@@ -679,6 +732,14 @@ async fn main() -> anyhow::Result<()> {
     }
     let resolved_config = config::load_config_for_cli(cli.config.clone())?;
     let config_path = resolved_config.path.clone();
+    let agent_resource_dirs = if matches!(
+        &cli.command,
+        Commands::Agent { .. } | Commands::Serve { .. }
+    ) {
+        agent_resource::cli_resource_directories(&resolved_config)?
+    } else {
+        vec![]
+    };
     let cfg = resolved_config.config;
 
     match cli.command {
@@ -810,7 +871,13 @@ async fn main() -> anyhow::Result<()> {
             // returns before single-config resolution; reaching here means
             // compatibility (single-workspace) mode.
             ServeService::Mcp { .. } => {
-                server::run_server(&cfg).await?;
+                server::run_server_with_resources(
+                    &cfg,
+                    std::sync::Arc::new(traits::ToolRegistry::new()),
+                    std::sync::Arc::new(agents::AgentRegistry::new()),
+                    &agent_resource_dirs,
+                )
+                .await?;
             }
         },
         Commands::Connector { action } => match action {
@@ -870,11 +937,58 @@ async fn main() -> anyhow::Result<()> {
         // Handled above (before config loading).
         Commands::Workspace { .. } => unreachable!(),
         Commands::Agent { action } => match action {
-            AgentAction::List => {
-                agent_script::list_agents(&cfg)?;
+            AgentAction::Run {
+                name,
+                input,
+                json,
+                non_interactive,
+            } => {
+                agent_runtime::cli::run(
+                    cfg,
+                    &agent_resource_dirs,
+                    &name,
+                    &input,
+                    json,
+                    non_interactive,
+                )
+                .await?;
+            }
+            AgentAction::Resume {
+                run_id,
+                json,
+                non_interactive,
+            } => {
+                agent_runtime::cli::resume(
+                    cfg,
+                    &agent_resource_dirs,
+                    &run_id,
+                    json,
+                    non_interactive,
+                )
+                .await?;
+            }
+            AgentAction::History { limit, json } => {
+                agent_runtime::cli::history(cfg, limit, json).await?;
+            }
+            AgentAction::Inspect {
+                run_id,
+                after_sequence,
+                limit,
+                json,
+            } => {
+                agent_runtime::cli::inspect(cfg, &run_id, after_sequence, limit, json).await?;
+            }
+            AgentAction::List { json } => {
+                agent_resource::list(&cfg, &agent_resource_dirs, json)?;
+            }
+            AgentAction::Show { name, json } => {
+                agent_resource::show(&cfg, &agent_resource_dirs, &name, json)?;
+            }
+            AgentAction::Validate => {
+                agent_resource::validate(&cfg, &agent_resource_dirs)?;
             }
             AgentAction::Test { name, args } => {
-                agent_script::test_agent(&name, args, &cfg).await?;
+                agent_resource::test(&cfg, &agent_resource_dirs, &name, args).await?;
             }
             AgentAction::Init { .. } => {
                 // Handled above (before config loading)

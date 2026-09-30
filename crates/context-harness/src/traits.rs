@@ -192,6 +192,12 @@ pub trait Connector: Send + Sync {
 /// ```
 #[async_trait]
 pub trait Tool: Send + Sync {
+    /// Runtime capability requirements. Unknown metadata is denied by the local
+    /// agent runtime; existing MCP tools retain their existing behavior.
+    fn capabilities(&self) -> Option<Vec<crate::agent_resource::Capability>> {
+        None
+    }
+
     /// Returns the tool's name.
     ///
     /// Used as the route path (`POST /tools/{name}`) and in

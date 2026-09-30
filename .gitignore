@@ -23,3 +23,6 @@
 /site/static/site-index.json
 /site/docs/ctx-docs.sqlite
 
+
+# Local agent execution locks and artifacts
+.ctx/runs/

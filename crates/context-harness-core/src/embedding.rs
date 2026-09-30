@@ -47,8 +47,10 @@ pub fn vec_to_blob(vec: &[f32]) -> Vec<u8> {
 /// Reverses [`vec_to_blob`]: reads 4-byte little-endian `f32` values
 /// from the byte slice.
 pub fn blob_to_vec(blob: &[u8]) -> Vec<f32> {
-    blob.chunks_exact(4)
-        .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+    blob.as_chunks::<4>()
+        .0
+        .iter()
+        .map(|chunk| f32::from_le_bytes(*chunk))
         .collect()
 }
 
