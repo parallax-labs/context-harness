@@ -410,13 +410,13 @@ enum ToolAction {
 /// Agent management subcommands.
 #[derive(Subcommand)]
 enum AgentAction {
-    /// Execute a standalone agent with local read-only context tools.
+    /// Execute a standalone agent with policy-controlled local tools.
     Run {
         name: String,
         input: String,
         #[arg(long)]
         json: bool,
-        /// Never prompt for approvals (privileged tools are currently denied in all modes).
+        /// Never prompt; deny tool calls that require approval.
         #[arg(long)]
         non_interactive: bool,
     },

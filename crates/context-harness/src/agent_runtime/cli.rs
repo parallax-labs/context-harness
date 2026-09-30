@@ -10,9 +10,8 @@ pub async fn run(
     name: &str,
     input: &str,
     json_output: bool,
-    _non_interactive: bool,
+    non_interactive: bool,
 ) -> Result<()> {
-    // No approval-capable tools are exposed yet, so both CLI modes deny them.
     let mut resources = load_resources(directories, &config)?;
     let resource = resources
         .remove(name)
@@ -24,7 +23,13 @@ pub async fn run(
         .context("model alias not found")?
         .clone();
     let models = ModelRegistry::from_config(&BTreeMap::from([(alias.clone(), definition)]))?;
-    let runtime = AgentRuntime::new(config, &std::env::current_dir()?, models).await?;
+    let mut runtime = AgentRuntime::new(config, &std::env::current_dir()?, models).await?;
+    if !non_interactive {
+        runtime = runtime.with_policy(
+            RuntimePolicy::default(),
+            Arc::new(super::terminal::TerminalApprovals),
+        );
+    }
     let (sender, receiver) = watch::channel(false);
     let signal = tokio::spawn(async move {
         let _ = tokio::signal::ctrl_c().await;

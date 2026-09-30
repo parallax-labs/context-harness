@@ -114,6 +114,9 @@ struct ReadSearch {
 }
 #[async_trait]
 impl Tool for ReadSearch {
+    fn capabilities(&self) -> Option<Vec<crate::agent_resource::Capability>> {
+        Some(vec![crate::agent_resource::Capability::ReadOnly])
+    }
     fn name(&self) -> &str {
         "search"
     }
@@ -158,6 +161,9 @@ struct ReadGet {
 }
 #[async_trait]
 impl Tool for ReadGet {
+    fn capabilities(&self) -> Option<Vec<crate::agent_resource::Capability>> {
+        Some(vec![crate::agent_resource::Capability::ReadOnly])
+    }
     fn name(&self) -> &str {
         "get"
     }

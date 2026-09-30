@@ -36,6 +36,7 @@ See [SPEC-0000](0000-spec-policy.md) for the full policy.
 | [0015](0015-agent-resources.md) | Standalone Agent Resources | Authoritative |
 | [0016](0016-model-runtime.md) | Model Runtime | Authoritative |
 | [0017](0017-local-agent-execution.md) | Local Agent Execution | Authoritative |
+| [0018](0018-developer-tools-and-approvals.md) | Developer Tools and Approvals | Authoritative |
 
 ## Creating a New Spec
 

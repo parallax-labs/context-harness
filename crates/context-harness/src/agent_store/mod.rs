@@ -4,6 +4,7 @@
 //! together. Event sequences are allocated by a write statement, avoiding a
 //! read/modify/write race between concurrent writers. Timestamps are Unix ms.
 
+use crate::agent_resource::Capability;
 use anyhow::{ensure, Context, Result};
 use chrono::Utc;
 use serde::Serialize;
@@ -153,7 +154,8 @@ impl AgentRunStore {
         ensure!(
             !event_type.starts_with("run.")
                 && !event_type.starts_with("checkpoint.")
-                && !event_type.starts_with("tool."),
+                && !event_type.starts_with("tool.")
+                && !event_type.starts_with("approval."),
             "reserved event type"
         );
         let mut tx = self.pool.begin().await?;
@@ -235,6 +237,8 @@ impl AgentRunStore {
             "cannot complete run with unfinished tools"
         );
         for call_id in unfinished {
+            self.deny_pending_approval(&mut tx, id, &call_id, "run interrupted")
+                .await?;
             self.append_in(
                 &mut tx,
                 id,
@@ -284,10 +288,117 @@ impl AgentRunStore {
         Ok(())
     }
 
+    /// Request one decision covering all approval-required capabilities of a call.
+    /// The event log is the authoritative approval state; no separate grant survives
+    /// this invocation or can authorize a later call.
+    pub async fn request_approval(
+        &self,
+        id: &str,
+        call_id: &str,
+        capabilities: &[Capability],
+    ) -> Result<()> {
+        ensure!(
+            !capabilities.is_empty(),
+            "approval capabilities are required"
+        );
+        let unique: std::collections::HashSet<_> = capabilities.iter().collect();
+        ensure!(
+            unique.len() == capabilities.len(),
+            "duplicate approval capability"
+        );
+        let mut tx = self.pool.begin().await?;
+        self.lock_requested_tool(&mut tx, id, call_id).await?;
+        ensure!(
+            Self::approval_state(&mut tx, id, call_id).await?.is_none(),
+            "approval already requested"
+        );
+        self.append_in(
+            &mut tx,
+            id,
+            "approval.requested",
+            &json!({"call_id": call_id, "capabilities": capabilities}),
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    pub async fn decide_approval(&self, id: &str, call_id: &str, granted: bool) -> Result<()> {
+        let mut tx = self.pool.begin().await?;
+        self.lock_requested_tool(&mut tx, id, call_id).await?;
+        ensure!(
+            Self::approval_state(&mut tx, id, call_id).await?.as_deref()
+                == Some("approval.requested"),
+            "approval is not pending"
+        );
+        let event_type = if granted {
+            "approval.granted"
+        } else {
+            "approval.denied"
+        };
+        self.append_in(&mut tx, id, event_type, &json!({"call_id": call_id}))
+            .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    async fn lock_requested_tool(
+        &self,
+        tx: &mut Transaction<'_, Sqlite>,
+        id: &str,
+        call_id: &str,
+    ) -> Result<()> {
+        // A write first serializes concurrent requests and decisions before their
+        // read of the append-only event log.
+        let found: Option<String> = sqlx::query_scalar("UPDATE agent_runs SET updated_at = updated_at WHERE id = ? AND workspace_id = ? AND status = 'running' RETURNING id")
+            .bind(id).bind(&self.workspace_id).fetch_optional(&mut **tx).await?;
+        ensure!(
+            found.is_some(),
+            "run not found in workspace or already terminal"
+        );
+        let pending: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tool_invocations WHERE run_id = ? AND call_id = ? AND status = 'requested')")
+            .bind(id).bind(call_id).fetch_one(&mut **tx).await?;
+        ensure!(pending, "tool invocation is not pending");
+        Ok(())
+    }
+
+    async fn approval_state(
+        tx: &mut Transaction<'_, Sqlite>,
+        id: &str,
+        call_id: &str,
+    ) -> Result<Option<String>> {
+        Ok(sqlx::query_scalar("SELECT event_type FROM agent_events WHERE run_id = ? AND event_type IN ('approval.requested', 'approval.granted', 'approval.denied') AND json_extract(payload, '$.call_id') = ? ORDER BY sequence DESC LIMIT 1")
+            .bind(id).bind(call_id).fetch_optional(&mut **tx).await?)
+    }
+
+    async fn deny_pending_approval(
+        &self,
+        tx: &mut Transaction<'_, Sqlite>,
+        id: &str,
+        call_id: &str,
+        reason: &str,
+    ) -> Result<()> {
+        if Self::approval_state(tx, id, call_id).await?.as_deref() == Some("approval.requested") {
+            self.append_in(
+                tx,
+                id,
+                "approval.denied",
+                &json!({"call_id": call_id, "reason": reason}),
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
     pub async fn start_tool(&self, id: &str, call_id: &str) -> Result<()> {
         let mut tx = self.pool.begin().await?;
         self.append_in(&mut tx, id, "tool.started", &json!({"call_id": call_id}))
             .await?;
+        let approval = Self::approval_state(&mut tx, id, call_id).await?;
+        ensure!(
+            approval.is_none() || approval.as_deref() == Some("approval.granted"),
+            "tool approval is pending or denied"
+        );
         let changed = sqlx::query("UPDATE tool_invocations SET status = 'started', started_at = ? WHERE run_id = ? AND call_id = ? AND status = 'requested'")
             .bind(Utc::now().timestamp_millis()).bind(id).bind(call_id).execute(&mut *tx).await?.rows_affected();
         ensure!(changed == 1, "tool invocation is not pending");
@@ -317,6 +428,8 @@ impl AgentRunStore {
         let changed = sqlx::query("UPDATE tool_invocations SET status = ?, result = ?, error = ?, completed_at = ? WHERE run_id = ? AND call_id = ? AND status = ?")
             .bind(status).bind(result).bind(error).bind(Utc::now().timestamp_millis()).bind(id).bind(call_id).bind(expected).execute(&mut *tx).await?.rows_affected();
         ensure!(changed == 1, "invalid tool invocation transition");
+        self.deny_pending_approval(&mut tx, id, call_id, "tool denied")
+            .await?;
         tx.commit().await?;
         Ok(())
     }

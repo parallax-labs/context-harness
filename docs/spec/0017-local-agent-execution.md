@@ -11,8 +11,9 @@ alias and declared tools. The initial runtime SHALL support local keyword search
 and indexed document retrieval. Legacy TOML/Lua/Rust prompt interfaces and existing
 MCP server behavior SHALL remain available without acquiring an execution loop.
 
-Developer tools, generic capability metadata for extensions, interactive approval,
-MCP client tools, delegation, streaming and safe resume remain later slices.
+Developer tools, capability metadata and interactive approvals are defined by
+[SPEC-0018](0018-developer-tools-and-approvals.md). MCP client tools, delegation,
+streaming and safe resume remain later slices.
 
 ## Execution
 
@@ -69,6 +70,7 @@ indexed context is shared according to that explicit configuration.
 ## Tools and permissions
 
 The runtime SHALL own a fixed `ToolRegistry` containing `search` and `get` adapters
+and the developer tools specified in SPEC-0018
 that implement the existing `Tool` trait. It SHALL NOT load Lua/Rust extensions or
 trust an arbitrary tool's name as proof that it is read-only.
 
@@ -78,9 +80,10 @@ search algorithm and SQLite store; get SHALL reuse core document retrieval.
 Runtime initialization/history writes remain intentional application operations
 outside model tool permissions.
 
-Declared tools SHALL exist in that restricted registry, and `read_only` SHALL be
-allowed without approval before those tools are advertised to the model. Unknown
-or approval-only capabilities SHALL NOT be implicitly granted. Runtime dispatch
+Declared tools SHALL exist in that restricted registry, with capabilities permitted
+by both agent and host policy as defined in SPEC-0018. Approval-eligible tools may
+be advertised, but SHALL NOT execute before the required per-call approval.
+Unknown capabilities SHALL NOT be implicitly granted. Runtime dispatch
 SHALL check declarations, permissions, availability and arguments again before
 execution. Undeclared calls rejected by the model boundary SHALL NOT dispatch.
 The configured model's provider transport is separate from tool capabilities.
@@ -139,8 +142,8 @@ ctx agent inspect <run-id> [--after-sequence N] [--limit N] [--json]
 `run` SHALL print its durable record as JSON when requested; human output includes
 run ID, status, final output or failure. It SHALL exit nonzero for failed/cancelled
 runs, while preserving the JSON run record on stdout when creation succeeded.
-Both modes currently deny approval-required tools; `--non-interactive` SHALL never
-silently approve anything. Setup failures before creation need not have a run ID.
+Interactive approval follows SPEC-0018; `--non-interactive` SHALL deny
+approval-required calls and never silently approve anything. Setup failures before creation need not have a run ID.
 
 History SHALL default to 20 runs, in most-recent-first order. Inspect SHALL default
 to 200 events, ordered by sequence, with an exclusive `after-sequence` cursor.

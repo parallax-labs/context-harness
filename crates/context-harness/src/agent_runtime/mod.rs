@@ -1,11 +1,15 @@
 //! Bounded direct execution of static agent resources. Runtime persistence is
 //! intentionally writable; model-requested retrieval uses read-only connections.
 pub mod cli;
+mod developer;
+pub mod policy;
+mod terminal;
 mod tools;
+use policy::{ApprovalHandler, ApprovalRequest, Authorization, DenyApprovals, RuntimePolicy};
 
 use crate::{
     agent_model::{FinishReason, ModelMessage, ModelRegistry, ModelRequest, ModelTool},
-    agent_resource::{Capability, LoadedAgentResource},
+    agent_resource::LoadedAgentResource,
     agent_store::{AgentRun, AgentRunStore, RunOutcome, ToolOutcome},
     app_store::SqliteAppStore,
     config::Config,
@@ -40,6 +44,8 @@ pub struct AgentRuntime {
     store: AgentRunStore,
     tools: ToolRegistry,
     models: ModelRegistry,
+    policy: RuntimePolicy,
+    approvals: Arc<dyn ApprovalHandler>,
 }
 impl AgentRuntime {
     /// Initialize runtime history and bind all context reads to this config/DB.
@@ -51,14 +57,30 @@ impl AgentRuntime {
         SqliteAppStore::initialize_config(&config).await?;
         let app = SqliteAppStore::connect(&config).await?;
         let store = app.agent_runs(&workspace_id(&root)?)?;
-        let tools = tools::registry(&config).await?;
+        let mut tools = tools::registry(&config).await?;
+        developer::register(&mut tools, &root)?;
         Ok(Self {
             config: Arc::new(config),
             root,
             store,
             tools,
             models,
+            policy: RuntimePolicy::default(),
+            approvals: Arc::new(DenyApprovals),
         })
+    }
+
+    /// A trusted host may supply an explicit policy and approval UI. Agent TOML
+    /// cannot change this ceiling. By default privileged calls need approval,
+    /// and the library denies approvals until a handler is installed.
+    pub fn with_policy(
+        mut self,
+        policy: RuntimePolicy,
+        approvals: Arc<dyn ApprovalHandler>,
+    ) -> Self {
+        self.policy = policy;
+        self.approvals = approvals;
+        self
     }
 
     pub fn store(&self) -> &AgentRunStore {
@@ -119,14 +141,13 @@ impl AgentRuntime {
             let tool = self
                 .tools
                 .find(name)
-                .context("unsupported runtime tool declaration (only search/get are available)")?;
+                .context("unsupported runtime tool declaration")?;
+            let capabilities = tool
+                .capabilities()
+                .context("tool capability metadata is unavailable")?;
             ensure!(
-                agent.permissions.allowed().contains(&Capability::ReadOnly)
-                    && !agent
-                        .permissions
-                        .require_approval
-                        .contains(&Capability::ReadOnly),
-                "read-only tool capability is not allowed without approval"
+                self.policy.authorize(&agent.permissions, &capabilities) != Authorization::Denied,
+                "tool capability is not permitted by agent and host policy"
             );
             declarations.push(ModelTool {
                 name: name.clone(),
@@ -140,7 +161,8 @@ impl AgentRuntime {
                 "context.resolved",
                 &json!({
                     "workspace_root": self.root, "agent_version": resource.version,
-                    "tools": agent.tools, "retrieval": "keyword"
+                    "tools": agent.tools, "retrieval": "keyword",
+                    "host_policy": {"allow":self.policy.allow, "require_approval":self.policy.require_approval}
                 }),
             )
             .await?;
@@ -183,14 +205,20 @@ impl AgentRuntime {
                 self.store
                     .request_tool(id, &call.id, &call.name, &call.arguments)
                     .await?;
-                let allowed = agent.tools.contains(&call.name)
-                    && agent.permissions.allowed().contains(&Capability::ReadOnly)
-                    && !agent
-                        .permissions
-                        .require_approval
-                        .contains(&Capability::ReadOnly)
-                    && self.tools.find(&call.name).is_some();
-                if !allowed || tools::validate(&call.name, &call.arguments).is_err() {
+                let tool = self.tools.find(&call.name).context("tool unavailable")?;
+                let authorization = tool
+                    .capabilities()
+                    .map(|caps| self.policy.authorize(&agent.permissions, &caps))
+                    .unwrap_or(Authorization::Denied);
+                let valid = if matches!(call.name.as_str(), "search" | "get") {
+                    tools::validate(&call.name, &call.arguments)
+                } else {
+                    developer::validate(&self.root, &call.name, &call.arguments)
+                };
+                if !agent.tools.contains(&call.name)
+                    || authorization == Authorization::Denied
+                    || valid.is_err()
+                {
                     self.store
                         .finish_tool(
                             id,
@@ -202,7 +230,32 @@ impl AgentRuntime {
                         .await?;
                     anyhow::bail!("tool permission or argument validation rejected");
                 }
-                let tool = self.tools.find(&call.name).context("tool unavailable")?;
+                if let Authorization::Approval(capabilities) = authorization {
+                    self.store
+                        .request_approval(id, &call.id, &capabilities)
+                        .await?;
+                    let granted = self
+                        .approvals
+                        .approve(&ApprovalRequest {
+                            run_id: id.into(),
+                            call_id: call.id.clone(),
+                            tool: call.name.clone(),
+                            capabilities,
+                            arguments: call.arguments.clone(),
+                        })
+                        .await;
+                    self.store.decide_approval(id, &call.id, granted).await?;
+                    if !granted {
+                        self.store
+                            .finish_tool(
+                                id,
+                                &call.id,
+                                ToolOutcome::Denied("approval denied".into()),
+                            )
+                            .await?;
+                        anyhow::bail!("tool approval denied");
+                    }
+                }
                 self.store.start_tool(id, &call.id).await?;
                 let result = tool.execute(call.arguments, &context).await;
                 match result {

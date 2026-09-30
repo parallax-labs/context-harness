@@ -99,7 +99,7 @@ require_approval = ["workspace_write", "process_execute"]
 ```
 
 An explicit `allow` list SHALL replace the default; `allow = []` allows nothing
-without approval. Capabilities absent from both lists are denied by the intended
+without approval. Capabilities absent from both lists are denied by the
 runtime policy. Duplicate capabilities and overlap between the two lists SHALL
 be rejected. This slice parses these declarations; it does not execute tools or
 enforce a sandbox. External MCP clients continue to own their own permissions.

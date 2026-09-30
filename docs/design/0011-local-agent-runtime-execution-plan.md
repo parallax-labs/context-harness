@@ -36,7 +36,7 @@ acceptance tests and update this checklist as each slice lands.
 | 2. Agent resources | Standalone TOML definitions; global/workspace precedence; model references, limits and policy parsing; extend existing agent list/show/validate | Old TOML/Lua/Rust agents still resolve; malformed/unknown configuration fails clearly; workspace override tests | Complete |
 | 3. Model boundary | Provider-neutral request/response/tool/usage types; registry; deterministic fake; one production provider | Fake and provider contract tests cover tool calls, failures and usage; credentials resolved from environment and excluded from history | Complete |
 | 4. Execution loop | Resolve agent/context/workspace; model/tool iterations through ToolRegistry; ctx agent run/history/inspect; JSON output; turn/time/cancellation limits | Fake model searches/gets context over multiple turns and completes with persisted history; terminal errors recorded | Complete |
-| 5. Developer capabilities | Read/search, git status/diff, patch/process tools; capability metadata; policy intersection; persisted approvals | Read-only policy blocks writes/processes regardless of prompt; path escape tests; non-interactive execution never silently approves | Pending |
+| 5. Developer capabilities | Read/search, git status/diff, patch/process tools; capability metadata; policy intersection; persisted approvals | Read-only policy blocks writes/processes regardless of prompt; path escape tests; non-interactive execution never silently approves | Complete |
 | 6. Resume/artifacts | Typed checkpoint schema; resume command; interruption handling; artifact files and metadata | Crash tests around model calls and tool side effects; no automatic replay of uncertain non-idempotent tool execution; workspace/version checks | Pending |
 | 7. MCP client | External server config/lifecycle, tool discovery adapters and namespacing | External fixture tool runs through the same registry/policy/event path; timeout/disconnect handling | Pending |
 | 8. Delegation | Controlled agent.invoke; parent/root run IDs; depth/turn/time budgets; inherited permission ceilings | Child execution is attributable and bounded; child cannot increase parent privileges | Pending |
@@ -183,6 +183,28 @@ smoke tests remain explicit and credential-dependent.
   diff checks passed. Default embedding backends and live provider calls were
   not exercised.
 
-Next: slice 5, developer tools, general capability metadata and approval policy.
-Keep extension capabilities deny-by-default and define workspace/path/process
-boundaries before permitting writes or process execution.
+### Slice 5 decisions and verification (2026-09-30)
+
+- Added workspace read/search/patch, Git status/diff and explicit argv process
+  execution through the existing Tool registry. Unknown capability metadata stays
+  denied; existing MCP extension behavior is unchanged.
+- Intersect agent permission declarations with a host-owned policy. Default host
+  policy permits reads and requires per-invocation approval for writes/processes.
+  Non-interactive execution denies required approvals; resources cannot widen the
+  host policy. Trusted library integrations may supply a policy and approval UI.
+- Persist approval lifecycle events atomically; terminal cancellation denies
+  pending approvals before failing unfinished tools. Unix terminal prompts escape
+  arguments, discard queued consent and remain cancellable.
+- Added [SPEC-0018](../spec/0018-developer-tools-and-approvals.md), documenting
+  bounded path/file/process behavior, unsandboxed process privilege, direct-child
+  termination, and the lack of filesystem race/crash isolation.
+
+- `cargo test --workspace --no-default-features`: 266 passed, 3 ignored
+  performance probes. Final focused runtime tests passed after terminal escaping
+  and overlapping patch-match hardening.
+- Formatting and diff checks passed. Clippy completed with only the existing
+  core embedding warning. Default embedding backends and live providers were
+  not exercised.
+
+Next: slice 6, typed checkpoints, recovery semantics and artifact persistence.
+Never automatically replay uncertain side effects after interruption.
