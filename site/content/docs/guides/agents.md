@@ -6,6 +6,11 @@ weight = 6
 
 Agents are **named personas** that combine a system prompt, a scoped set of tools, and optional dynamic context injection. Instead of explaining what you want in every conversation, you define an agent once and activate it by name.
 
+> This page documents prompt agents exposed by the MCP server. To execute a
+> bounded model/tool loop locally with standalone TOML resources, durable
+> history, approvals, recovery, and declarative tool bindings, use
+> [Build Local Agents](@/docs/guides/local-agents.md).
+
 ### Why agents?
 
 Without agents, every conversation starts from zero:
@@ -394,5 +399,4 @@ See the [full example](https://github.com/parallax-labs/context-harness/blob/mai
 - [Lua Tools](@/docs/connectors/lua-tools.md) — give agents custom actions beyond search
 - [Multi-Repo Context](@/docs/guides/multi-repo.md) — index multiple repos for cross-project agents
 - [Deployment](@/docs/reference/deployment.md) — deploy agents in Docker or CI
-
 

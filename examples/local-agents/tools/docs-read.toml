@@ -1,0 +1,16 @@
+schema_version = 1
+
+[tool]
+name = "docs.read"
+implementation = "builtin.scoped_file_read"
+description = "Read a file under project documentation"
+
+[config]
+root = "docs"
+
+[fixed]
+max_bytes = 131072
+
+[restrictions]
+paths = ["docs"]
+max_output_bytes = 131072

@@ -325,11 +325,35 @@ Lua tools:
                 Parameters: title (string, required), priority (enum, optional)
 ```
 
+### `ctx tool bindings list|show|validate`
+
+Inspect standalone declarative bindings without executing implementations or
+reading secrets:
+
+```bash
+# Inspect the effective catalog
+ctx tool bindings list
+ctx tool bindings list --json
+
+# Show public schema, fixed arguments, restrictions, identity, and provenance
+ctx tool bindings show project.search --json
+
+# Validate all resources, or one selected binding
+ctx tool bindings validate
+ctx tool bindings validate project.search --json
+```
+
+These commands are static. They do not create a database, evaluate Lua, spawn an
+MCP server, access the network, call a model, or resolve credential values. MCP
+aliases report `remote_metadata: "unresolved"` until separately authorized
+runtime preparation discovers their schemas.
+
 ---
 
 ### `ctx agent list`
 
-List all configured agents with descriptions and tool lists.
+List standalone resources and legacy TOML/Lua prompt agents with descriptions
+and tool lists. Use `--json` for provenance and resource metadata.
 
 ```bash
 $ ctx agent list
@@ -338,9 +362,81 @@ $ ctx agent list
   incident-responder   Helps triage production incidents with runbooks     (tools: search, get, create_jira_ticket) [lua]
 ```
 
+### `ctx agent show <name> [--json]`
+
+Show the effective agent definition, model alias, permissions, execution limits,
+prompt, resource version, source path, and scope:
+
+```bash
+ctx agent show project-researcher --json
+```
+
+### `ctx agent validate`
+
+Validate the complete agent catalog and every model declaration without reading
+credentials, opening the context database, or calling a provider:
+
+```bash
+ctx agent validate
+```
+
+### `ctx agent run <name> <input>`
+
+Execute a standalone agent with the local bounded runtime:
+
+```bash
+ctx agent run project-researcher \
+  "Explain the architecture and cite the files you used."
+
+# Machine-readable terminal record
+ctx agent run project-researcher "Summarize the release plan" --json
+
+# Deny every call that would require an interactive approval
+ctx agent run project-researcher "Inspect the project" --non-interactive
+```
+
+The run is bound to the canonical current workspace. Selected tools pass through
+schema validation, runtime policy, approvals, cancellation, output limits, and
+durable history.
+
+### `ctx agent history [--limit <n>] [--json]`
+
+List durable runs for the current workspace:
+
+```bash
+ctx agent history --limit 20
+ctx agent history --json
+```
+
+### `ctx agent inspect <run-id>`
+
+Read a run and an ordered page of events:
+
+```bash
+ctx agent inspect <run-id>
+ctx agent inspect <run-id> --after-sequence 200 --limit 200 --json
+```
+
+JSON pagination uses `next_after_sequence` when another event page is available.
+
+### `ctx agent resume <run-id>`
+
+Resume an interrupted run from its latest safe checkpoint:
+
+```bash
+ctx agent resume <run-id>
+ctx agent resume <run-id> --json --non-interactive
+```
+
+Resume rejects completed runs, unsafe or uncertain tool state, changed agent or
+binding identities, exhausted budgets, and non-resumable MCP sessions.
+
 ### `ctx agent test <name> [--arg key=value]`
 
 Resolve an agent's prompt with arguments and print the result. Useful for debugging Lua agents.
+
+Standalone resources can also be previewed, but they reject `--arg` because
+their prompts are static. Use `ctx agent run` to test the local runtime.
 
 ```bash
 $ ctx agent test incident-responder --arg service=payments-api --arg severity=P1

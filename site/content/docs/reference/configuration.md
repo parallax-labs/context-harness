@@ -63,6 +63,13 @@ fallback = "sqlite"
 [server]
 bind = "127.0.0.1:7331"               # HTTP server bind address
 
+# ── Local agent model aliases ─────────────────────────────
+
+[models.default]
+provider = "openai"                    # built-in local runtime adapter
+model = "gpt-5-mini"                   # use a model available to your account
+api_key_env = "OPENAI_API_KEY"         # environment-variable name, never the key
+
 # ── Connectors (all types are named instances) ───────────
 
 [connectors.filesystem.local]
@@ -140,6 +147,32 @@ readonly = true                        # Don't write to this registry
 auto_update = true                     # Pull on startup
 ```
 
+### Standalone local resources
+
+Standalone local agents and declarative tool bindings live beside the effective
+config rather than inside it:
+
+```
+.ctx/
+├── config.toml
+├── agents/
+│   └── project-researcher.toml
+└── tools/
+    ├── project-search.toml
+    └── project-get.toml
+```
+
+When `--config` or `CTX_CONFIG` selects a config, only its sibling `agents` and
+`tools` directories are used. Otherwise Context Harness layers the global config
+directory below the current workspace's `.ctx` directories. Workspace collisions
+require explicit whole-resource overrides; individual fields are never merged.
+
+Agent resources select a model alias from `[models.*]`, execution limits,
+permissions, a system prompt, and public tool names. Tool resources select a
+trusted implementation, fixed arguments, and enforceable restrictions. See
+[Build Local Agents](@/docs/guides/local-agents.md) for complete schemas and a
+runnable example.
+
 ### Environment variable expansion
 
 String values in `[connectors.script.*]` and `[tools.script.*]` configs support `${VAR_NAME}` expansion. This keeps secrets out of your config file:
@@ -160,6 +193,7 @@ workspace = "acme"                      # Plain string, no expansion
 | `[embedding]` | Embedding provider (`disabled`, `openai`, `ollama`, `local`) |
 | `[retrieval]` | Hybrid alpha, candidate counts, result limits |
 | `[server]` | HTTP bind address |
+| `[models.*]` | Model aliases used by standalone local agents |
 | `[connectors.filesystem.*]` | Named filesystem connector instances (see [Built-in connectors](/docs/connectors/built-in/#supported-file-formats) for supported formats) |
 | `[connectors.git.*]` | Named git connector instances |
 | `[connectors.s3.*]` | Named S3 connector instances |
@@ -167,4 +201,6 @@ workspace = "acme"                      # Plain string, no expansion
 | `[tools.script.*]` | Lua scripted tool configs |
 | `[agents.inline.*]` | Inline TOML agents (static system prompt) |
 | `[agents.script.*]` | Lua scripted agents (dynamic prompts) |
+| sibling `agents/*.toml` | Standalone local agent resources |
+| sibling `tools/*.toml` | Declarative local tool bindings |
 | `[registries.*]` | Named extension registry instances |

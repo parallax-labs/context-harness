@@ -11,6 +11,8 @@ Context Harness solves the problem of giving AI agents (Cursor, Claude, custom a
 - **Local-first storage**: SQLite with WAL mode, FTS5 full-text search, vector embeddings (local fastembed/tract, Ollama, or OpenAI)
 - **Hybrid search**: BM25 keyword scoring + cosine semantic scoring with configurable alpha blending
 - **MCP server**: Streamable HTTP endpoint for Cursor, Claude Desktop, and any MCP-compatible agent
+- **Local agent runtime**: standalone project agents with bounded execution, approvals, durable history, checkpoints, and recovery
+- **Declarative tool bindings**: compose scoped public tools over trusted built-in, Rust, Lua, and MCP implementations
 - **Lua extensibility**: custom connectors and agent tools without recompiling Rust
 - **CLI-first**: Unix-composable `ctx` commands for init, sync, search, serve, and more
 - **Offline-first RAG**: pre-build search indexes at build time, ship as static assets
@@ -28,6 +30,7 @@ Context Harness solves the problem of giving AI agents (Cursor, Claude, custom a
 ## Guides
 
 - [Agent Integration](https://parallax-labs.github.io/context-harness/docs/guides/agent-integration/): Connect to Cursor, Claude Desktop, Continue.dev, and custom agents
+- [Build Local Agents](https://parallax-labs.github.io/context-harness/docs/guides/local-agents/): Configure standalone agents, scoped tools, approvals, history, and recovery
 - [Cursor & IDE Integration](https://parallax-labs.github.io/context-harness/docs/guides/cursor-extension/): Workspace-level context for Cursor, VS Code, and JetBrains
 - [Multi-Repo Context](https://parallax-labs.github.io/context-harness/docs/guides/multi-repo/): Index multiple repositories into one searchable knowledge base
 - [Build a RAG Agent](https://parallax-labs.github.io/context-harness/docs/guides/rag-agent/): Python agent with search, retrieval, and grounded answers

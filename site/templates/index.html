@@ -43,6 +43,7 @@
         "Local-first SQLite storage with FTS5 and vector embeddings",
         "Hybrid search combining BM25 keyword and cosine semantic scoring",
         "MCP server for Cursor, Claude, and AI agent integration",
+        "Durable local agents with scoped declarative tools and approvals",
         "Connector-driven ingestion from filesystem, Git, S3, and Lua scripts",
         "Lua extensibility for custom connectors and agent tools",
         "CLI-first Unix-composable tooling",
@@ -270,6 +271,11 @@
                 <p>Expose context to Cursor, Claude, and any MCP-compatible AI tool. Extend with custom Lua tools that agents can discover and call.</p>
             </div>
             <div class="feature-card">
+                <div class="feature-icon">🧭</div>
+                <h3>Local Agent Runtime</h3>
+                <p>Run standalone project agents with scoped declarative tools, explicit approvals, durable history, checkpoints, and safe recovery.</p>
+            </div>
+            <div class="feature-card">
                 <div class="feature-icon">⚡</div>
                 <h3>CLI-First</h3>
                 <p>Everything through the <code>ctx</code> command. Init, sync, search, get — composable Unix-style tooling. No GUI required.</p>
@@ -327,7 +333,7 @@
             <div class="arch-step">
                 <div class="arch-node">
                     <div class="arch-label">Interfaces</div>
-                    <div class="arch-detail">CLI · MCP Server · Lua Tools</div>
+                    <div class="arch-detail">CLI · Local Agents · MCP Server · Tool Bindings</div>
                 </div>
             </div>
         </div>
@@ -653,4 +659,3 @@ window.addEventListener('scroll', () => { nav.classList.toggle('scrolled', windo
 </script>
 <script src="{{ get_url(path='ctx-search.js') }}" data-json="{{ get_url(path='docs/data.json') }}" data-site-index="{{ get_url(path='site-index.json') }}" data-trigger="#search-trigger" data-placeholder="Search docs and site…"></script>
 {% endblock %}
-

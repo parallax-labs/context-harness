@@ -1,0 +1,13 @@
+schema_version = 1
+
+[tool]
+name = "project.get"
+implementation = "builtin.retrieval.get"
+description = "Read one indexed project document"
+
+[config]
+source = "filesystem:project"
+
+[restrictions]
+sources = ["filesystem:project"]
+max_output_bytes = 131072
