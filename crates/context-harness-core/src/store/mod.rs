@@ -87,10 +87,6 @@ pub struct DocumentMetadata {
 /// | [`get_document_metadata`](Store::get_document_metadata) | Retrieve lightweight doc metadata |
 /// | [`keyword_search`](Store::keyword_search) | Full-text keyword search |
 /// | [`vector_search`](Store::vector_search) | Cosine similarity vector search |
-// `async_trait` generates `#[must_use]` futures for these methods, while their
-// `Result` outputs are already `#[must_use]`. Rust 1.99's Clippy reports that
-// macro-generated overlap as `double_must_use`.
-#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait Store: Send + Sync {
     /// Insert or update a document.

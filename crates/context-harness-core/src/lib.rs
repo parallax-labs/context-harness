@@ -1,3 +1,7 @@
+// `async_trait` generates `#[must_use]` futures whose `Result` outputs are
+// already `#[must_use]`; Rust 1.99's Clippy reports the generated overlap.
+#![allow(clippy::double_must_use)]
+
 //! # Context Harness Core
 //!
 //! Shared, WASM-safe logic for Context Harness: data models, chunking,
