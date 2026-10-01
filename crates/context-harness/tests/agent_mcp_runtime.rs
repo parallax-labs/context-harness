@@ -219,6 +219,19 @@ async fn discovered_tool_uses_normal_policy_history_and_namespaces() {
     let calls = rt.store().tool_invocations(&run.id).await.unwrap();
     assert_eq!(calls.len(), 2);
     assert!(calls.iter().all(|c| c.status == "completed"));
+    let events = rt.store().events(&run.id, 0, 100).await.unwrap();
+    let resolved = events
+        .iter()
+        .find(|event| event.event_type == "context.resolved")
+        .unwrap();
+    assert_eq!(
+        resolved.payload["tool_bindings"]["mcp.fixture.echo"]["implementation_id"],
+        "mcp.fixture.echo"
+    );
+    assert_eq!(
+        resolved.payload["tool_bindings"]["mcp.fixture.echo"]["compatibility"],
+        true
+    );
     assert!(rt
         .store()
         .latest_checkpoint(&run.id)

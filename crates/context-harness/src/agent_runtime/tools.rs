@@ -3,6 +3,7 @@
 use crate::{
     config::Config,
     sqlite_store::SqliteStore,
+    tool_binding::{self, ToolTrustClass},
     traits::{GetTool, SearchTool, Tool, ToolContext, ToolRegistry},
 };
 use anyhow::{ensure, Context, Result};
@@ -117,6 +118,15 @@ impl Tool for ReadSearch {
     fn capabilities(&self) -> Option<Vec<crate::agent_resource::Capability>> {
         Some(vec![crate::agent_resource::Capability::ReadOnly])
     }
+    fn binding_metadata(&self) -> Option<Value> {
+        Some(tool_binding::compatibility_binding_metadata(
+            self.name(),
+            "builtin.compat.search",
+            self.parameters_schema(),
+            self.capabilities().unwrap(),
+            ToolTrustClass::Builtin,
+        ))
+    }
     fn name(&self) -> &str {
         "search"
     }
@@ -166,6 +176,15 @@ struct ReadGet {
 impl Tool for ReadGet {
     fn capabilities(&self) -> Option<Vec<crate::agent_resource::Capability>> {
         Some(vec![crate::agent_resource::Capability::ReadOnly])
+    }
+    fn binding_metadata(&self) -> Option<Value> {
+        Some(tool_binding::compatibility_binding_metadata(
+            self.name(),
+            "builtin.compat.get",
+            self.parameters_schema(),
+            self.capabilities().unwrap(),
+            ToolTrustClass::Builtin,
+        ))
     }
     fn name(&self) -> &str {
         "get"

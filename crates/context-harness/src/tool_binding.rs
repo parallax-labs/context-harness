@@ -1262,6 +1262,57 @@ pub(crate) fn binding_metadata(binding: &ResolvedToolBinding) -> Value {
     })
 }
 
+pub(crate) fn compatibility_binding_metadata(
+    name: &str,
+    implementation_id: &str,
+    public_schema: Value,
+    capabilities: Vec<Capability>,
+    trust_class: ToolTrustClass,
+) -> Value {
+    let implementation_version = format!(
+        "{}:compatibility:{}",
+        env!("CARGO_PKG_VERSION"),
+        CATALOG_CONTRACT_VERSION
+    );
+    compatibility_binding_metadata_versioned(
+        name,
+        implementation_id,
+        &implementation_version,
+        public_schema,
+        capabilities,
+        trust_class,
+    )
+}
+
+pub(crate) fn compatibility_binding_metadata_versioned(
+    name: &str,
+    implementation_id: &str,
+    implementation_version: &str,
+    public_schema: Value,
+    capabilities: Vec<Capability>,
+    trust_class: ToolTrustClass,
+) -> Value {
+    let identity = serde_json::json!({
+        "name": name,
+        "implementation_id": implementation_id,
+        "implementation_version": implementation_version,
+        "public_schema": public_schema,
+        "capabilities": capabilities,
+        "trust_class": trust_class,
+    });
+    serde_json::json!({
+        "binding_version": format!("sha256:{:x}", Sha256::digest(serde_json::to_vec(&identity).expect("compatibility binding identity is serializable"))),
+        "implementation_id": implementation_id,
+        "implementation_version": implementation_version,
+        "public_schema": public_schema,
+        "fixed": {},
+        "restrictions": {},
+        "capabilities": capabilities,
+        "trust_class": trust_class,
+        "compatibility": true,
+    })
+}
+
 fn sanitize_metadata(value: Value) -> Value {
     if is_secret_reference(&value) {
         return serde_json::json!({

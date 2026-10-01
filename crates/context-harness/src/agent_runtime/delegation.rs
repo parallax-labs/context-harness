@@ -2,6 +2,7 @@
 use super::*;
 use crate::{
     agent_resource::{Capability, Permissions},
+    tool_binding::{self, ToolTrustClass},
     traits::Tool,
 };
 use async_trait::async_trait;
@@ -56,6 +57,15 @@ impl Tool for InvokeTool {
     }
     fn capabilities(&self) -> Option<Vec<Capability>> {
         Some(vec![Capability::AgentDelegate])
+    }
+    fn binding_metadata(&self) -> Option<Value> {
+        Some(tool_binding::compatibility_binding_metadata(
+            self.name(),
+            "builtin.agent.invoke",
+            self.parameters_schema(),
+            self.capabilities().unwrap(),
+            ToolTrustClass::Builtin,
+        ))
     }
     fn validate_arguments(&self, arguments: &Value) -> Result<()> {
         validate(arguments)

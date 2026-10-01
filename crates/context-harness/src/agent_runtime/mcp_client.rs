@@ -19,6 +19,7 @@ use rmcp::{
     ErrorData, Peer, RoleClient, Service, ServiceExt,
 };
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::{collections::HashSet, path::Path, process::Stdio, sync::Arc, time::Duration};
 use tokio::{
     process::{Child, ChildStdin, ChildStdout, Command},
@@ -254,14 +255,35 @@ pub(super) async fn connect(name: &str, config: &McpServerConfig, root: &Path) -
                     != Some(TaskSupport::Required),
                 "MCP task-only tools are unsupported"
             );
+            let public_name = format!("mcp.{name}.{}", tool.name);
+            let remote_name = tool.name.into_owned();
+            let schema = Value::Object((*tool.input_schema).clone());
+            let capabilities = vec![Capability::ProcessExecute, Capability::ExternalSideEffect];
+            let implementation_version = format!(
+                "sha256:{:x}",
+                Sha256::digest(serde_json::to_vec(&serde_json::json!({
+                    "server": config,
+                    "remote": remote_name,
+                    "schema": schema,
+                }))?)
+            );
+            let metadata = tool_binding::compatibility_binding_metadata_versioned(
+                &public_name,
+                &public_name,
+                &implementation_version,
+                schema.clone(),
+                capabilities,
+                crate::tool_binding::ToolTrustClass::McpExternal,
+            );
             session.tools.push(RemoteTool {
-                name: format!("mcp.{name}.{}", tool.name),
-                remote: tool.name.into_owned(),
+                name: public_name,
+                remote: remote_name,
                 description: tool
                     .description
                     .map(|description| description.into_owned())
                     .unwrap_or_default(),
-                schema: Value::Object((*tool.input_schema).clone()),
+                schema,
+                metadata,
                 peer: session.service.peer().clone(),
                 timeout,
             });
@@ -293,6 +315,7 @@ struct RemoteTool {
     remote: String,
     description: String,
     schema: Value,
+    metadata: Value,
     peer: Peer<RoleClient>,
     timeout: Duration,
 }
@@ -386,6 +409,9 @@ impl Tool for RemoteTool {
             Capability::ProcessExecute,
             Capability::ExternalSideEffect,
         ])
+    }
+    fn binding_metadata(&self) -> Option<Value> {
+        Some(self.metadata.clone())
     }
     fn validate_arguments(&self, arguments: &Value) -> Result<()> {
         validate_arguments(arguments)

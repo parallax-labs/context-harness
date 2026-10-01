@@ -2,6 +2,7 @@
 //! process execution is an explicit, unsandboxed capability.
 use crate::{
     agent_resource::Capability,
+    tool_binding::{self, ToolTrustClass},
     traits::{Tool, ToolContext, ToolRegistry},
 };
 use anyhow::{bail, ensure, Context, Result};
@@ -306,6 +307,15 @@ impl Tool for DeveloperTool {
     }
     fn capabilities(&self) -> Option<Vec<Capability>> {
         capability(self.name).map(|c| vec![c])
+    }
+    fn binding_metadata(&self) -> Option<Value> {
+        Some(tool_binding::compatibility_binding_metadata(
+            self.name(),
+            &format!("builtin.{}", self.name),
+            self.parameters_schema(),
+            self.capabilities().unwrap(),
+            ToolTrustClass::Builtin,
+        ))
     }
     fn is_builtin(&self) -> bool {
         true
