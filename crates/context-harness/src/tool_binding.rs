@@ -8,7 +8,7 @@ use crate::{
     agent_resource::{Capability, ResourceDirectory, ResourceScope},
     config::{Config, ResolvedConfig},
     ctx_dirs::{self, ConfigSourceKind},
-    traits::{Tool, ToolRegistry},
+    traits::{SearchOptions, Tool, ToolRegistry},
 };
 use anyhow::{bail, ensure, Context, Result};
 use async_trait::async_trait;
@@ -686,11 +686,181 @@ impl ToolImplementationFactory for CoreFactory {
                 request,
                 self.descriptor.input_schema.clone(),
             )?)),
+            "builtin.retrieval.search" => Ok(Box::new(ScopedRetrieval::bind(
+                request,
+                self.descriptor.input_schema.clone(),
+                RetrievalOperation::Search,
+            )?)),
+            "builtin.retrieval.get" => Ok(Box::new(ScopedRetrieval::bind(
+                request,
+                self.descriptor.input_schema.clone(),
+                RetrievalOperation::Get,
+            )?)),
             _ => bail!(
                 "tool implementation '{}' is not connected to runtime dispatch yet",
                 self.descriptor.id
             ),
         }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum RetrievalOperation {
+    Search,
+    Get,
+}
+
+struct ScopedRetrieval {
+    binding: ResolvedToolBinding,
+    input_schema: Value,
+    fixed: serde_json::Map<String, Value>,
+    source: String,
+    operation: RetrievalOperation,
+}
+
+impl ScopedRetrieval {
+    fn bind(
+        request: ToolBindingRequest,
+        input_schema: Value,
+        operation: RetrievalOperation,
+    ) -> Result<Self> {
+        let source = request
+            .resource
+            .config
+            .get("source")
+            .and_then(toml::Value::as_str)
+            .context("config.source must be a string")?
+            .to_string();
+        ensure!(
+            request
+                .resolved
+                .restrictions
+                .sources
+                .iter()
+                .any(|allowed| allowed == &source),
+            "retrieval source is not allowed by the binding"
+        );
+        ensure!(
+            request.authority.sources().contains(&source),
+            "retrieval source is not granted by the host"
+        );
+        let fixed = request
+            .resolved
+            .fixed
+            .as_object()
+            .context("fixed arguments must be an object")?
+            .clone();
+        Ok(Self {
+            binding: request.resolved,
+            input_schema,
+            fixed,
+            source,
+            operation,
+        })
+    }
+
+    fn effective_arguments(&self, arguments: Value) -> Result<serde_json::Map<String, Value>> {
+        validate_schema_value(&self.binding.public_schema, &arguments, "arguments")?;
+        let mut arguments = arguments
+            .as_object()
+            .context("tool arguments must be an object")?
+            .clone();
+        for (name, value) in &self.fixed {
+            ensure!(
+                !arguments.contains_key(name),
+                "fixed argument '{name}' cannot be overridden"
+            );
+            arguments.insert(name.clone(), value.clone());
+        }
+        validate_schema_value(
+            &self.input_schema,
+            &Value::Object(arguments.clone()),
+            "arguments",
+        )?;
+        Ok(arguments)
+    }
+
+    fn check_output_bound(&self, output: &Value) -> Result<()> {
+        ensure!(
+            serde_json::to_vec(output)?.len() as u64
+                <= self
+                    .binding
+                    .restrictions
+                    .max_output_bytes
+                    .unwrap_or(MAX_OUTPUT_BYTES),
+            "serialized tool result exceeds output limit"
+        );
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl Tool for ScopedRetrieval {
+    fn capabilities(&self) -> Option<Vec<Capability>> {
+        Some(self.binding.capabilities.clone())
+    }
+
+    fn name(&self) -> &str {
+        &self.binding.name
+    }
+
+    fn description(&self) -> &str {
+        &self.binding.description
+    }
+
+    fn parameters_schema(&self) -> Value {
+        self.binding.public_schema.clone()
+    }
+
+    fn validate_arguments(&self, arguments: &Value) -> Result<()> {
+        validate_schema_value(&self.binding.public_schema, arguments, "arguments")
+    }
+
+    async fn execute(
+        &self,
+        arguments: Value,
+        context: &crate::traits::ToolContext,
+    ) -> Result<Value> {
+        let arguments = self.effective_arguments(arguments)?;
+        let output = match self.operation {
+            RetrievalOperation::Search => {
+                let query = arguments
+                    .get("query")
+                    .and_then(Value::as_str)
+                    .context("query must be a string")?;
+                let limit = arguments.get("limit").and_then(Value::as_i64);
+                let results = context
+                    .search(
+                        query,
+                        SearchOptions {
+                            mode: Some("keyword".into()),
+                            limit,
+                            source: Some(self.source.clone()),
+                        },
+                    )
+                    .await?;
+                ensure!(
+                    results.iter().all(|result| result.source == self.source),
+                    "retrieval returned a result outside the bound source"
+                );
+                serde_json::json!({"results": results})
+            }
+            RetrievalOperation::Get => {
+                let id = arguments
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .context("id must be a string")?;
+                ensure!(!id.contains(':'), "invalid document id");
+                let document = context.get(id).await?;
+                ensure!(
+                    document.source == self.source,
+                    "document is outside the bound source"
+                );
+                serde_json::to_value(document)?
+            }
+        };
+        self.check_output_bound(&output)?;
+        Ok(output)
     }
 }
 

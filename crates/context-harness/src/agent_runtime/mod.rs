@@ -104,6 +104,36 @@ impl AgentRuntime {
         }
         let mut authority = HostToolAuthority::new(&self.root, vec![Capability::ReadOnly])?;
         authority.enroll_path(&self.root)?;
+        let sources = self
+            .config
+            .connectors
+            .filesystem
+            .keys()
+            .map(|name| format!("filesystem:{name}"))
+            .chain(
+                self.config
+                    .connectors
+                    .git
+                    .keys()
+                    .map(|name| format!("git:{name}")),
+            )
+            .chain(
+                self.config
+                    .connectors
+                    .s3
+                    .keys()
+                    .map(|name| format!("s3:{name}")),
+            )
+            .chain(
+                self.config
+                    .connectors
+                    .script
+                    .keys()
+                    .map(|name| format!("script:{name}")),
+            );
+        for source in sources {
+            authority.enroll_source(source)?;
+        }
         let catalog = tool_binding::core_catalog()?;
         let bindings = tool_binding::bind_resources(&loaded, &catalog, Arc::new(authority)).await?;
         let tools = Arc::get_mut(&mut self.tools).context("runtime tool registry is shared")?;
