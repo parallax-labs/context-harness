@@ -2,6 +2,7 @@
 //! tool from a partially persisted turn, even if it appears to have completed.
 use super::*;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 const VERSION: i64 = 1;
 const LIMIT: usize = 16 * 1024 * 1024;
@@ -16,6 +17,23 @@ struct Snapshot {
     request: ModelRequest,
 }
 impl AgentRuntime {
+    pub(super) fn selected_binding_metadata(
+        &self,
+        resource: &LoadedAgentResource,
+    ) -> Result<Value> {
+        let mut bindings = serde_json::Map::new();
+        for name in &resource.definition.agent.tools {
+            if let Some(metadata) = self
+                .tools
+                .find(name)
+                .and_then(|tool| tool.binding_metadata())
+            {
+                bindings.insert(name.clone(), metadata);
+            }
+        }
+        Ok(Value::Object(bindings))
+    }
+
     fn binding(&self, resource: &LoadedAgentResource) -> Result<String> {
         let alias = &resource.definition.agent.model;
         let (provider, model) = self.models.identity(alias)?;
@@ -25,6 +43,8 @@ impl AgentRuntime {
             "candidate_k_keyword":self.config.retrieval.candidate_k_keyword.clamp(1,1000),
             "provider":provider,"model":model,"definition":self.config.models.get(alias),
             "tools":self.declarations(resource)?,
+            "tool_binding_contract": tool_binding::CATALOG_CONTRACT_VERSION,
+            "tool_bindings": self.selected_binding_metadata(resource)?,
             "policy_allow":self.policy.allow,"policy_approval":self.policy.require_approval,
         });
         Ok(format!(

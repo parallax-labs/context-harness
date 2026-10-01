@@ -24,6 +24,7 @@ use std::{
 
 const RESOURCE_SCHEMA_VERSION: u32 = 1;
 const MAX_OUTPUT_BYTES: u64 = 1024 * 1024;
+pub const CATALOG_CONTRACT_VERSION: u32 = 1;
 
 /// A versioned standalone tool resource.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -800,6 +801,10 @@ impl Tool for ScopedRetrieval {
         Some(self.binding.capabilities.clone())
     }
 
+    fn binding_metadata(&self) -> Option<Value> {
+        Some(binding_metadata(&self.binding))
+    }
+
     fn name(&self) -> &str {
         &self.binding.name
     }
@@ -1051,6 +1056,10 @@ impl Tool for ScopedFileRead {
         Some(self.binding.capabilities.clone())
     }
 
+    fn binding_metadata(&self) -> Option<Value> {
+        Some(binding_metadata(&self.binding))
+    }
+
     fn name(&self) -> &str {
         &self.binding.name
     }
@@ -1117,6 +1126,37 @@ impl Tool for ScopedFileRead {
             "serialized tool result exceeds output limit"
         );
         Ok(output)
+    }
+}
+
+fn binding_metadata(binding: &ResolvedToolBinding) -> Value {
+    serde_json::json!({
+        "binding_version": binding.binding_version,
+        "implementation_id": binding.implementation_id,
+        "implementation_version": binding.implementation_version,
+        "public_schema": binding.public_schema,
+        "fixed": sanitize_metadata(binding.fixed.clone()),
+        "restrictions": binding.restrictions,
+        "capabilities": binding.capabilities,
+        "trust_class": binding.trust_class,
+    })
+}
+
+fn sanitize_metadata(value: Value) -> Value {
+    if is_secret_reference(&value) {
+        return serde_json::json!({
+            "secret_ref": value["env"],
+        });
+    }
+    match value {
+        Value::Array(values) => Value::Array(values.into_iter().map(sanitize_metadata).collect()),
+        Value::Object(values) => Value::Object(
+            values
+                .into_iter()
+                .map(|(name, value)| (name, sanitize_metadata(value)))
+                .collect(),
+        ),
+        value => value,
     }
 }
 
@@ -1352,5 +1392,16 @@ max_output_bytes = 65536
         descriptor.capabilities.pop();
         descriptor.input_schema = serde_json::json!({"type":"string"});
         assert!(descriptor.validate().is_err());
+    }
+
+    #[test]
+    fn history_metadata_preserves_secret_references_without_values() {
+        let sanitized = sanitize_metadata(serde_json::json!({
+            "nested": {"token": {"env": "ISSUE_TOKEN"}},
+            "plain": "visible"
+        }));
+        assert_eq!(sanitized["nested"]["token"]["secret_ref"], "ISSUE_TOKEN");
+        assert!(sanitized.to_string().contains("ISSUE_TOKEN"));
+        assert!(!sanitized.to_string().contains("\"env\""));
     }
 }

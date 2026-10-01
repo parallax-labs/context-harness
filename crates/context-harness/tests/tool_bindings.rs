@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use context_harness::{
     agent_model::{fake::FakeModel, FinishReason, ModelResponse, ToolCall},
     agent_resource::{AgentResource, Capability, LoadedAgentResource},
@@ -16,7 +17,7 @@ use context_harness::{
 };
 use context_harness_core::store::Store;
 use serde_json::Value;
-use std::{fs, path::Path, process::Command, sync::Arc};
+use std::{fs, path::Path, process::Command, sync::Arc, time::Duration};
 use tempfile::TempDir;
 use tokio::sync::watch;
 
@@ -112,6 +113,18 @@ async fn seed_document(config: &Config, id: &str, source: &str, body: &str) -> S
         .unwrap();
     store.close().await;
     stored_id
+}
+
+struct BlockingModel;
+
+#[async_trait]
+impl context_harness::agent_model::ModelProvider for BlockingModel {
+    async fn generate(
+        &self,
+        _request: &context_harness::agent_model::ModelRequest,
+    ) -> context_harness::agent_model::ModelResult<ModelResponse> {
+        std::future::pending().await
+    }
 }
 
 #[test]
@@ -486,4 +499,104 @@ system = "Review release decisions."
         denied_calls[0].error.as_deref(),
         Some("context tool execution failed")
     );
+}
+
+#[tokio::test]
+async fn changed_binding_identity_rejects_resume_and_history_keeps_snapshot() {
+    let temp = TempDir::new().unwrap();
+    fs::create_dir(temp.path().join("release")).unwrap();
+    fs::create_dir(temp.path().join("release-next")).unwrap();
+    let tools = temp.path().join("tool-resources");
+    let resource_path = tools.join("read.toml");
+    write(&resource_path, RESOURCE);
+    let tool_directories = [ResourceDirectory {
+        path: tools,
+        scope: ResourceScope::Workspace,
+    }];
+    let definition = AgentResource::parse(
+        r#"
+[agent]
+name = "reader"
+model = "test"
+tools = ["release.read"]
+[agent.execution]
+max_turns = 3
+timeout_seconds = 10
+[prompt]
+system = "Read release evidence."
+"#,
+    )
+    .unwrap();
+    let agent = LoadedAgentResource {
+        path: "agent.toml".into(),
+        scope: ResourceScope::Workspace,
+        version: definition.version().unwrap(),
+        definition,
+    };
+    let mut cfg = config();
+    cfg.db.path = temp.path().join("ctx.sqlite");
+    let models = || {
+        let mut models = context_harness::agent_model::ModelRegistry::default();
+        models
+            .register("test", "fake", "blocking", Arc::new(BlockingModel))
+            .unwrap();
+        models
+    };
+    let runtime = Arc::new(
+        AgentRuntime::new(cfg.clone(), temp.path(), models())
+            .await
+            .unwrap()
+            .with_tool_bindings(&tool_directories)
+            .await
+            .unwrap(),
+    );
+    let copy = agent.clone();
+    let running = runtime.clone();
+    let (_sender, cancel) = watch::channel(false);
+    let task = tokio::spawn(async move { running.run(&copy, "Review", cancel).await });
+    let run_id = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if let Some(run) = runtime.store().history(1).await.unwrap().first() {
+                let events = runtime.store().events(&run.id, 0, 100).await.unwrap();
+                if events
+                    .iter()
+                    .any(|event| event.event_type == "model.requested")
+                {
+                    let resolved = events
+                        .iter()
+                        .find(|event| event.event_type == "context.resolved")
+                        .unwrap();
+                    assert_eq!(
+                        resolved.payload["tool_bindings"]["release.read"]["implementation_id"],
+                        "builtin.scoped_file_read"
+                    );
+                    break run.id.clone();
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    task.abort();
+    assert!(task.await.unwrap_err().is_cancelled());
+
+    let changed = RESOURCE
+        .replace("root = \"release\"", "root = \"release-next\"")
+        .replace("paths = [\"release\"]", "paths = [\"release-next\"]");
+    write(&resource_path, &changed);
+    let changed_runtime = AgentRuntime::new(cfg, temp.path(), models())
+        .await
+        .unwrap()
+        .with_tool_bindings(&tool_directories)
+        .await
+        .unwrap();
+    let (_sender, cancel) = watch::channel(false);
+    let error = changed_runtime
+        .resume(&run_id, &agent, cancel)
+        .await
+        .unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("checkpoint binding changed or is invalid"));
 }

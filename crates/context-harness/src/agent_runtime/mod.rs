@@ -332,6 +332,8 @@ impl AgentRuntime {
                     &json!({
                         "workspace_root": self.root, "agent_version": resource.version,
                         "tools": agent.tools, "retrieval": "keyword",
+                        "tool_binding_contract": tool_binding::CATALOG_CONTRACT_VERSION,
+                        "tool_bindings": self.selected_binding_metadata(resource)?,
                         "host_policy": {"allow":self.policy.allow, "require_approval":self.policy.require_approval}
                     }),
                 )

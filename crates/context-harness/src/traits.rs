@@ -198,6 +198,12 @@ pub trait Tool: Send + Sync {
         None
     }
 
+    /// Sanitized immutable identity for declaratively bound tools. History and
+    /// recovery use this without loading implementations or resolving secrets.
+    fn binding_metadata(&self) -> Option<Value> {
+        None
+    }
+
     /// Returns the tool's name.
     ///
     /// Used as the route path (`POST /tools/{name}`) and in

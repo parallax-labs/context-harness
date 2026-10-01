@@ -259,7 +259,7 @@ agreed spec; do not begin the slices below in this documentation update.
 | 2. Resolution | Resource parser, layered discovery, aliases, provenance and identities | D1/D2/D6: deterministic results, explicit isolation, collision/override tests, side-effect-free inspection | In progress |
 | 3. Runtime integration | Host-supplied catalog and generic adapter validation/dispatch; compatibility bindings | D3/D5/D8: second fixture tool requires no name branch; built-ins retain argument/policy behavior | In progress |
 | 4. Extension backends | Rust API, Lua authority adapter and MCP alias validation | D4/D5/D8: approved extensions use common lifecycle; unknown authority denied; remote schema drift detected | Pending |
-| 5. History/recovery | Binding metadata, checkpoint compatibility and legacy migration | D6/D7/D8: redacted inspection; changed implementation/config cannot silently resume | Pending |
+| 5. History/recovery | Binding metadata, checkpoint compatibility and legacy migration | D6/D7/D8: redacted inspection; changed implementation/config cannot silently resume | In progress |
 | 6. Acceptance and docs | Two unrelated fixture compositions, adversarial tests, spec and runbook validation | D1–D8: complete foundation demonstrated; limitations explicit | Pending |
 
 Dependencies: 1 precedes 2/3; 4 follows their integration; 5 follows stable identities
