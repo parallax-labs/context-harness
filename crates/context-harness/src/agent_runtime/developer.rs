@@ -180,17 +180,6 @@ pub(super) fn validate(root: &Path, name: &str, args: &Value) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn is_tool(name: &str) -> bool {
-    matches!(
-        name,
-        "workspace.read"
-            | "workspace.search"
-            | "git.status"
-            | "git.diff"
-            | "workspace.patch"
-            | "process.exec"
-    )
-}
 fn writable(root: &Path, path: &str) -> Result<PathBuf> {
     let path = confined(root, path)?;
     let parts: Vec<_> = path.strip_prefix(root)?.components().collect();
@@ -339,6 +328,9 @@ impl Tool for DeveloperTool {
             _ => (json!({}), json!([])),
         };
         json!({"type":"object","properties":properties,"required":required,"additionalProperties":false})
+    }
+    fn validate_arguments(&self, arguments: &Value) -> Result<()> {
+        validate(&self.root, self.name, arguments)
     }
     async fn execute(&self, args: Value, _ctx: &ToolContext) -> Result<Value> {
         validate(&self.root, self.name, &args)?;

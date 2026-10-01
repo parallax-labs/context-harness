@@ -57,6 +57,9 @@ impl Tool for InvokeTool {
     fn capabilities(&self) -> Option<Vec<Capability>> {
         Some(vec![Capability::AgentDelegate])
     }
+    fn validate_arguments(&self, arguments: &Value) -> Result<()> {
+        validate(arguments)
+    }
     async fn execute(&self, _: Value, _: &ToolContext) -> Result<Value> {
         anyhow::bail!("delegation requires runtime context")
     }

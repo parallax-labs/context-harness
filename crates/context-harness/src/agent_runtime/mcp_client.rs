@@ -387,6 +387,9 @@ impl Tool for RemoteTool {
             Capability::ExternalSideEffect,
         ])
     }
+    fn validate_arguments(&self, arguments: &Value) -> Result<()> {
+        validate_arguments(arguments)
+    }
     async fn execute(&self, arguments: Value, _: &ToolContext) -> Result<Value> {
         validate_arguments(&arguments)?;
         let result = tokio::time::timeout(

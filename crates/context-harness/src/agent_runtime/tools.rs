@@ -135,6 +135,9 @@ impl Tool for ReadSearch {
         schema["properties"]["filters"]["additionalProperties"] = json!(false);
         schema
     }
+    fn validate_arguments(&self, arguments: &Value) -> Result<()> {
+        validate(self.name(), arguments)
+    }
     async fn execute(&self, arguments: Value, _ctx: &ToolContext) -> Result<Value> {
         validate("search", &arguments)?;
         let args: SearchArgs = serde_json::from_value(arguments)?;
@@ -177,6 +180,9 @@ impl Tool for ReadGet {
         let mut schema = GetTool.parameters_schema();
         schema["additionalProperties"] = json!(false);
         schema
+    }
+    fn validate_arguments(&self, arguments: &Value) -> Result<()> {
+        validate(self.name(), arguments)
     }
     async fn execute(&self, arguments: Value, _ctx: &ToolContext) -> Result<Value> {
         validate("get", &arguments)?;

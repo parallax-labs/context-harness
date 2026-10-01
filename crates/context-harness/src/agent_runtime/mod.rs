@@ -442,14 +442,8 @@ impl AgentRuntime {
                         .capabilities()
                         .map(|caps| self.policy.authorize(&agent.permissions, &caps))
                         .unwrap_or(Authorization::Denied);
-                    let valid = if matches!(call.name.as_str(), "search" | "get") {
-                        tools::validate(&call.name, &call.arguments)
-                    } else if call.name == "agent.invoke" {
+                    let valid = if call.name == "agent.invoke" {
                         self.validate_delegation(resource, &call.arguments)
-                    } else if call.name.starts_with("mcp.") {
-                        mcp_client::validate_arguments(&call.arguments)
-                    } else if developer::is_tool(&call.name) {
-                        developer::validate(&self.root, &call.name, &call.arguments)
                     } else {
                         tool.validate_arguments(&call.arguments)
                     };
