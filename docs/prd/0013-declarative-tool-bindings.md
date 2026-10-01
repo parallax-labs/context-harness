@@ -1,6 +1,6 @@
 # PRD-0013: Declarative Tool Bindings and Runtime Extensions
 
-**Status:** In Progress
+**Status:** Delivered
 **Date:** 2026-09-30
 **Author:** Context Harness contributors
 

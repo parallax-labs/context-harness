@@ -30,7 +30,7 @@ it. A spec references both for traceability from product intent to implementatio
 | [0009](0009-retrieval-quality-and-dogfooding.md) | Retrieval Quality and Dogfooding | Planned |
 | [0010](0010-distribution-and-packaging.md) | Distribution and Packaging | Planned |
 | [0011](0011-multi-workspace-mcp-router.md) | Multi-Workspace MCP Router | Draft |
-| [0013](0013-declarative-tool-bindings.md) | Declarative Tool Bindings and Runtime Extensions | In Progress |
+| [0013](0013-declarative-tool-bindings.md) | Declarative Tool Bindings and Runtime Extensions | Delivered |
 
 ## Creating a New PRD
 

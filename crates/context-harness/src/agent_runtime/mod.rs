@@ -19,7 +19,7 @@ use crate::{
     app_store::SqliteAppStore,
     config::Config,
     tool_binding::{self, HostToolAuthority},
-    traits::{ToolContext, ToolRegistry},
+    traits::{ToolContext, ToolRegistry, ToolRuntimeDispatch},
 };
 use anyhow::{ensure, Context, Result};
 use serde_json::json;
@@ -303,7 +303,12 @@ impl AgentRuntime {
         let agent = &resource.definition.agent;
         let mut declarations = Vec::new();
         for name in &agent.tools {
-            if name == "agent.invoke" {
+            let tool = self
+                .tools
+                .find(name)
+                .or_else(|| external.find(name))
+                .context("unsupported runtime tool declaration")?;
+            if tool.runtime_dispatch() == ToolRuntimeDispatch::AgentDelegation {
                 ensure!(
                     !agent.delegation.allow.is_empty()
                         && agent
@@ -314,11 +319,6 @@ impl AgentRuntime {
                     "delegation targets unavailable"
                 );
             }
-            let tool = self
-                .tools
-                .find(name)
-                .or_else(|| external.find(name))
-                .context("unsupported runtime tool declaration")?;
             let capabilities = tool
                 .capabilities()
                 .context("tool capability metadata is unavailable")?;
@@ -327,7 +327,7 @@ impl AgentRuntime {
                 "tool capability is not permitted by agent and host policy"
             );
             let mut parameters = tool.parameters_schema();
-            if name == "agent.invoke" {
+            if tool.runtime_dispatch() == ToolRuntimeDispatch::AgentDelegation {
                 parameters["properties"]["agent"]["enum"] = json!(agent.delegation.allow);
             }
             declarations.push(ModelTool {
@@ -438,11 +438,12 @@ impl AgentRuntime {
                         .request_tool(id, &call.id, &call.name, &call.arguments)
                         .await?;
                     let tool = self.tools.find(&call.name).or_else(|| external.find(&call.name)).context("tool unavailable")?;
+                    let dispatch = tool.runtime_dispatch();
                     let authorization = tool
                         .capabilities()
                         .map(|caps| self.policy.authorize(&agent.permissions, &caps))
                         .unwrap_or(Authorization::Denied);
-                    let valid = if call.name == "agent.invoke" {
+                    let valid = if dispatch == ToolRuntimeDispatch::AgentDelegation {
                         self.validate_delegation(resource, &call.arguments)
                     } else {
                         tool.validate_arguments(&call.arguments)
@@ -465,7 +466,7 @@ impl AgentRuntime {
                     let approval_arguments = tool.approval_arguments(&call.arguments)?;
                     self.approve_invocation(id, &call.id, &call.name, &approval_arguments, authorization).await?;
                     self.store.start_tool(id, &call.id).await?;
-                    let result = if call.name == "agent.invoke" {
+                    let result = if dispatch == ToolRuntimeDispatch::AgentDelegation {
                         self.invoke(id, &call.id, resource, call.arguments).await
                     } else {tool.execute(call.arguments, &context).await};
                     match result {

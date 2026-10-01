@@ -204,6 +204,12 @@ pub trait Tool: Send + Sync {
         None
     }
 
+    /// Select runtime-owned execution context without coupling the dispatcher
+    /// to a public tool name. Most tools execute directly.
+    fn runtime_dispatch(&self) -> ToolRuntimeDispatch {
+        ToolRuntimeDispatch::Direct
+    }
+
     /// Optional host-owned preparation that must complete through the durable
     /// approval lifecycle before this tool can be advertised to a model.
     fn preparation(&self) -> Option<ToolPreparation> {
@@ -267,6 +273,12 @@ pub trait Tool: Send + Sync {
     /// A JSON value that will be wrapped in `{ "result": ... }` in the
     /// HTTP response.
     async fn execute(&self, params: Value, ctx: &ToolContext) -> Result<Value>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolRuntimeDispatch {
+    Direct,
+    AgentDelegation,
 }
 
 #[derive(Debug, Clone)]

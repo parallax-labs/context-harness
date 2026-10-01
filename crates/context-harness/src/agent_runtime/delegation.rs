@@ -3,7 +3,7 @@ use super::*;
 use crate::{
     agent_resource::{Capability, Permissions},
     tool_binding::{self, ToolTrustClass},
-    traits::Tool,
+    traits::{Tool, ToolRuntimeDispatch},
 };
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -66,6 +66,9 @@ impl Tool for InvokeTool {
             self.capabilities().unwrap(),
             ToolTrustClass::Builtin,
         ))
+    }
+    fn runtime_dispatch(&self) -> ToolRuntimeDispatch {
+        ToolRuntimeDispatch::AgentDelegation
     }
     fn validate_arguments(&self, arguments: &Value) -> Result<()> {
         validate(arguments)
