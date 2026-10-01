@@ -22,7 +22,7 @@ pub(super) struct ExecutionContext {
 impl ExecutionContext {
     pub fn consume(&self) -> Result<()> {
         self.remaining
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
+            .try_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
                 left.checked_sub(1)
             })
             .map_err(|_| anyhow::anyhow!("shared model turn budget exhausted"))?;
