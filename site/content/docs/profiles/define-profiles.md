@@ -1,7 +1,8 @@
 +++
-title = "Profiles and Agents"
-description = "Understand reusable MCP profiles and executable local agents, when to use each, and how they relate."
-weight = 6
+title = "Define Profiles"
+description = "Create reusable MCP prompts with a role, suggested tools, and optional dynamic context."
+weight = 2
+aliases = ["/docs/guides/agents/"]
 +++
 
 Context Harness has two related but different concepts:
@@ -17,7 +18,12 @@ and API retain their historical `agents.*` and `/agents/*` names for
 compatibility, but this guide calls that feature **profiles**.
 
 An executable agent is a standalone resource under `.ctx/agents`. See
-[Build Local Agents](@/docs/guides/local-agents.md) for its complete setup.
+[Build Local Agents](@/docs/agents/build-local-agents.md) for its complete setup.
+
+You may not need a separate profile definition. Single-workspace `ctx serve mcp`
+projects each standalone `.ctx/agents/*.toml` resource as a stateless MCP prompt.
+That projection reuses the role and tool hints, while the external client—not
+the local runtime—owns model calls, tool execution, permissions, and history.
 
 ### Why profiles?
 
@@ -60,10 +66,11 @@ conversation created from a profile.
   automatically today. Store the durable result in a connector source and sync it
   so the next run can retrieve it.
 
-### Three profile definition modes
+### Profile sources
 
 | Mode | Config | Best for |
 |------|--------|----------|
+| **Standalone projection** | `.ctx/agents/<name>.toml` | Reusing one role for both managed runs and external conversations |
 | **Inline TOML** | `[agents.inline.<name>]` | Static reusable profiles |
 | **Lua script** | `[agents.script.<name>]` | Dynamic context injection, conditional logic |
 | **Rust trait** | `impl Agent for MyAgent` | Compiled extensions in custom binaries |
@@ -439,8 +446,8 @@ See the [full example](https://github.com/parallax-labs/context-harness/blob/mai
 
 ### What's next?
 
-- [Build Local Agents](@/docs/guides/local-agents.md) — let Context Harness own model execution and durable runs
-- [Agent Integration](@/docs/guides/agent-integration.md) — connect profiles to Cursor, Claude, Continue.dev
+- [Build Local Agents](@/docs/agents/build-local-agents.md) — let Context Harness own model execution and durable runs
+- [Connect External AI Clients](@/docs/guides/agent-integration.md) — connect Context Harness to Cursor, Claude, and Continue.dev
 - [Lua Tools](@/docs/connectors/lua-tools.md) — expose custom actions to external clients
 - [Multi-Repo Context](@/docs/guides/multi-repo.md) — index multiple repositories for shared context
 - [Deployment](@/docs/reference/deployment.md) — deploy the MCP/profile server in Docker or CI

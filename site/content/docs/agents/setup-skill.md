@@ -2,6 +2,7 @@
 title = "Use the Agent Setup Skill"
 description = "Install and use the context-harness-agents Codex skill to configure local agents safely."
 weight = 3
+aliases = ["/docs/guides/agent-setup-skill/"]
 +++
 
 The repository includes a Codex skill named `context-harness-agents`. It teaches
@@ -26,7 +27,7 @@ Use the skill when you want Codex to:
 
 Do not use it to create an MCP profile unless you are intentionally migrating
 that profile into an executable local agent. See
-[Profiles and Agents](@/docs/guides/agents.md) for the distinction.
+[Profiles Overview](@/docs/profiles/overview.md) for the distinction.
 
 ### 1. Install the skill
 
@@ -149,7 +150,7 @@ Review these relationships:
 5. Agent permissions can narrow effective authority but cannot grant authority
    unavailable from the host or implementation.
 
-See [Build Local Agents](@/docs/guides/local-agents.md) for every field and a
+See [Build Local Agents](@/docs/agents/build-local-agents.md) for every field and a
 complete manual configuration.
 
 ### 5. Validate before runtime work

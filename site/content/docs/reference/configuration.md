@@ -170,7 +170,7 @@ require explicit whole-resource overrides; individual fields are never merged.
 Agent resources select a model alias from `[models.*]`, execution limits,
 permissions, a system prompt, and public tool names. Tool resources select a
 trusted implementation, fixed arguments, and enforceable restrictions. See
-[Build Local Agents](@/docs/guides/local-agents.md) for complete schemas and a
+[Build Local Agents](@/docs/agents/build-local-agents.md) for complete schemas and a
 runnable example.
 
 ### Environment variable expansion

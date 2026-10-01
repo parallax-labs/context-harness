@@ -55,9 +55,10 @@ workspace, the skill is instructed to inspect first and make minimal edits.
 
 ## Learn more
 
-- [Agent setup skill guide](https://parallax-labs.github.io/context-harness/docs/guides/agent-setup-skill/)
-- [Manual local-agent configuration](https://parallax-labs.github.io/context-harness/docs/guides/local-agents/)
-- [Profiles versus executable agents](https://parallax-labs.github.io/context-harness/docs/guides/agents/)
+- [Agents overview](https://parallax-labs.github.io/context-harness/docs/agents/overview/)
+- [Agent setup skill guide](https://parallax-labs.github.io/context-harness/docs/agents/setup-skill/)
+- [Manual local-agent configuration](https://parallax-labs.github.io/context-harness/docs/agents/build-local-agents/)
+- [Profiles overview](https://parallax-labs.github.io/context-harness/docs/profiles/overview/)
 
 See [`SKILL.md`](SKILL.md) for the workflow Codex follows and `references/` for
 resource schemas and operational troubleshooting.

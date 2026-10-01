@@ -27,16 +27,24 @@ Context Harness solves the problem of giving AI agents (Cursor, Claude, custom a
 - [MCP Server API](https://parallax-labs.github.io/context-harness/docs/reference/mcp-server/): HTTP API reference for AI agent integration
 - [Deployment](https://parallax-labs.github.io/context-harness/docs/reference/deployment/): Docker, systemd, CI/CD, and static site deployment
 
+## Agents
+
+- [Agents Overview](https://parallax-labs.github.io/context-harness/docs/agents/overview/): Run bounded, inspectable AI workflows against local project context
+- [Build Local Agents](https://parallax-labs.github.io/context-harness/docs/agents/build-local-agents/): Configure models, scoped tools, permissions, history, and recovery
+- [Use the Agent Setup Skill](https://parallax-labs.github.io/context-harness/docs/agents/setup-skill/): Install and invoke the Codex skill that configures and validates local agents
+
+## Profiles
+
+- [Profiles Overview](https://parallax-labs.github.io/context-harness/docs/profiles/overview/): Give external AI clients a reusable role, tool set, and project-aware starting context
+- [Define Profiles](https://parallax-labs.github.io/context-harness/docs/profiles/define-profiles/): Create inline, Lua, Rust, or standalone-agent-projected MCP prompts
+
 ## Guides
 
-- [Agent Integration](https://parallax-labs.github.io/context-harness/docs/guides/agent-integration/): Connect to Cursor, Claude Desktop, Continue.dev, and custom agents
-- [Build Local Agents](https://parallax-labs.github.io/context-harness/docs/guides/local-agents/): Configure standalone agents, scoped tools, approvals, history, and recovery
-- [Use the Agent Setup Skill](https://parallax-labs.github.io/context-harness/docs/guides/agent-setup-skill/): Install and invoke the Codex skill that configures and validates local agents
+- [Connect External AI Clients](https://parallax-labs.github.io/context-harness/docs/guides/agent-integration/): Connect Cursor, Claude Desktop, Continue.dev, and custom applications
 - [Cursor & IDE Integration](https://parallax-labs.github.io/context-harness/docs/guides/cursor-extension/): Workspace-level context for Cursor, VS Code, and JetBrains
 - [Multi-Repo Context](https://parallax-labs.github.io/context-harness/docs/guides/multi-repo/): Index multiple repositories into one searchable knowledge base
 - [Build a RAG Agent](https://parallax-labs.github.io/context-harness/docs/guides/rag-agent/): Python agent with search, retrieval, and grounded answers
 - [Build a Chatbot](https://parallax-labs.github.io/context-harness/docs/guides/chatbot/): TypeScript chatbot with streaming and conversation history
-- [Profiles and Agents](https://parallax-labs.github.io/context-harness/docs/guides/agents/): Choose between reusable MCP launch profiles and executable local agents
 
 ## Extension Registry
 

@@ -2,6 +2,7 @@
 title = "Build Local Agents"
 description = "Configure durable standalone agents with scoped tools, approvals, history, and recovery."
 weight = 2
+aliases = ["/docs/guides/local-agents/"]
 +++
 
 Context Harness can run standalone agents directly in a project. These agents
@@ -9,14 +10,14 @@ use a configured model, select a small set of local tools, and record their runs
 in the project's SQLite database. They are different from MCP **profiles**: a
 standalone agent owns a bounded model/tool loop and can be inspected or resumed
 locally, while a profile only prepares a conversation owned by another client.
-See [Profiles and Agents](@/docs/guides/agents.md) for a direct comparison.
+See [Profiles Overview](@/docs/profiles/overview.md) for a direct comparison.
 
 This guide builds a generic project researcher. The same structure works for
 code review, release preparation, incident analysis, migration planning, and
 other workflows without assuming that your context lives in a wiki.
 
 You can follow the configuration manually below or have Codex apply the same
-workflow with the [Agent Setup Skill](@/docs/guides/agent-setup-skill.md). The
+workflow with the [Agent Setup Skill](@/docs/agents/setup-skill.md). The
 skill is useful when adapting an existing project; the manual path is useful when
 you want to understand or author every resource yourself.
 
@@ -303,7 +304,7 @@ Use $context-harness-agents to set up a read-only project researcher for this re
 For an empty workspace, the skill includes a non-destructive initializer that
 creates the config, agent, and source-scoped bindings. In an existing workspace,
 it inspects and minimally updates the current resources instead of overwriting
-them. The dedicated [Agent Setup Skill guide](@/docs/guides/agent-setup-skill.md)
+them. The dedicated [Agent Setup Skill guide](@/docs/agents/setup-skill.md)
 covers repository-scoped and personal installation, prompt examples, every
 generated file, direct initializer use, validation, and the expected completion
 report.

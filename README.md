@@ -153,9 +153,9 @@ ctx agent validate
 ctx agent run project-researcher "Summarize the architecture and cite the relevant files"
 ```
 
-See the [local agents guide](https://parallax-labs.github.io/context-harness/docs/guides/local-agents/)
+See the [local agents guide](https://parallax-labs.github.io/context-harness/docs/agents/build-local-agents/)
 for explicit model, connector, agent, tool, permission, history, inspection, and
-resume configuration. The [agent setup skill guide](https://parallax-labs.github.io/context-harness/docs/guides/agent-setup-skill/)
+resume configuration. The [agent setup skill guide](https://parallax-labs.github.io/context-harness/docs/agents/setup-skill/)
 covers installation, invocation, customization, generated files, and validation.
 
 ## Architecture
@@ -478,7 +478,9 @@ See [`config/ctx.example.toml`](config/ctx.example.toml) for a complete example,
 | [Configuration](https://parallax-labs.github.io/context-harness/docs/reference/configuration/) | Full `ctx.toml` reference, embedding providers, platform table |
 | [CLI reference](https://parallax-labs.github.io/context-harness/docs/reference/cli/) | Every command and flag |
 | [Connectors & registry](https://parallax-labs.github.io/context-harness/docs/connectors/built-in/) | Built-in connectors, [Lua connectors](https://parallax-labs.github.io/context-harness/docs/connectors/lua-connectors/), [extension registry](https://parallax-labs.github.io/context-harness/docs/registry/overview/) |
-| [Guides](https://parallax-labs.github.io/context-harness/docs/guides/agents/) | MCP profiles versus executable agents, Cursor, RAG, multi-repo, deployment |
+| [Agents](https://parallax-labs.github.io/context-harness/docs/agents/overview/) | Executable local agents, scoped tools, setup skill, permissions, history, and recovery |
+| [Profiles](https://parallax-labs.github.io/context-harness/docs/profiles/overview/) | Reusable MCP roles and context for Cursor, Claude, and custom clients |
+| [Guides](https://parallax-labs.github.io/context-harness/docs/guides/agent-integration/) | External client integration, RAG, chatbots, and multi-repo context |
 | [API (Rustdoc)](https://parallax-labs.github.io/context-harness/api/context_harness/) | Generated Rust API docs |
 | [Local agent execution](docs/spec/0017-local-agent-execution.md) | Standalone agent run/history/inspect commands, supported tools, and a local fake-provider example |
 | [Developer tools and approvals](docs/spec/0018-developer-tools-and-approvals.md) | Workspace/Git tools, patch and process permissions, and interactive approval |

@@ -331,11 +331,11 @@ $ curl -s localhost:7331/health
 {"status":"ok"}
 ```
 
-### Connecting to AI agents
+### Connecting external AI clients
 
 All MCP clients connect to `http://127.0.0.1:7331/mcp` (the Streamable HTTP endpoint). The REST endpoints above are available for custom integrations that don't speak MCP.
 
-See the [Agent Integration](@/docs/guides/agent-integration.md) guide for step-by-step setup with:
+See [Connect External AI Clients](@/docs/guides/agent-integration.md) for step-by-step setup with:
 
 - **Cursor** — workspace-level or global MCP config → `http://127.0.0.1:7331/mcp`
 - **Claude Desktop** — MCP server URL → `http://127.0.0.1:7331/mcp`

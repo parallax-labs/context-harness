@@ -7,7 +7,7 @@ domain.
 
 For assisted setup or adaptation of an existing project, install and invoke the
 [`context-harness-agents` skill](../../skills/context-harness-agents). The
-[website guide](https://parallax-labs.github.io/context-harness/docs/guides/agent-setup-skill/)
+[website guide](https://parallax-labs.github.io/context-harness/docs/agents/setup-skill/)
 documents installation, prompts, generated files, and validation. The manual
 example below remains useful for understanding every resource directly.
 
