@@ -330,21 +330,73 @@ fn targeted_loading_ignores_unrelated_broken_resources() {
 }
 
 #[tokio::test]
-async fn scoped_reader_alias_executes_through_the_common_runtime_lifecycle() {
+async fn scoped_reader_can_be_bound_twice_without_crossing_roots() {
     let temp = TempDir::new().unwrap();
     write(&temp.path().join("release/summary.md"), "release evidence");
+    write(
+        &temp.path().join("engineering-notes/summary.md"),
+        "engineering evidence",
+    );
+    write(&temp.path().join("private.md"), "private evidence");
     let tools = temp.path().join("tool-resources");
     write(&tools.join("read.toml"), RESOURCE);
+    write(
+        &tools.join("engineering-read.toml"),
+        &RESOURCE
+            .replace("release.read", "engineering.read")
+            .replace("release fixture files", "engineering fixture files")
+            .replace("release", "engineering-notes"),
+    );
     let tool_directories = [ResourceDirectory {
         path: tools,
         scope: ResourceScope::Workspace,
     }];
 
+    let cfg = config();
+    let loaded = load_resources(&tool_directories, &cfg).unwrap();
+    let mut authority = HostToolAuthority::new(temp.path(), vec![Capability::ReadOnly]).unwrap();
+    authority.enroll_path(temp.path()).unwrap();
+    let bindings = bind_resources(&loaded, &core_catalog().unwrap(), Arc::new(authority))
+        .await
+        .unwrap();
+    let context = ToolContext::new(Arc::new(cfg));
+    let release = bindings.find("release.read").unwrap();
+    assert!(release
+        .validate_arguments(&serde_json::json!({
+            "path":"summary.md",
+            "max_bytes":65536
+        }))
+        .is_err());
+    assert!(release
+        .execute(serde_json::json!({"path":"../private.md"}), &context)
+        .await
+        .is_err());
+    let engineering = bindings.find("engineering.read").unwrap();
+    assert!(engineering
+        .execute(
+            serde_json::json!({"path":"../release/summary.md"}),
+            &context,
+        )
+        .await
+        .is_err());
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(
+            temp.path().join("private.md"),
+            temp.path().join("release/private-link.md"),
+        )
+        .unwrap();
+        assert!(release
+            .execute(serde_json::json!({"path":"private-link.md"}), &context,)
+            .await
+            .is_err());
+    }
+
     let agent_source = r#"
 [agent]
 name = "reader"
 model = "test"
-tools = ["release.read"]
+tools = ["release.read", "engineering.read"]
 [agent.execution]
 max_turns = 3
 timeout_seconds = 10
@@ -360,11 +412,18 @@ system = "Read the release evidence."
     };
     let mut call = ModelResponse::text("");
     call.finish_reason = FinishReason::ToolCalls;
-    call.tool_calls = vec![ToolCall {
-        name: "release.read".into(),
-        id: "read-1".into(),
-        arguments: serde_json::json!({"path":"summary.md"}),
-    }];
+    call.tool_calls = vec![
+        ToolCall {
+            name: "release.read".into(),
+            id: "read-1".into(),
+            arguments: serde_json::json!({"path":"summary.md"}),
+        },
+        ToolCall {
+            name: "engineering.read".into(),
+            id: "read-2".into(),
+            arguments: serde_json::json!({"path":"summary.md"}),
+        },
+    ];
     let provider = Arc::new(FakeModel::new([
         Ok(call),
         Ok(ModelResponse::text("reviewed release evidence")),
@@ -385,14 +444,21 @@ system = "Read the release evidence."
     let run = runtime.run(&agent, "Review", cancel).await.unwrap();
     assert_eq!(run.status, "completed");
     let calls = runtime.store().tool_invocations(&run.id).await.unwrap();
-    assert_eq!(calls.len(), 1);
+    assert_eq!(calls.len(), 2);
     assert_eq!(calls[0].tool_name, "release.read");
+    assert_eq!(calls[1].tool_name, "engineering.read");
     assert!(calls[0]
         .result
         .as_ref()
         .unwrap()
         .to_string()
         .contains("release evidence"));
+    assert!(calls[1]
+        .result
+        .as_ref()
+        .unwrap()
+        .to_string()
+        .contains("engineering evidence"));
 }
 
 #[tokio::test]
