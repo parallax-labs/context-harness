@@ -12,8 +12,9 @@ def send(value):
     print(json.dumps(value), flush=True)
 
 def tool(name):
+    value_type = "integer" if mode == "drift" else "string"
     return {"name": name, "description": "Echo test input", "inputSchema": {
-        "type": "object", "properties": {"text": {"type": "string"}},
+        "type": "object", "properties": {"text": {"type": value_type}},
         "required": ["text"], "additionalProperties": False},
         "annotations": {"readOnlyHint": True}}
 

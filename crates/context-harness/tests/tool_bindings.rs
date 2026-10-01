@@ -79,6 +79,18 @@ sources = ["filesystem:decisions"]
 max_output_bytes = 65536
 "#;
 
+const MCP_RESOURCE: &str = r#"
+schema_version = 1
+[tool]
+name = "fixture.echo_alias"
+implementation = "mcp.fixture.echo"
+description = "Echo a bound fixture value"
+[fixed]
+text = "bound"
+[restrictions]
+max_output_bytes = 65536
+"#;
+
 fn write(path: &Path, contents: &str) {
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(path, contents).unwrap();
@@ -237,6 +249,42 @@ fn cli_inspection_is_static_and_machine_readable() {
         serde_json::from_slice::<Value>(&validation.stdout).unwrap()["valid"],
         true
     );
+}
+
+#[test]
+fn mcp_alias_inspection_is_static_and_marks_remote_metadata_unresolved() {
+    let temp = TempDir::new().unwrap();
+    let config_path = temp.path().join("fixture/config.toml");
+    write(&config_path, CONFIG);
+    write(
+        &temp.path().join("fixture/tools/echo-alias.toml"),
+        MCP_RESOURCE,
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_ctx"))
+        .current_dir(temp.path())
+        .args([
+            "--config",
+            config_path.to_str().unwrap(),
+            "tool",
+            "bindings",
+            "show",
+            "fixture.echo_alias",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["binding"]["implementation_id"], "mcp.fixture.echo");
+    assert_eq!(value["binding"]["remote_metadata"], "unresolved");
+    assert_eq!(value["binding"]["fixed"]["text"], "bound");
+    assert!(!temp.path().join("mcp-pid").exists());
+    assert!(!temp.path().join(".ctx/data/ctx.sqlite").exists());
 }
 
 #[test]

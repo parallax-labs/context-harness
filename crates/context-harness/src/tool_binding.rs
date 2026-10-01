@@ -372,6 +372,8 @@ pub struct ResolvedToolBinding {
     pub fixed: Value,
     pub restrictions: BindingRestrictions,
     pub binding_version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remote_metadata: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -604,6 +606,7 @@ impl ToolImplementationCatalog {
             fixed,
             restrictions: resource.restrictions.clone(),
             binding_version,
+            remote_metadata: None,
         })
     }
 }
@@ -615,9 +618,17 @@ pub fn resolve_resources(
     loaded
         .into_iter()
         .map(|(name, loaded)| {
-            let binding = catalog
-                .resolve(&loaded.definition)
-                .with_context(|| format!("resolving tool resource {}", loaded.path.display()))?;
+            let binding = if catalog
+                .find(&loaded.definition.tool.implementation)
+                .is_some()
+            {
+                catalog.resolve(&loaded.definition)
+            } else if mcp_reference(&loaded.definition.tool.implementation).is_some() {
+                resolve_unprepared_mcp_binding(&loaded.definition)
+            } else {
+                catalog.resolve(&loaded.definition)
+            }
+            .with_context(|| format!("resolving tool resource {}", loaded.path.display()))?;
             Ok((
                 name,
                 ResolvedToolResource {
@@ -629,6 +640,99 @@ pub fn resolve_resources(
             ))
         })
         .collect()
+}
+
+pub fn mcp_reference(implementation: &str) -> Option<(&str, &str)> {
+    let rest = implementation.strip_prefix("mcp.")?;
+    let (server, remote) = rest.split_once('.')?;
+    (!server.is_empty() && !remote.is_empty()).then_some((server, remote))
+}
+
+fn validate_mcp_declaration(resource: &ToolBindingResource) -> Result<()> {
+    ensure!(
+        resource.config.is_empty(),
+        "MCP aliases do not accept configuration"
+    );
+    ensure!(
+        resource.restrictions.paths.is_empty() && resource.restrictions.sources.is_empty(),
+        "MCP aliases cannot enforce path or source restrictions"
+    );
+    ensure!(
+        mcp_reference(&resource.tool.implementation).is_some(),
+        "invalid MCP implementation reference"
+    );
+    Ok(())
+}
+
+fn resolve_unprepared_mcp_binding(resource: &ToolBindingResource) -> Result<ResolvedToolBinding> {
+    validate_mcp_declaration(resource)?;
+    let fixed = toml_table_to_json(&resource.fixed)?;
+    Ok(ResolvedToolBinding {
+        name: resource.tool.name.clone(),
+        description: resource
+            .tool
+            .description
+            .clone()
+            .unwrap_or_else(|| "Alias for an MCP tool".into()),
+        implementation_description: "Remote MCP tool; schema requires authorized discovery".into(),
+        implementation_id: resource.tool.implementation.clone(),
+        implementation_version: "unresolved".into(),
+        trust_class: ToolTrustClass::McpExternal,
+        capabilities: vec![Capability::ProcessExecute, Capability::ExternalSideEffect],
+        public_schema: serde_json::json!({"type":"object", "remote_metadata":"unresolved"}),
+        config: serde_json::json!({}),
+        fixed,
+        restrictions: resource.restrictions.clone(),
+        binding_version: resource.resource_version()?,
+        remote_metadata: Some("unresolved".into()),
+    })
+}
+
+pub fn resolve_mcp_binding(
+    resource: &ToolBindingResource,
+    remote_schema: &Value,
+    remote_description: &str,
+    server_identity: &Value,
+) -> Result<ResolvedToolBinding> {
+    validate_mcp_declaration(resource)?;
+    validate_object_schema(remote_schema, "MCP input")?;
+    let fixed = toml_table_to_json(&resource.fixed)?;
+    validate_fixed(remote_schema, &fixed)?;
+    let public_schema = derive_public_schema(remote_schema, &resource.fixed)?;
+    let implementation_version = format!(
+        "sha256:{:x}",
+        Sha256::digest(serde_json::to_vec(&serde_json::json!({
+            "server": server_identity, "schema": remote_schema,
+        }))?)
+    );
+    let identity = serde_json::json!({
+        "resource": resource,
+        "implementation_version": implementation_version,
+        "remote_schema": remote_schema,
+        "public_schema": public_schema,
+    });
+    Ok(ResolvedToolBinding {
+        name: resource.tool.name.clone(),
+        description: resource
+            .tool
+            .description
+            .clone()
+            .unwrap_or_else(|| remote_description.to_string()),
+        implementation_description: "Authorized remote MCP tool".into(),
+        implementation_id: resource.tool.implementation.clone(),
+        implementation_version,
+        trust_class: ToolTrustClass::McpExternal,
+        capabilities: vec![Capability::ProcessExecute, Capability::ExternalSideEffect],
+        public_schema,
+        config: serde_json::json!({}),
+        fixed,
+        restrictions: resource.restrictions.clone(),
+        binding_version: format!(
+            "sha256:{:x}",
+            Sha256::digest(serde_json::to_vec(&identity)?)
+        ),
+        remote_metadata: Some("resolved".into()),
+    })
 }
 
 struct CoreFactory {

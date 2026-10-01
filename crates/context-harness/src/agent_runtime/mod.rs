@@ -54,6 +54,7 @@ pub struct AgentRuntime {
     policy: RuntimePolicy,
     approvals: Arc<dyn ApprovalHandler>,
     resources: Arc<std::collections::BTreeMap<String, LoadedAgentResource>>,
+    tool_bindings: Arc<std::collections::BTreeMap<String, tool_binding::LoadedToolResource>>,
     execution: Option<delegation::ExecutionContext>,
 }
 impl AgentRuntime {
@@ -76,6 +77,7 @@ impl AgentRuntime {
             tools: Arc::new(tools),
             models: Arc::new(models),
             resources: Arc::new(Default::default()),
+            tool_bindings: Arc::new(Default::default()),
             execution: None,
             policy: RuntimePolicy::default(),
             approvals: Arc::new(DenyApprovals),
@@ -156,7 +158,15 @@ impl AgentRuntime {
         if loaded.is_empty() {
             return Ok(self);
         }
-        let bindings = tool_binding::bind_resources(&loaded, catalog, authority).await?;
+        let local = loaded
+            .iter()
+            .filter(|(_, resource)| {
+                tool_binding::mcp_reference(&resource.definition.tool.implementation).is_none()
+            })
+            .map(|(name, resource)| (name.clone(), resource.clone()))
+            .collect();
+        let bindings = tool_binding::bind_resources(&local, catalog, authority).await?;
+        self.tool_bindings = Arc::new(loaded);
         let tools = Arc::get_mut(&mut self.tools).context("runtime tool registry is shared")?;
         for tool in bindings.tools() {
             ensure!(
@@ -354,7 +364,7 @@ impl AgentRuntime {
                         "workspace_root": self.root, "agent_version": resource.version,
                         "tools": agent.tools, "retrieval": "keyword",
                         "tool_binding_contract": tool_binding::CATALOG_CONTRACT_VERSION,
-                        "tool_bindings": self.selected_binding_metadata(resource)?,
+                        "tool_bindings": self.selected_binding_metadata_with(resource, Some(&external))?,
                         "host_policy": {"allow":self.policy.allow, "require_approval":self.policy.require_approval}
                     }),
                 )

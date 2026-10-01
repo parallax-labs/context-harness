@@ -17,15 +17,34 @@ struct Snapshot {
     request: ModelRequest,
 }
 impl AgentRuntime {
+    fn uses_unrecoverable_tool(&self, resource: &LoadedAgentResource) -> bool {
+        resource.definition.agent.tools.iter().any(|name| {
+            name.starts_with("mcp.")
+                || name == "agent.invoke"
+                || self.tool_bindings.get(name).is_some_and(|binding| {
+                    tool_binding::mcp_reference(&binding.definition.tool.implementation).is_some()
+                })
+        })
+    }
+
     pub(super) fn selected_binding_metadata(
         &self,
         resource: &LoadedAgentResource,
+    ) -> Result<Value> {
+        self.selected_binding_metadata_with(resource, None)
+    }
+
+    pub(super) fn selected_binding_metadata_with(
+        &self,
+        resource: &LoadedAgentResource,
+        external: Option<&ToolRegistry>,
     ) -> Result<Value> {
         let mut bindings = serde_json::Map::new();
         for name in &resource.definition.agent.tools {
             if let Some(metadata) = self
                 .tools
                 .find(name)
+                .or_else(|| external.and_then(|tools| tools.find(name)))
                 .and_then(|tool| tool.binding_metadata())
             {
                 bindings.insert(name.clone(), metadata);
@@ -67,13 +86,7 @@ impl AgentRuntime {
         {
             return Ok(());
         }
-        if resource
-            .definition
-            .agent
-            .tools
-            .iter()
-            .any(|name| name.starts_with("mcp.") || name == "agent.invoke")
-        {
+        if self.uses_unrecoverable_tool(resource) {
             return Ok(());
         }
         request.validate()?;
@@ -110,12 +123,7 @@ impl AgentRuntime {
             .await?
             .context("run not found in workspace")?;
         ensure!(
-            !resource
-                .definition
-                .agent
-                .tools
-                .iter()
-                .any(|name| name.starts_with("mcp.") || name == "agent.invoke"),
+            !self.uses_unrecoverable_tool(resource),
             "MCP-backed or delegating runs cannot resume; tree/session recovery is unsupported"
         );
         ensure!(

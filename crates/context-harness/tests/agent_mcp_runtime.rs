@@ -1,7 +1,9 @@
 use async_trait::async_trait;
 use context_harness::{
     agent_model::{fake::FakeModel, *},
-    agent_resource::{AgentResource, Capability, LoadedAgentResource, ResourceScope},
+    agent_resource::{
+        AgentResource, Capability, LoadedAgentResource, ResourceDirectory, ResourceScope,
+    },
     agent_runtime::{policy::*, AgentRuntime},
     config::{Config, McpServerConfig},
 };
@@ -13,6 +15,18 @@ use std::{
 };
 use tempfile::TempDir;
 use tokio::sync::watch;
+
+const MCP_ALIAS_RESOURCE: &str = r#"
+schema_version = 1
+[tool]
+name = "fixture.echo_alias"
+implementation = "mcp.fixture.echo"
+description = "Echo a bound fixture value"
+[fixed]
+text = "bound"
+[restrictions]
+max_output_bytes = 65536
+"#;
 
 fn config(root: &Path, mode: &str) -> Config {
     let mut cfg = Config::minimal();
@@ -41,6 +55,24 @@ fn resource() -> LoadedAgentResource {
         version: definition.version().unwrap(),
         definition,
     }
+}
+fn alias_resource() -> LoadedAgentResource {
+    let definition=AgentResource::parse("[agent]\nname='external-alias'\nmodel='test'\ntools=['fixture.echo_alias']\n[agent.permissions]\nallow=['read_only']\nrequire_approval=['process_execute','external_side_effect']\n[prompt]\nsystem='Use the bound external tool.'").unwrap();
+    LoadedAgentResource {
+        path: "alias-agent.toml".into(),
+        scope: ResourceScope::Workspace,
+        version: definition.version().unwrap(),
+        definition,
+    }
+}
+fn alias_directories(root: &Path) -> [ResourceDirectory; 1] {
+    let path = root.join("tool-resources");
+    std::fs::create_dir_all(&path).unwrap();
+    std::fs::write(path.join("echo-alias.toml"), MCP_ALIAS_RESOURCE).unwrap();
+    [ResourceDirectory {
+        path,
+        scope: ResourceScope::Workspace,
+    }]
 }
 fn call() -> ModelResponse {
     let mut response = ModelResponse::text("");
@@ -87,6 +119,49 @@ impl ModelProvider for Verify {
         };
         assert!(content.contains("external: hello"));
         Ok(ModelResponse::text("done"))
+    }
+}
+struct VerifyAlias;
+#[async_trait]
+impl ModelProvider for VerifyAlias {
+    async fn generate(&self, request: &ModelRequest) -> ModelResult<ModelResponse> {
+        assert_eq!(request.tools.len(), 1);
+        assert_eq!(request.tools[0].name, "fixture.echo_alias");
+        assert!(request.tools[0].parameters["properties"]
+            .get("text")
+            .is_none());
+        if request.messages.len() == 2 {
+            let mut response = ModelResponse::text("");
+            response.finish_reason = FinishReason::ToolCalls;
+            response.tool_calls = vec![ToolCall {
+                id: "alias-1".into(),
+                name: "fixture.echo_alias".into(),
+                arguments: json!({}),
+            }];
+            return Ok(response);
+        }
+        let ModelMessage::Tool { content, .. } = request.messages.last().unwrap() else {
+            panic!("missing aliased external result")
+        };
+        assert!(content.contains("external: bound"));
+        Ok(ModelResponse::text("done"))
+    }
+}
+struct VerifyAliasApproval {
+    calls: Mutex<Vec<(String, serde_json::Value)>>,
+}
+#[async_trait]
+impl ApprovalHandler for VerifyAliasApproval {
+    async fn approve(&self, request: &ApprovalRequest) -> bool {
+        assert!(request.capabilities.contains(&Capability::ProcessExecute));
+        assert!(request
+            .capabilities
+            .contains(&Capability::ExternalSideEffect));
+        self.calls
+            .lock()
+            .unwrap()
+            .push((request.tool.clone(), request.arguments.clone()));
+        true
     }
 }
 async fn execute(
@@ -152,6 +227,101 @@ async fn discovered_tool_uses_normal_policy_history_and_namespaces() {
         .is_none());
     let (_tx, rx) = watch::channel(false);
     assert!(rt.resume(&run.id, &resource(), rx).await.is_err());
+    #[cfg(unix)]
+    assert_stopped(tmp.path()).await;
+}
+
+#[tokio::test]
+async fn declared_alias_binds_fixed_arguments_and_records_resolved_identity() {
+    let tmp = TempDir::new().unwrap();
+    let directories = alias_directories(tmp.path());
+    let approvals = Arc::new(VerifyAliasApproval {
+        calls: Mutex::new(vec![]),
+    });
+    let rt = AgentRuntime::new(
+        config(tmp.path(), "ok"),
+        tmp.path(),
+        models(Arc::new(VerifyAlias)),
+    )
+    .await
+    .unwrap()
+    .with_policy(RuntimePolicy::default(), approvals.clone())
+    .with_tool_bindings(&directories)
+    .await
+    .unwrap();
+    let (_tx, rx) = watch::channel(false);
+    let agent = alias_resource();
+    let run = rt.run(&agent, "question", rx).await.unwrap();
+    assert_eq!(run.status, "completed", "{:?}", run.error);
+    {
+        let calls = approvals.calls.lock().unwrap();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].0, "runtime.mcp.start.fixture");
+        assert_eq!(calls[1].0, "fixture.echo_alias");
+        assert_eq!(calls[1].1["text"], "bound");
+    }
+    let calls = rt.store().tool_invocations(&run.id).await.unwrap();
+    assert_eq!(calls.len(), 2);
+    assert!(calls.iter().all(|call| call.status == "completed"));
+    let events = rt.store().events(&run.id, 0, 100).await.unwrap();
+    let resolved = events
+        .iter()
+        .find(|event| event.event_type == "context.resolved")
+        .unwrap();
+    let binding = &resolved.payload["tool_bindings"]["fixture.echo_alias"];
+    assert_eq!(binding["implementation_id"], "mcp.fixture.echo");
+    assert_eq!(binding["remote_metadata"], "resolved");
+    assert_eq!(binding["fixed"]["text"], "bound");
+    assert!(rt
+        .store()
+        .latest_checkpoint(&run.id)
+        .await
+        .unwrap()
+        .is_none());
+    let (_tx, rx) = watch::channel(false);
+    assert!(rt.resume(&run.id, &agent, rx).await.is_err());
+    let messages = std::fs::read_to_string(tmp.path().join("mcp-messages")).unwrap();
+    assert!(messages.contains("tools/call"));
+    assert!(messages.contains("\"text\": \"bound\""));
+    #[cfg(unix)]
+    assert_stopped(tmp.path()).await;
+}
+
+#[tokio::test]
+async fn alias_schema_drift_fails_before_model_or_remote_call() {
+    let tmp = TempDir::new().unwrap();
+    let directories = alias_directories(tmp.path());
+    let approvals = Arc::new(VerifyAliasApproval {
+        calls: Mutex::new(vec![]),
+    });
+    let rt = AgentRuntime::new(
+        config(tmp.path(), "drift"),
+        tmp.path(),
+        models(Arc::new(FakeModel::new([]))),
+    )
+    .await
+    .unwrap()
+    .with_policy(RuntimePolicy::default(), approvals.clone())
+    .with_tool_bindings(&directories)
+    .await
+    .unwrap();
+    let (_tx, rx) = watch::channel(false);
+    let run = rt.run(&alias_resource(), "question", rx).await.unwrap();
+    assert_eq!(run.status, "failed");
+    assert_eq!(
+        run.error.as_deref(),
+        Some("MCP alias schema validation failed")
+    );
+    assert_eq!(approvals.calls.lock().unwrap().len(), 1);
+    let calls = rt.store().tool_invocations(&run.id).await.unwrap();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].status, "failed");
+    let events = rt.store().events(&run.id, 0, 100).await.unwrap();
+    assert!(!events
+        .iter()
+        .any(|event| event.event_type == "model.requested"));
+    let messages = std::fs::read_to_string(tmp.path().join("mcp-messages")).unwrap();
+    assert!(!messages.contains("tools/call"));
     #[cfg(unix)]
     assert_stopped(tmp.path()).await;
 }
