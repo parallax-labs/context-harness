@@ -360,6 +360,10 @@ impl AgentRuntime {
                 )
                 .await?;
             let context = ToolContext::new(self.config.clone());
+            if restored.is_none() {
+                self.prepare_selected_tools(id, resource, &external, &context)
+                    .await?;
+            }
             let mut request = restored.unwrap_or_else(|| ModelRequest {
                 messages: vec![
                     ModelMessage::System {
@@ -454,7 +458,8 @@ impl AgentRuntime {
                             .await?;
                         anyhow::bail!("tool permission or argument validation rejected");
                     }
-                    self.approve_invocation(id, &call.id, &call.name, &call.arguments, authorization).await?;
+                    let approval_arguments = tool.approval_arguments(&call.arguments)?;
+                    self.approve_invocation(id, &call.id, &call.name, &approval_arguments, authorization).await?;
                     self.store.start_tool(id, &call.id).await?;
                     let result = if call.name == "agent.invoke" {
                         self.invoke(id, &call.id, resource, call.arguments).await
@@ -502,6 +507,64 @@ impl AgentRuntime {
             session.close().await;
         }
         result
+    }
+
+    async fn prepare_selected_tools(
+        &self,
+        id: &str,
+        resource: &LoadedAgentResource,
+        external: &ToolRegistry,
+        context: &ToolContext,
+    ) -> Result<()> {
+        for name in &resource.definition.agent.tools {
+            let tool = self
+                .tools
+                .find(name)
+                .or_else(|| external.find(name))
+                .context("tool unavailable")?;
+            let Some(preparation) = tool.preparation() else {
+                continue;
+            };
+            let call_id = format!("prepare:{name}");
+            self.store
+                .request_tool(id, &call_id, &preparation.name, &preparation.arguments)
+                .await?;
+            let authorization = self.policy.authorize(
+                &resource.definition.agent.permissions,
+                &preparation.capabilities,
+            );
+            self.approve_invocation(
+                id,
+                &call_id,
+                &preparation.name,
+                &preparation.arguments,
+                authorization,
+            )
+            .await?;
+            self.store.start_tool(id, &call_id).await?;
+            match tool.prepare(context).await {
+                Ok(()) => {
+                    self.store
+                        .finish_tool(
+                            id,
+                            &call_id,
+                            ToolOutcome::Completed(json!({"prepared":true})),
+                        )
+                        .await?;
+                }
+                Err(_) => {
+                    self.store
+                        .finish_tool(
+                            id,
+                            &call_id,
+                            ToolOutcome::Failed("tool preparation failed".into()),
+                        )
+                        .await?;
+                    anyhow::bail!("tool preparation failed");
+                }
+            }
+        }
+        Ok(())
     }
 }
 

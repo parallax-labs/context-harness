@@ -120,6 +120,7 @@ pub mod extract;
 pub mod get;
 pub mod ingest;
 pub mod lua_runtime;
+pub mod lua_tool_binding;
 pub mod mcp;
 pub mod migrate;
 pub mod models;

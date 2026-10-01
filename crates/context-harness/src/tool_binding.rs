@@ -821,6 +821,10 @@ impl Tool for ScopedRetrieval {
         validate_schema_value(&self.binding.public_schema, arguments, "arguments")
     }
 
+    fn approval_arguments(&self, arguments: &Value) -> Result<Value> {
+        Ok(Value::Object(self.effective_arguments(arguments.clone())?))
+    }
+
     async fn execute(
         &self,
         arguments: Value,
@@ -1084,6 +1088,10 @@ impl Tool for ScopedFileRead {
         validate_schema_value(&self.binding.public_schema, arguments, "arguments")
     }
 
+    fn approval_arguments(&self, arguments: &Value) -> Result<Value> {
+        Ok(Value::Object(self.effective_arguments(arguments.clone())?))
+    }
+
     async fn execute(
         &self,
         arguments: Value,
@@ -1297,6 +1305,12 @@ fn validate_schema_value(schema: &Value, value: &Value, label: &str) -> Result<(
         }
     }
     Ok(())
+}
+
+/// Validate arguments against the strict, side-effect-free schema subset used
+/// by declarative binding descriptors.
+pub fn validate_binding_arguments(schema: &Value, arguments: &Value) -> Result<()> {
+    validate_schema_value(schema, arguments, "arguments")
 }
 
 fn is_secret_reference(value: &Value) -> bool {

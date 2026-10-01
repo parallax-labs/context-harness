@@ -192,10 +192,17 @@ impl AgentRuntime {
             }
         }
         ensure!(
-            invocations.len() == restored_results.len(),
+            invocations
+                .iter()
+                .filter(|invocation| !invocation.tool_name.starts_with("runtime."))
+                .count()
+                == restored_results.len(),
             "tool history is not captured by checkpoint; manual reconciliation required"
         );
         for invocation in &invocations {
+            if invocation.tool_name.starts_with("runtime.") {
+                continue;
+            }
             let call = restored_calls
                 .get(invocation.call_id.as_str())
                 .context("tool call missing from checkpoint; manual reconciliation required")?;
