@@ -14,10 +14,11 @@ use policy::{ApprovalHandler, ApprovalRequest, Authorization, DenyApprovals, Run
 
 use crate::{
     agent_model::{FinishReason, ModelMessage, ModelRegistry, ModelRequest, ModelTool},
-    agent_resource::LoadedAgentResource,
+    agent_resource::{Capability, LoadedAgentResource, ResourceDirectory},
     agent_store::{AgentRun, AgentRunStore, RunOutcome, ToolOutcome},
     app_store::SqliteAppStore,
     config::Config,
+    tool_binding::{self, HostToolAuthority},
     traits::{ToolContext, ToolRegistry},
 };
 use anyhow::{ensure, Context, Result};
@@ -92,6 +93,31 @@ impl AgentRuntime {
         self.policy = policy;
         self.approvals = approvals;
         self
+    }
+
+    /// Resolve and bind standalone tool resources through the trusted core catalog.
+    /// Host authority is the existing workspace read boundary; resources only narrow it.
+    pub async fn with_tool_bindings(mut self, directories: &[ResourceDirectory]) -> Result<Self> {
+        let loaded = tool_binding::load_resources(directories, &self.config)?;
+        if loaded.is_empty() {
+            return Ok(self);
+        }
+        let mut authority = HostToolAuthority::new(&self.root, vec![Capability::ReadOnly])?;
+        authority.enroll_path(&self.root)?;
+        let catalog = tool_binding::core_catalog()?;
+        let bindings = tool_binding::bind_resources(&loaded, &catalog, Arc::new(authority)).await?;
+        let tools = Arc::get_mut(&mut self.tools).context("runtime tool registry is shared")?;
+        for tool in bindings.tools() {
+            ensure!(
+                tools.find(tool.name()).is_none(),
+                "tool binding '{}' conflicts with an existing runtime tool",
+                tool.name()
+            );
+        }
+        for tool in bindings.into_tools() {
+            tools.register(tool);
+        }
+        Ok(self)
     }
 
     pub fn store(&self) -> &AgentRunStore {
@@ -355,8 +381,10 @@ impl AgentRuntime {
                         self.validate_delegation(resource, &call.arguments)
                     } else if call.name.starts_with("mcp.") {
                         mcp_client::validate_arguments(&call.arguments)
-                    } else {
+                    } else if developer::is_tool(&call.name) {
                         developer::validate(&self.root, &call.name, &call.arguments)
+                    } else {
+                        tool.validate_arguments(&call.arguments)
                     };
                     if !agent.tools.contains(&call.name)
                         || authorization == Authorization::Denied

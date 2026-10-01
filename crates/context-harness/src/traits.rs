@@ -224,6 +224,13 @@ pub trait Tool: Send + Sync {
     /// `properties`, and optionally `required`.
     fn parameters_schema(&self) -> Value;
 
+    /// Validate model-visible arguments before authorization and tool start.
+    /// Bound adapters override this with their resolved public contract.
+    fn validate_arguments(&self, params: &Value) -> Result<()> {
+        anyhow::ensure!(params.is_object(), "tool arguments must be an object");
+        Ok(())
+    }
+
     /// Execute the tool with validated parameters.
     ///
     /// Called each time an agent invokes the tool via `POST /tools/{name}`.
@@ -1034,6 +1041,11 @@ impl ToolRegistry {
     /// Get all registered tools.
     pub fn tools(&self) -> &[Box<dyn Tool>] {
         &self.tools
+    }
+
+    /// Consume the registry and return its tools for composition into another registry.
+    pub fn into_tools(self) -> Vec<Box<dyn Tool>> {
+        self.tools
     }
 
     /// Find a tool by name.

@@ -1,5 +1,8 @@
 use context_harness::{
+    agent_model::{fake::FakeModel, FinishReason, ModelResponse, ToolCall},
+    agent_resource::{AgentResource, LoadedAgentResource},
     agent_resource::{ResourceDirectory, ResourceScope},
+    agent_runtime::AgentRuntime,
     config::{Config, ResolvedConfig},
     ctx_dirs::ConfigSourceKind,
     tool_binding::{
@@ -8,8 +11,9 @@ use context_harness::{
     },
 };
 use serde_json::Value;
-use std::{fs, path::Path, process::Command};
+use std::{fs, path::Path, process::Command, sync::Arc};
 use tempfile::TempDir;
+use tokio::sync::watch;
 
 const CONFIG: &str = r#"
 [db]
@@ -198,4 +202,70 @@ fn targeted_loading_ignores_unrelated_broken_resources() {
     let selected = load_named_resource(&[directory], &config(), "release.read").unwrap();
     assert_eq!(selected.len(), 1);
     assert!(selected.contains_key("release.read"));
+}
+
+#[tokio::test]
+async fn scoped_reader_alias_executes_through_the_common_runtime_lifecycle() {
+    let temp = TempDir::new().unwrap();
+    write(&temp.path().join("release/summary.md"), "release evidence");
+    let tools = temp.path().join("tool-resources");
+    write(&tools.join("read.toml"), RESOURCE);
+    let tool_directories = [ResourceDirectory {
+        path: tools,
+        scope: ResourceScope::Workspace,
+    }];
+
+    let agent_source = r#"
+[agent]
+name = "reader"
+model = "test"
+tools = ["release.read"]
+[agent.execution]
+max_turns = 3
+timeout_seconds = 10
+[prompt]
+system = "Read the release evidence."
+"#;
+    let definition = AgentResource::parse(agent_source).unwrap();
+    let agent = LoadedAgentResource {
+        path: "agent.toml".into(),
+        scope: ResourceScope::Workspace,
+        version: definition.version().unwrap(),
+        definition,
+    };
+    let mut call = ModelResponse::text("");
+    call.finish_reason = FinishReason::ToolCalls;
+    call.tool_calls = vec![ToolCall {
+        name: "release.read".into(),
+        id: "read-1".into(),
+        arguments: serde_json::json!({"path":"summary.md"}),
+    }];
+    let provider = Arc::new(FakeModel::new([
+        Ok(call),
+        Ok(ModelResponse::text("reviewed release evidence")),
+    ]));
+    let mut models = context_harness::agent_model::ModelRegistry::default();
+    models
+        .register("test", "fake", "scripted", provider)
+        .unwrap();
+    let mut cfg = config();
+    cfg.db.path = temp.path().join("ctx.sqlite");
+    let runtime = AgentRuntime::new(cfg, temp.path(), models)
+        .await
+        .unwrap()
+        .with_tool_bindings(&tool_directories)
+        .await
+        .unwrap();
+    let (_sender, cancel) = watch::channel(false);
+    let run = runtime.run(&agent, "Review", cancel).await.unwrap();
+    assert_eq!(run.status, "completed");
+    let calls = runtime.store().tool_invocations(&run.id).await.unwrap();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].tool_name, "release.read");
+    assert!(calls[0]
+        .result
+        .as_ref()
+        .unwrap()
+        .to_string()
+        .contains("release evidence"));
 }

@@ -179,6 +179,18 @@ pub(super) fn validate(root: &Path, name: &str, args: &Value) -> Result<()> {
     }
     Ok(())
 }
+
+pub(super) fn is_tool(name: &str) -> bool {
+    matches!(
+        name,
+        "workspace.read"
+            | "workspace.search"
+            | "git.status"
+            | "git.diff"
+            | "workspace.patch"
+            | "process.exec"
+    )
+}
 fn writable(root: &Path, path: &str) -> Result<PathBuf> {
     let path = confined(root, path)?;
     let parts: Vec<_> = path.strip_prefix(root)?.components().collect();

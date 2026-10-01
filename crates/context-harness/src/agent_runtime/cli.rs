@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 pub async fn run(
     config: Config,
     directories: &[ResourceDirectory],
+    tool_directories: &[ResourceDirectory],
     name: &str,
     input: &str,
     json_output: bool,
@@ -19,6 +20,8 @@ pub async fn run(
         .context("standalone agent not found; legacy agents remain prompt-only")?;
     let models = catalog_models(&config, &resources, name)?;
     let mut runtime = AgentRuntime::new(config, &std::env::current_dir()?, models)
+        .await?
+        .with_tool_bindings(tool_directories)
         .await?
         .with_resources(resources);
     if !non_interactive {
@@ -94,6 +97,7 @@ fn print_run(run: AgentRun, json_output: bool) -> Result<()> {
 pub async fn resume(
     config: Config,
     directories: &[ResourceDirectory],
+    tool_directories: &[ResourceDirectory],
     id: &str,
     json_output: bool,
     non_interactive: bool,
@@ -116,7 +120,10 @@ pub async fn resume(
         .context("model alias not found")?
         .clone();
     let models = ModelRegistry::from_config(&BTreeMap::from([(alias.clone(), definition)]))?;
-    let mut runtime = AgentRuntime::new(config, &std::env::current_dir()?, models).await?;
+    let mut runtime = AgentRuntime::new(config, &std::env::current_dir()?, models)
+        .await?
+        .with_tool_bindings(tool_directories)
+        .await?;
     if !non_interactive {
         runtime = runtime.with_policy(
             RuntimePolicy::default(),

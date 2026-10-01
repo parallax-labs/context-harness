@@ -8,7 +8,7 @@ use crate::{
     agent_resource::{Capability, ResourceDirectory, ResourceScope},
     config::{Config, ResolvedConfig},
     ctx_dirs::{self, ConfigSourceKind},
-    traits::Tool,
+    traits::{Tool, ToolRegistry},
 };
 use anyhow::{bail, ensure, Context, Result};
 use async_trait::async_trait;
@@ -504,6 +504,7 @@ impl HostToolAuthority {
 /// Owned input to a trusted implementation factory.
 pub struct ToolBindingRequest {
     pub resource: ToolBindingResource,
+    pub resolved: ResolvedToolBinding,
     pub authority: Arc<HostToolAuthority>,
 }
 
@@ -629,12 +630,12 @@ pub fn resolve_resources(
         .collect()
 }
 
-struct MetadataFactory {
+struct CoreFactory {
     descriptor: ToolImplementationDescriptor,
 }
 
 #[async_trait]
-impl ToolImplementationFactory for MetadataFactory {
+impl ToolImplementationFactory for CoreFactory {
     fn descriptor(&self) -> &ToolImplementationDescriptor {
         &self.descriptor
     }
@@ -679,14 +680,21 @@ impl ToolImplementationFactory for MetadataFactory {
         Ok(())
     }
 
-    async fn bind(&self, _request: ToolBindingRequest) -> Result<Box<dyn Tool>> {
-        bail!("tool implementation is not connected to runtime dispatch yet")
+    async fn bind(&self, request: ToolBindingRequest) -> Result<Box<dyn Tool>> {
+        match self.descriptor.id.as_str() {
+            "builtin.scoped_file_read" => Ok(Box::new(ScopedFileRead::bind(
+                request,
+                self.descriptor.input_schema.clone(),
+            )?)),
+            _ => bail!(
+                "tool implementation '{}' is not connected to runtime dispatch yet",
+                self.descriptor.id
+            ),
+        }
     }
 }
 
-/// Catalog of core implementations available for static resource authoring.
-/// Runtime factories replace these metadata-only entries in the integration slice.
-pub fn core_metadata_catalog() -> Result<ToolImplementationCatalog> {
+pub fn core_catalog() -> Result<ToolImplementationCatalog> {
     let mut catalog = ToolImplementationCatalog::new();
     for descriptor in [
         ToolImplementationDescriptor {
@@ -762,9 +770,184 @@ pub fn core_metadata_catalog() -> Result<ToolImplementationCatalog> {
             trust_class: ToolTrustClass::Builtin,
         },
     ] {
-        catalog.register(Arc::new(MetadataFactory { descriptor }))?;
+        catalog.register(Arc::new(CoreFactory { descriptor }))?;
     }
     Ok(catalog)
+}
+
+/// Backwards-compatible name for callers that only inspect descriptors.
+pub fn core_metadata_catalog() -> Result<ToolImplementationCatalog> {
+    core_catalog()
+}
+
+pub async fn bind_resources(
+    loaded: &BTreeMap<String, LoadedToolResource>,
+    catalog: &ToolImplementationCatalog,
+    authority: Arc<HostToolAuthority>,
+) -> Result<ToolRegistry> {
+    let mut registry = ToolRegistry::new();
+    for resource in loaded.values() {
+        let resolved = catalog.resolve(&resource.definition)?;
+        let factory = catalog
+            .find(&resolved.implementation_id)
+            .context("resolved implementation disappeared from catalog")?;
+        let tool = factory
+            .bind(ToolBindingRequest {
+                resource: resource.definition.clone(),
+                resolved,
+                authority: authority.clone(),
+            })
+            .await
+            .with_context(|| format!("binding tool resource {}", resource.path.display()))?;
+        ensure!(
+            registry.find(tool.name()).is_none(),
+            "duplicate bound tool '{}'",
+            tool.name()
+        );
+        registry.register(tool);
+    }
+    Ok(registry)
+}
+
+struct ScopedFileRead {
+    binding: ResolvedToolBinding,
+    input_schema: Value,
+    fixed: serde_json::Map<String, Value>,
+    root: PathBuf,
+}
+
+impl ScopedFileRead {
+    fn bind(request: ToolBindingRequest, input_schema: Value) -> Result<Self> {
+        let root = request
+            .resource
+            .config
+            .get("root")
+            .and_then(toml::Value::as_str)
+            .context("config.root must be a string")?;
+        let root = request
+            .authority
+            .workspace_root()
+            .join(normalize_resource_path(root)?)
+            .canonicalize()
+            .context("canonicalizing scoped file root")?;
+        ensure!(root.is_dir(), "scoped file root must be a directory");
+        ensure!(
+            request
+                .authority
+                .paths()
+                .iter()
+                .any(|granted| root.starts_with(granted)),
+            "scoped file root is not granted by the host"
+        );
+        let fixed = request
+            .resolved
+            .fixed
+            .as_object()
+            .context("fixed arguments must be an object")?
+            .clone();
+        Ok(Self {
+            binding: request.resolved,
+            input_schema,
+            fixed,
+            root,
+        })
+    }
+
+    fn effective_arguments(&self, arguments: Value) -> Result<serde_json::Map<String, Value>> {
+        validate_schema_value(&self.binding.public_schema, &arguments, "arguments")?;
+        let mut arguments = arguments
+            .as_object()
+            .context("tool arguments must be an object")?
+            .clone();
+        for (name, value) in &self.fixed {
+            ensure!(
+                !arguments.contains_key(name),
+                "fixed argument '{name}' cannot be overridden"
+            );
+            arguments.insert(name.clone(), value.clone());
+        }
+        validate_schema_value(
+            &self.input_schema,
+            &Value::Object(arguments.clone()),
+            "arguments",
+        )?;
+        Ok(arguments)
+    }
+}
+
+#[async_trait]
+impl Tool for ScopedFileRead {
+    fn capabilities(&self) -> Option<Vec<Capability>> {
+        Some(self.binding.capabilities.clone())
+    }
+
+    fn name(&self) -> &str {
+        &self.binding.name
+    }
+
+    fn description(&self) -> &str {
+        &self.binding.description
+    }
+
+    fn parameters_schema(&self) -> Value {
+        self.binding.public_schema.clone()
+    }
+
+    fn validate_arguments(&self, arguments: &Value) -> Result<()> {
+        validate_schema_value(&self.binding.public_schema, arguments, "arguments")
+    }
+
+    async fn execute(
+        &self,
+        arguments: Value,
+        _context: &crate::traits::ToolContext,
+    ) -> Result<Value> {
+        let arguments = self.effective_arguments(arguments)?;
+        let path = arguments
+            .get("path")
+            .and_then(Value::as_str)
+            .context("path must be a string")?;
+        let relative = normalize_resource_path(path)?;
+        let path = self
+            .root
+            .join(&relative)
+            .canonicalize()
+            .context("canonicalizing scoped file")?;
+        ensure!(
+            path.starts_with(&self.root),
+            "scoped file path escapes its root"
+        );
+        ensure!(path.is_file(), "scoped file path must be a regular file");
+        let requested = arguments
+            .get("max_bytes")
+            .and_then(Value::as_u64)
+            .unwrap_or(MAX_OUTPUT_BYTES);
+        let limit = requested.min(
+            self.binding
+                .restrictions
+                .max_output_bytes
+                .unwrap_or(MAX_OUTPUT_BYTES),
+        );
+        let metadata = tokio::fs::metadata(&path).await?;
+        ensure!(metadata.len() <= limit, "scoped file exceeds output limit");
+        let bytes = tokio::fs::read(&path).await?;
+        ensure!(
+            bytes.len() as u64 <= limit,
+            "scoped file exceeds output limit"
+        );
+        let content = String::from_utf8(bytes).context("scoped file is not UTF-8")?;
+        let output = serde_json::json!({"path": relative, "content": content});
+        ensure!(
+            serde_json::to_vec(&output)?.len() as u64
+                <= self
+                    .binding
+                    .restrictions
+                    .max_output_bytes
+                    .unwrap_or(MAX_OUTPUT_BYTES),
+            "serialized tool result exceeds output limit"
+        );
+        Ok(output)
+    }
 }
 
 impl BindingRestrictions {

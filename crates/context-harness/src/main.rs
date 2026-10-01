@@ -773,6 +773,8 @@ async fn main() -> anyhow::Result<()> {
         &cli.command,
         Commands::Tool {
             action: ToolAction::Bindings { .. }
+        } | Commands::Agent {
+            action: AgentAction::Run { .. } | AgentAction::Resume { .. }
         }
     ) {
         tool_binding::cli_resource_directories(&resolved_config)?
@@ -1080,6 +1082,7 @@ async fn main() -> anyhow::Result<()> {
                 agent_runtime::cli::run(
                     cfg,
                     &agent_resource_dirs,
+                    &tool_resource_dirs,
                     &name,
                     &input,
                     json,
@@ -1095,6 +1098,7 @@ async fn main() -> anyhow::Result<()> {
                 agent_runtime::cli::resume(
                     cfg,
                     &agent_resource_dirs,
+                    &tool_resource_dirs,
                     &run_id,
                     json,
                     non_interactive,
