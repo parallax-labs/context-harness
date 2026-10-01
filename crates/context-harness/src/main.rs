@@ -959,7 +959,12 @@ async fn main() -> anyhow::Result<()> {
                 match action {
                     ToolBindingsAction::List { json } => {
                         if json {
-                            println!("{}", serde_json::to_string_pretty(&resolved)?);
+                            println!(
+                                "{}",
+                                serde_json::to_string_pretty(&tool_binding::inspection_values(
+                                    &resolved
+                                )?)?
+                            );
                         } else {
                             for item in resolved.values() {
                                 println!(
@@ -977,8 +982,14 @@ async fn main() -> anyhow::Result<()> {
                             .get(&name)
                             .with_context(|| format!("unknown tool binding '{name}'"))?;
                         if json {
-                            println!("{}", serde_json::to_string_pretty(item)?);
+                            println!(
+                                "{}",
+                                serde_json::to_string_pretty(&tool_binding::inspection_value(
+                                    item
+                                )?)?
+                            );
                         } else {
+                            let inspected = tool_binding::inspection_value(item)?;
                             println!("Tool: {}", item.binding.name);
                             println!("Description: {}", item.binding.description);
                             println!(
@@ -1003,11 +1014,11 @@ async fn main() -> anyhow::Result<()> {
                             );
                             println!(
                                 "Configuration: {}",
-                                serde_json::to_string(&item.binding.config)?
+                                serde_json::to_string(&inspected["binding"]["config"])?
                             );
                             println!(
                                 "Fixed arguments: {}",
-                                serde_json::to_string(&item.binding.fixed)?
+                                serde_json::to_string(&inspected["binding"]["fixed"])?
                             );
                             println!(
                                 "Public schema: {}",

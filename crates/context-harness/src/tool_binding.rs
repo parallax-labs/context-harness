@@ -1262,6 +1262,22 @@ pub(crate) fn binding_metadata(binding: &ResolvedToolBinding) -> Value {
     })
 }
 
+pub fn inspection_value(resource: &ResolvedToolResource) -> Result<Value> {
+    let mut value = serde_json::to_value(resource)?;
+    value["binding"]["config"] = sanitize_metadata(resource.binding.config.clone());
+    value["binding"]["fixed"] = sanitize_metadata(resource.binding.fixed.clone());
+    Ok(value)
+}
+
+pub fn inspection_values(resources: &BTreeMap<String, ResolvedToolResource>) -> Result<Value> {
+    Ok(Value::Object(
+        resources
+            .iter()
+            .map(|(name, resource)| Ok((name.clone(), inspection_value(resource)?)))
+            .collect::<Result<serde_json::Map<_, _>>>()?,
+    ))
+}
+
 pub(crate) fn compatibility_binding_metadata(
     name: &str,
     implementation_id: &str,
@@ -1580,5 +1596,36 @@ max_output_bytes = 65536
         assert_eq!(sanitized["nested"]["token"]["secret_ref"], "ISSUE_TOKEN");
         assert!(sanitized.to_string().contains("ISSUE_TOKEN"));
         assert!(!sanitized.to_string().contains("\"env\""));
+
+        let resource = ResolvedToolResource {
+            path: PathBuf::from("secret.toml"),
+            scope: ResourceScope::Workspace,
+            resource_version: "resource-v1".into(),
+            binding: ResolvedToolBinding {
+                name: "secret.tool".into(),
+                description: "Secret fixture".into(),
+                implementation_description: "Secret fixture implementation".into(),
+                implementation_id: "rust.secret.fixture".into(),
+                implementation_version: "1".into(),
+                trust_class: ToolTrustClass::Compiled,
+                capabilities: vec![],
+                public_schema: serde_json::json!({"type":"object","properties":{}}),
+                config: serde_json::json!({"token":{"env":"ISSUE_TOKEN"}}),
+                fixed: serde_json::json!({"header":{"env":"HEADER_TOKEN"}}),
+                restrictions: BindingRestrictions::default(),
+                binding_version: "binding-v1".into(),
+                remote_metadata: None,
+            },
+        };
+        let inspected = inspection_value(&resource).unwrap();
+        assert_eq!(
+            inspected["binding"]["config"]["token"]["secret_ref"],
+            "ISSUE_TOKEN"
+        );
+        assert_eq!(
+            inspected["binding"]["fixed"]["header"]["secret_ref"],
+            "HEADER_TOKEN"
+        );
+        assert!(!inspected.to_string().contains("\"env\""));
     }
 }
