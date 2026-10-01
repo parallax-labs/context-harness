@@ -130,6 +130,17 @@ fn authority(root: &Path) -> Arc<HostToolAuthority> {
     )
 }
 
+fn tool_call(arguments: Value) -> ModelResponse {
+    let mut call = ModelResponse::text("");
+    call.finish_reason = FinishReason::ToolCalls;
+    call.tool_calls = vec![ToolCall {
+        name: "fixture.lua_echo".into(),
+        id: "lua-1".into(),
+        arguments,
+    }];
+    call
+}
+
 struct Grant {
     count: AtomicUsize,
     arguments: Mutex<Vec<Value>>,
@@ -206,14 +217,10 @@ end
         scope: ResourceScope::Workspace,
     }];
     let cfg = Arc::new(config(temp.path()));
-    let mut call = ModelResponse::text("");
-    call.finish_reason = FinishReason::ToolCalls;
-    call.tool_calls = vec![ToolCall {
-        name: "fixture.lua_echo".into(),
-        id: "lua-1".into(),
-        arguments: json!({"text":"hello"}),
-    }];
-    let provider = Arc::new(FakeModel::new([Ok(call), Ok(ModelResponse::text("done"))]));
+    let provider = Arc::new(FakeModel::new([
+        Ok(tool_call(json!({"text":"hello"}))),
+        Ok(ModelResponse::text("done")),
+    ]));
     let mut models = ModelRegistry::default();
     models.register("test", "fake", "lua", provider).unwrap();
     let approvals = Arc::new(Grant {
@@ -242,4 +249,141 @@ end
         .contains("lua: hello"));
     assert_eq!(approvals.count.load(Ordering::SeqCst), 2);
     assert_eq!(approvals.arguments.lock().unwrap()[1]["prefix"], "lua: ");
+    let events = runtime.store().events(&run.id, 0, 100).await.unwrap();
+    let resolved = events
+        .iter()
+        .find(|event| event.event_type == "context.resolved")
+        .unwrap();
+    let binding = &resolved.payload["tool_bindings"]["fixture.lua_echo"];
+    assert_eq!(binding["implementation_id"], "lua.fixture.echo");
+    assert_eq!(binding["fixed"]["prefix"], "lua: ");
+    assert_eq!(binding["restrictions"]["max_output_bytes"], 256);
+}
+
+#[tokio::test]
+async fn lua_binding_validation_failure_execution_failure_and_output_bounds_are_durable() {
+    for (arguments, expected_status) in [
+        (json!({"unknown":"value"}), "denied"),
+        (json!({"text":"fail"}), "failed"),
+        (json!({"text":"large"}), "failed"),
+    ] {
+        let temp = TempDir::new().unwrap();
+        let script = temp.path().join("echo.lua");
+        fs::write(
+            &script,
+            r#"
+tool = {}
+function tool.execute(params, context)
+  if params.text == "fail" then error("fixture failure") end
+  if params.text == "large" then return { value = string.rep("x", 512) } end
+  return { value = params.prefix .. params.text }
+end
+"#,
+        )
+        .unwrap();
+        let tools = temp.path().join("tools");
+        fs::create_dir(&tools).unwrap();
+        fs::write(tools.join("echo.toml"), RESOURCE).unwrap();
+        let directories = [ResourceDirectory {
+            path: tools,
+            scope: ResourceScope::Workspace,
+        }];
+        let cfg = Arc::new(config(temp.path()));
+        let mut models = ModelRegistry::default();
+        models
+            .register(
+                "test",
+                "fake",
+                "lua",
+                Arc::new(FakeModel::new([Ok(tool_call(arguments))])),
+            )
+            .unwrap();
+        let approvals = Arc::new(Grant {
+            count: AtomicUsize::new(0),
+            arguments: Mutex::new(Vec::new()),
+        });
+        let runtime = AgentRuntime::new((*cfg).clone(), temp.path(), models)
+            .await
+            .unwrap()
+            .with_policy(policy(), approvals)
+            .with_tool_binding_catalog(&directories, &catalog(&script, cfg), authority(temp.path()))
+            .await
+            .unwrap();
+        let (_sender, cancel) = watch::channel(false);
+        let run = runtime.run(&agent(), "Echo", cancel).await.unwrap();
+        assert_eq!(run.status, "failed");
+        let calls = runtime.store().tool_invocations(&run.id).await.unwrap();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].status, "completed");
+        assert_eq!(calls[1].status, expected_status);
+    }
+}
+
+#[tokio::test]
+async fn cancelling_cpu_bound_lua_finalizes_the_invocation() {
+    let temp = TempDir::new().unwrap();
+    let script = temp.path().join("echo.lua");
+    fs::write(
+        &script,
+        r#"
+tool = {}
+function tool.execute(params, context)
+  while true do end
+end
+"#,
+    )
+    .unwrap();
+    let tools = temp.path().join("tools");
+    fs::create_dir(&tools).unwrap();
+    fs::write(tools.join("echo.toml"), RESOURCE).unwrap();
+    let directories = [ResourceDirectory {
+        path: tools,
+        scope: ResourceScope::Workspace,
+    }];
+    let cfg = Arc::new(config(temp.path()));
+    let mut models = ModelRegistry::default();
+    models
+        .register(
+            "test",
+            "fake",
+            "lua",
+            Arc::new(FakeModel::new([Ok(tool_call(json!({"text":"loop"})))])),
+        )
+        .unwrap();
+    let approvals = Arc::new(Grant {
+        count: AtomicUsize::new(0),
+        arguments: Mutex::new(Vec::new()),
+    });
+    let runtime = Arc::new(
+        AgentRuntime::new((*cfg).clone(), temp.path(), models)
+            .await
+            .unwrap()
+            .with_policy(policy(), approvals)
+            .with_tool_binding_catalog(&directories, &catalog(&script, cfg), authority(temp.path()))
+            .await
+            .unwrap(),
+    );
+    let (sender, cancel) = watch::channel(false);
+    let running = runtime.clone();
+    let task = tokio::spawn(async move { running.run(&agent(), "Echo", cancel).await });
+    let run_id = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            if let Some(run) = runtime.store().history(1).await.unwrap().first() {
+                let calls = runtime.store().tool_invocations(&run.id).await.unwrap();
+                if calls.get(1).is_some_and(|call| call.status == "started") {
+                    break run.id.clone();
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    sender.send(true).unwrap();
+    let run = task.await.unwrap().unwrap();
+    assert_eq!(run.status, "cancelled");
+    let calls = runtime.store().tool_invocations(&run_id).await.unwrap();
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[1].status, "failed");
+    assert_eq!(calls[1].error.as_deref(), Some("run interrupted"));
 }

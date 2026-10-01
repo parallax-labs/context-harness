@@ -179,12 +179,7 @@ impl Tool for BoundLuaTool {
         Some(self.binding.capabilities.clone())
     }
     fn binding_metadata(&self) -> Option<Value> {
-        Some(serde_json::json!({
-            "binding_version": self.binding.binding_version,
-            "implementation_id": self.binding.implementation_id,
-            "implementation_version": self.binding.implementation_version,
-            "trust_class": self.binding.trust_class,
-        }))
+        Some(crate::tool_binding::binding_metadata(&self.binding))
     }
     fn preparation(&self) -> Option<ToolPreparation> {
         Some(ToolPreparation {

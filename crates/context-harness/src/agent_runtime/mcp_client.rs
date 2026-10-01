@@ -343,17 +343,9 @@ impl Tool for RemoteAlias {
         Some(self.binding.capabilities.clone())
     }
     fn binding_metadata(&self) -> Option<Value> {
-        Some(serde_json::json!({
-            "binding_version": self.binding.binding_version,
-            "implementation_id": self.binding.implementation_id,
-            "implementation_version": self.binding.implementation_version,
-            "trust_class": self.binding.trust_class,
-            "capabilities": self.binding.capabilities,
-            "public_schema": self.binding.public_schema,
-            "fixed": self.binding.fixed,
-            "restrictions": self.binding.restrictions,
-            "remote_metadata": self.binding.remote_metadata,
-        }))
+        let mut metadata = tool_binding::binding_metadata(&self.binding);
+        metadata["remote_metadata"] = serde_json::json!(self.binding.remote_metadata);
+        Some(metadata)
     }
     fn validate_arguments(&self, arguments: &Value) -> Result<()> {
         tool_binding::validate_binding_arguments(&self.binding.public_schema, arguments)

@@ -1249,7 +1249,7 @@ impl Tool for ScopedFileRead {
     }
 }
 
-fn binding_metadata(binding: &ResolvedToolBinding) -> Value {
+pub(crate) fn binding_metadata(binding: &ResolvedToolBinding) -> Value {
     serde_json::json!({
         "binding_version": binding.binding_version,
         "implementation_id": binding.implementation_id,
