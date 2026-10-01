@@ -31,6 +31,7 @@ Context Harness solves the problem of giving AI agents (Cursor, Claude, custom a
 
 - [Agent Integration](https://parallax-labs.github.io/context-harness/docs/guides/agent-integration/): Connect to Cursor, Claude Desktop, Continue.dev, and custom agents
 - [Build Local Agents](https://parallax-labs.github.io/context-harness/docs/guides/local-agents/): Configure standalone agents, scoped tools, approvals, history, and recovery
+- [Use the Agent Setup Skill](https://parallax-labs.github.io/context-harness/docs/guides/agent-setup-skill/): Install and invoke the Codex skill that configures and validates local agents
 - [Cursor & IDE Integration](https://parallax-labs.github.io/context-harness/docs/guides/cursor-extension/): Workspace-level context for Cursor, VS Code, and JetBrains
 - [Multi-Repo Context](https://parallax-labs.github.io/context-harness/docs/guides/multi-repo/): Index multiple repositories into one searchable knowledge base
 - [Build a RAG Agent](https://parallax-labs.github.io/context-harness/docs/guides/rag-agent/): Python agent with search, retrieval, and grounded answers

@@ -15,6 +15,26 @@ This guide builds a generic project researcher. The same structure works for
 code review, release preparation, incident analysis, migration planning, and
 other workflows without assuming that your context lives in a wiki.
 
+You can follow the configuration manually below or have Codex apply the same
+workflow with the [Agent Setup Skill](@/docs/guides/agent-setup-skill.md). The
+skill is useful when adapting an existing project; the manual path is useful when
+you want to understand or author every resource yourself.
+
+### Configuration map
+
+Local-agent configuration has three layers:
+
+| Layer | Location | Responsibility |
+|---|---|---|
+| Runtime config | `.ctx/config.toml` | Database, model aliases, connectors, retrieval, and server settings |
+| Agent resource | `.ctx/agents/<name>.toml` | Role, selected model and tools, execution bounds, and permissions |
+| Tool binding | `.ctx/tools/<name>.toml` | Public tool name mapped to a trusted implementation with narrower fixed values and restrictions |
+
+The names connect the layers. An agent's `model = "default"` selects
+`[models.default]`; `tools = ["project.search"]` selects a binding whose
+`[tool].name` is `project.search`; and a binding restricted to
+`filesystem:project` refers to `[connectors.filesystem.project]`.
+
 ### What you will create
 
 ```
@@ -273,16 +293,8 @@ cancellation, output-bound, history, and recovery lifecycle.
 
 ### Use the setup skill
 
-The repository includes a reusable Codex skill at
-`skills/context-harness-agents`. Install it in your personal skill directory:
-
-```sh
-mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
-cp -R skills/context-harness-agents \
-  "${CODEX_HOME:-$HOME/.codex}/skills/context-harness-agents"
-```
-
-Then ask:
+The repository includes the reusable `context-harness-agents` Codex skill. Once
+installed, invoke it explicitly:
 
 ```
 Use $context-harness-agents to set up a read-only project researcher for this repository.
@@ -291,7 +303,10 @@ Use $context-harness-agents to set up a read-only project researcher for this re
 For an empty workspace, the skill includes a non-destructive initializer that
 creates the config, agent, and source-scoped bindings. In an existing workspace,
 it inspects and minimally updates the current resources instead of overwriting
-them.
+them. The dedicated [Agent Setup Skill guide](@/docs/guides/agent-setup-skill.md)
+covers repository-scoped and personal installation, prompt examples, every
+generated file, direct initializer use, validation, and the expected completion
+report.
 
 ### More examples
 

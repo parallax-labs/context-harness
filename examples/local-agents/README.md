@@ -5,6 +5,12 @@ It indexes a project, exposes source-scoped retrieval bindings, and defines two
 read-only agents. Nothing assumes a wiki, note-taking app, or particular business
 domain.
 
+For assisted setup or adaptation of an existing project, install and invoke the
+[`context-harness-agents` skill](../../skills/context-harness-agents). The
+[website guide](https://parallax-labs.github.io/context-harness/docs/guides/agent-setup-skill/)
+documents installation, prompts, generated files, and validation. The manual
+example below remains useful for understanding every resource directly.
+
 Copy the example resources into a project's `.ctx` directory:
 
 ```sh

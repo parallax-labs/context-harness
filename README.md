@@ -154,8 +154,9 @@ ctx agent run project-researcher "Summarize the architecture and cite the releva
 ```
 
 See the [local agents guide](https://parallax-labs.github.io/context-harness/docs/guides/local-agents/)
-for model configuration, scoped tools, permissions, history, inspection, and
-resume workflows.
+for explicit model, connector, agent, tool, permission, history, inspection, and
+resume configuration. The [agent setup skill guide](https://parallax-labs.github.io/context-harness/docs/guides/agent-setup-skill/)
+covers installation, invocation, customization, generated files, and validation.
 
 ## Architecture
 

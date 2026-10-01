@@ -180,7 +180,9 @@ The repository now includes two ways to get started:
 
 The complete walkthrough is in
 [Build Local Agents](@/docs/guides/local-agents.md), with every new command in the
-[CLI reference](@/docs/reference/cli.md).
+[CLI reference](@/docs/reference/cli.md). For assisted setup, the
+[Agent Setup Skill guide](@/docs/guides/agent-setup-skill.md) documents
+installation, invocation, customization, and validation end to end.
 
 ### Where this leaves Context Harness
 
