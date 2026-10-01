@@ -963,6 +963,14 @@ pub async fn bind_resources(
     let mut registry = ToolRegistry::new();
     for resource in loaded.values() {
         let resolved = catalog.resolve(&resource.definition)?;
+        ensure!(
+            resolved
+                .capabilities
+                .iter()
+                .all(|capability| authority.capabilities().contains(capability)),
+            "tool binding '{}' requires capability not granted by the host",
+            resolved.name
+        );
         let factory = catalog
             .find(&resolved.implementation_id)
             .context("resolved implementation disappeared from catalog")?;

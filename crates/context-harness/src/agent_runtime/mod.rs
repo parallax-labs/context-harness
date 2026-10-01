@@ -97,11 +97,7 @@ impl AgentRuntime {
 
     /// Resolve and bind standalone tool resources through the trusted core catalog.
     /// Host authority is the existing workspace read boundary; resources only narrow it.
-    pub async fn with_tool_bindings(mut self, directories: &[ResourceDirectory]) -> Result<Self> {
-        let loaded = tool_binding::load_resources(directories, &self.config)?;
-        if loaded.is_empty() {
-            return Ok(self);
-        }
+    pub async fn with_tool_bindings(self, directories: &[ResourceDirectory]) -> Result<Self> {
         let mut authority = HostToolAuthority::new(&self.root, vec![Capability::ReadOnly])?;
         authority.enroll_path(&self.root)?;
         let sources = self
@@ -135,7 +131,32 @@ impl AgentRuntime {
             authority.enroll_source(source)?;
         }
         let catalog = tool_binding::core_catalog()?;
-        let bindings = tool_binding::bind_resources(&loaded, &catalog, Arc::new(authority)).await?;
+        self.bind_tool_resources(directories, &catalog, Arc::new(authority))
+            .await
+    }
+
+    /// Bind resources using a catalog and authority supplied by a trusted embedding host.
+    pub async fn with_tool_binding_catalog(
+        self,
+        directories: &[ResourceDirectory],
+        catalog: &tool_binding::ToolImplementationCatalog,
+        authority: Arc<HostToolAuthority>,
+    ) -> Result<Self> {
+        self.bind_tool_resources(directories, catalog, authority)
+            .await
+    }
+
+    async fn bind_tool_resources(
+        mut self,
+        directories: &[ResourceDirectory],
+        catalog: &tool_binding::ToolImplementationCatalog,
+        authority: Arc<HostToolAuthority>,
+    ) -> Result<Self> {
+        let loaded = tool_binding::load_resources(directories, &self.config)?;
+        if loaded.is_empty() {
+            return Ok(self);
+        }
+        let bindings = tool_binding::bind_resources(&loaded, catalog, authority).await?;
         let tools = Arc::get_mut(&mut self.tools).context("runtime tool registry is shared")?;
         for tool in bindings.tools() {
             ensure!(
