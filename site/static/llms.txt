@@ -35,7 +35,7 @@ Context Harness solves the problem of giving AI agents (Cursor, Claude, custom a
 - [Multi-Repo Context](https://parallax-labs.github.io/context-harness/docs/guides/multi-repo/): Index multiple repositories into one searchable knowledge base
 - [Build a RAG Agent](https://parallax-labs.github.io/context-harness/docs/guides/rag-agent/): Python agent with search, retrieval, and grounded answers
 - [Build a Chatbot](https://parallax-labs.github.io/context-harness/docs/guides/chatbot/): TypeScript chatbot with streaming and conversation history
-- [MCP Agents](https://parallax-labs.github.io/context-harness/docs/guides/agents/): Named personas with system prompts, scoped tools, and dynamic context
+- [Profiles and Agents](https://parallax-labs.github.io/context-harness/docs/guides/agents/): Choose between reusable MCP launch profiles and executable local agents
 
 ## Extension Registry
 

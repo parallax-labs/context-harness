@@ -288,8 +288,7 @@ async fn execute(&self, params: Value, ctx: &ToolContext) -> Result<Value> {
 
 ### What's next?
 
-- [MCP Agents](@/docs/guides/agents.md) — define agents in TOML, Lua, or Rust
+- [Profiles and Agents](@/docs/guides/agents.md) — compare MCP profiles with executable local agents
 - [Lua Tools](@/docs/connectors/lua-tools.md) — Lua-based tools for rapid prototyping
 - [Deployment](@/docs/reference/deployment.md) — deploy custom binaries in Docker
-
 

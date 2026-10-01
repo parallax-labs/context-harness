@@ -1,48 +1,78 @@
 +++
-title = "MCP Agents"
-description = "Define named personas with system prompts, scoped tools, and dynamic context injection."
+title = "Profiles and Agents"
+description = "Understand reusable MCP profiles and executable local agents, when to use each, and how they relate."
 weight = 6
 +++
 
-Agents are **named personas** that combine a system prompt, a scoped set of tools, and optional dynamic context injection. Instead of explaining what you want in every conversation, you define an agent once and activate it by name.
+Context Harness has two related but different concepts:
 
-> This page documents prompt agents exposed by the MCP server. To execute a
-> bounded model/tool loop locally with standalone TOML resources, durable
-> history, approvals, recovery, and declarative tool bindings, use
-> [Build Local Agents](@/docs/guides/local-agents.md).
+| Concept | Who runs the model? | What Context Harness provides | Use it when |
+|---|---|---|---|
+| **Profile** | An external client such as Cursor or your own application | A reusable prompt, suggested tool set, and optional pre-resolved context | You already have a chat or agent host and want a consistent project role |
+| **Agent** | Context Harness | A bounded model/tool loop with permissions, approvals, durable state, inspection, and recovery | You want Context Harness to own and execute the task |
 
-### Why agents?
+A profile is not an autonomous agent and does not have a run lifecycle. It is a
+named recipe that prepares an external conversation. The existing configuration
+and API retain their historical `agents.*` and `/agents/*` names for
+compatibility, but this guide calls that feature **profiles**.
 
-Without agents, every conversation starts from zero:
+An executable agent is a standalone resource under `.ctx/agents`. See
+[Build Local Agents](@/docs/guides/local-agents.md) for its complete setup.
+
+### Why profiles?
+
+Without a profile, every external conversation must repeat its role and context:
 
 ```
 User: "You are a code reviewer. Search for our coding standards..."
 ```
 
-With agents, the workflow becomes:
+With a profile, the workflow becomes:
 
 ```
-User: "Review this PR" (using the code-reviewer agent)
+User: "Review this PR" (using the code-reviewer profile)
 ```
 
-The agent pre-configures:
+The profile prepares a launch preset for the external client:
+
 - **System prompt** — grounding the LLM in a specific role
-- **Tool scoping** — showing only relevant tools (reduces hallucination)
+- **Tool suggestions** — telling the external host which tools are relevant
 - **Dynamic context** — pre-fetching docs before the conversation starts
 
-### Three definition modes
+Profiles are useful for lightweight integration because they do not require
+Context Harness to own model credentials, conversation state, approvals, or the
+execution loop. For example, a Cursor extension can resolve a `code-reviewer`
+profile, apply its system prompt, enable search/get, and continue the conversation
+inside Cursor. Use an executable agent instead when the task must be durable,
+auditable, resumable, or governed by Context Harness runtime policy.
+
+Profiles do not retain conversation history. The external client owns any
+conversation created from a profile.
+
+### Which one should I use?
+
+- Use a **profile** when Cursor, Claude Desktop, or your application already owns
+  the conversation and you want Context Harness to supply a reusable role and
+  relevant project context.
+- Use an **agent** when you want `ctx` to call the model, execute tools, enforce
+  permissions, persist the run, and support inspection or recovery.
+- If a new agent run must remember earlier runs, neither mechanism provides that
+  automatically today. Store the durable result in a connector source and sync it
+  so the next run can retrieve it.
+
+### Three profile definition modes
 
 | Mode | Config | Best for |
 |------|--------|----------|
-| **Inline TOML** | `[agents.inline.<name>]` | Static prompts, simple agents |
+| **Inline TOML** | `[agents.inline.<name>]` | Static reusable profiles |
 | **Lua script** | `[agents.script.<name>]` | Dynamic context injection, conditional logic |
 | **Rust trait** | `impl Agent for MyAgent` | Compiled extensions in custom binaries |
 
 ---
 
-### Inline TOML agents
+### Inline TOML profiles
 
-The simplest way to define an agent — everything in `ctx.toml`:
+The simplest way to define a profile—everything lives in `ctx.toml`:
 
 ```toml
 [agents.inline.code-reviewer]
@@ -69,13 +99,15 @@ When recommending changes, explain tradeoffs clearly.
 """
 ```
 
-These agents appear immediately in `GET /agents/list` and can be resolved via `POST /agents/{name}/prompt`.
+These profiles appear immediately in `GET /agents/list` and can be resolved via
+`POST /agents/{name}/prompt`. The endpoint names are retained for compatibility.
 
 ---
 
-### Lua scripted agents
+### Lua scripted profiles
 
-For agents that need **dynamic context injection** — pre-searching the knowledge base before the conversation starts:
+Use a scripted profile for **dynamic context injection**—for example, searching
+for relevant runbooks before an external conversation starts:
 
 ```toml
 [agents.script.incident-responder]
@@ -167,7 +199,8 @@ The `context` bridge provides:
 
 #### `GET /agents/list`
 
-Discover all registered agents:
+Discover all registered profiles. The response field and route retain their
+historical names:
 
 ```bash
 $ curl -s localhost:7331/agents/list | jq '.agents[] | {name, description, tools}'
@@ -188,7 +221,7 @@ $ curl -s localhost:7331/agents/list | jq '.agents[] | {name, description, tools
 
 #### `POST /agents/{name}/prompt`
 
-Resolve an agent's prompt (for Lua agents, this executes `agent.resolve()`):
+Resolve a profile's prompt (for Lua profiles, this executes `agent.resolve()`):
 
 ```bash
 $ curl -s localhost:7331/agents/incident-responder/prompt \
@@ -212,7 +245,7 @@ $ curl -s localhost:7331/agents/incident-responder/prompt \
 | Status | Meaning |
 |--------|---------|
 | `200` | Success |
-| `404` | Agent not found |
+| `404` | Profile not found |
 | `500` | Lua resolve() failed |
 | `408` | Lua resolve() timed out |
 
@@ -220,14 +253,18 @@ $ curl -s localhost:7331/agents/incident-responder/prompt \
 
 ### CLI commands
 
+The current CLI keeps profiles under `ctx agent` for backward compatibility.
+These commands list, resolve, or scaffold profiles; they do not execute a model.
+`ctx agent run`, `history`, `inspect`, and `resume` belong to executable agents.
+
 ```bash
-# List all configured agents
+# List profiles and standalone executable agents
 $ ctx agent list
   code-reviewer        Reviews code changes against project conventions   (tools: search, get)        [toml]
   architect            Answers architecture questions using indexed docs   (tools: search, get, sources) [toml]
   incident-responder   Helps triage production incidents with runbooks     (tools: search, get, create_jira_ticket) [lua]
 
-# Test a Lua agent with arguments
+# Resolve a Lua profile with arguments
 $ ctx agent test incident-responder --arg service=payments-api --arg severity=P1
 
 Agent: incident-responder
@@ -241,7 +278,7 @@ System prompt (487 chars):
 Messages (1):
   [assistant] I'm ready to help with the P1 payments-api incident...
 
-# Scaffold a new Lua agent
+# Scaffold a new Lua profile using the compatibility command
 $ ctx agent init sre-helper
 Created: agents/sre-helper.lua
 Add to config:
@@ -253,11 +290,12 @@ Add to config:
 
 ---
 
-### Using agents with Cursor
+### Using profiles with Cursor
 
-Once your agents are configured and the MCP server is running, you can activate agents in Cursor conversations.
+Once profiles are configured and the MCP server is running, Cursor or another
+client can resolve one when starting a conversation.
 
-**Step 1:** Start the server with agents:
+**Step 1:** Start the server with profiles:
 
 ```bash
 $ ctx serve mcp --config ./config/ctx.toml
@@ -272,21 +310,25 @@ Registered 3 agents:
 MCP server listening on http://127.0.0.1:7331
 ```
 
-**Step 2:** Resolve an agent's prompt and use it:
+**Step 2:** Resolve a profile's prompt and use it:
 
-The simplest integration: call `POST /agents/{name}/prompt` to get the system prompt, then use it in your LLM conversation. The agent's `tools` array tells you which Context Harness tools to make available.
+Call `POST /agents/{name}/prompt` to get the system prompt, then use it in the
+external LLM conversation. The profile's `tools` array tells the client which
+Context Harness tools are relevant; the client remains responsible for making
+them available and enforcing its own policy.
 
-**Step 3:** In Cursor, the agent pattern works naturally:
+**Step 3:** In Cursor, the profile pattern works naturally:
 
-- *"Use the code-reviewer agent to review this PR"* → Cursor resolves the agent, gets the system prompt, and uses the scoped tools
+- *"Use the code-reviewer profile to review this PR"* → Cursor resolves the profile, gets the system prompt, and uses the suggested tools
 - *"As the architect, how should we restructure the auth module?"*
 - *"Assume the incident-responder role for a P1 in the payment service"*
 
 ---
 
-### SDLC agent examples
+### SDLC profile examples
 
-Here's a set of agents that cover the full software development lifecycle:
+Here is a set of reusable profiles for external software-development
+conversations:
 
 ```toml
 # config/ctx.toml
@@ -333,9 +375,11 @@ search_limit = 10
 
 ---
 
-### Custom Rust agents
+### Custom Rust profiles
 
-For compiled agents in custom harness binaries, implement the `Agent` trait:
+For compiled profiles in custom harness binaries, implement the historically
+named `Agent` trait. The trait resolves an `AgentPrompt`; it does not execute a
+model loop:
 
 ```rust
 use context_harness::{Agent, AgentPrompt, AgentArgument};
@@ -395,8 +439,8 @@ See the [full example](https://github.com/parallax-labs/context-harness/blob/mai
 
 ### What's next?
 
-- [Agent Integration](@/docs/guides/agent-integration.md) — connect agents to Cursor, Claude, Continue.dev
-- [Lua Tools](@/docs/connectors/lua-tools.md) — give agents custom actions beyond search
-- [Multi-Repo Context](@/docs/guides/multi-repo.md) — index multiple repos for cross-project agents
-- [Deployment](@/docs/reference/deployment.md) — deploy agents in Docker or CI
-
+- [Build Local Agents](@/docs/guides/local-agents.md) — let Context Harness own model execution and durable runs
+- [Agent Integration](@/docs/guides/agent-integration.md) — connect profiles to Cursor, Claude, Continue.dev
+- [Lua Tools](@/docs/connectors/lua-tools.md) — expose custom actions to external clients
+- [Multi-Repo Context](@/docs/guides/multi-repo.md) — index multiple repositories for shared context
+- [Deployment](@/docs/reference/deployment.md) — deploy the MCP/profile server in Docker or CI

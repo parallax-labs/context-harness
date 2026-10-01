@@ -477,7 +477,7 @@ See [`config/ctx.example.toml`](config/ctx.example.toml) for a complete example,
 | [Configuration](https://parallax-labs.github.io/context-harness/docs/reference/configuration/) | Full `ctx.toml` reference, embedding providers, platform table |
 | [CLI reference](https://parallax-labs.github.io/context-harness/docs/reference/cli/) | Every command and flag |
 | [Connectors & registry](https://parallax-labs.github.io/context-harness/docs/connectors/built-in/) | Built-in connectors, [Lua connectors](https://parallax-labs.github.io/context-harness/docs/connectors/lua-connectors/), [extension registry](https://parallax-labs.github.io/context-harness/docs/registry/overview/) |
-| [Guides](https://parallax-labs.github.io/context-harness/docs/guides/agents/) | Agent integration, Cursor, RAG, multi-repo, deployment |
+| [Guides](https://parallax-labs.github.io/context-harness/docs/guides/agents/) | MCP profiles versus executable agents, Cursor, RAG, multi-repo, deployment |
 | [API (Rustdoc)](https://parallax-labs.github.io/context-harness/api/context_harness/) | Generated Rust API docs |
 | [Local agent execution](docs/spec/0017-local-agent-execution.md) | Standalone agent run/history/inspect commands, supported tools, and a local fake-provider example |
 | [Developer tools and approvals](docs/spec/0018-developer-tools-and-approvals.md) | Workspace/Git tools, patch and process permissions, and interactive approval |

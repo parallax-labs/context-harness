@@ -130,7 +130,7 @@ You are a software architect. Search for ADRs and design documents.
 When recommending changes, explain tradeoffs and cite sources.
 """
 
-# ── Lua scripted agents (dynamic prompts) ────────
+# ── Lua scripted profiles (dynamic prompts) ──────
 
 [agents.script.incident-responder]
 path = "agents/incident-responder.lua"
@@ -199,8 +199,8 @@ workspace = "acme"                      # Plain string, no expansion
 | `[connectors.s3.*]` | Named S3 connector instances |
 | `[connectors.script.*]` | Named Lua scripted connector instances |
 | `[tools.script.*]` | Lua scripted tool configs |
-| `[agents.inline.*]` | Inline TOML agents (static system prompt) |
-| `[agents.script.*]` | Lua scripted agents (dynamic prompts) |
+| `[agents.inline.*]` | MCP profiles with static prompts (historical config name) |
+| `[agents.script.*]` | MCP profiles with Lua-resolved dynamic prompts (historical config name) |
 | sibling `agents/*.toml` | Standalone local agent resources |
 | sibling `tools/*.toml` | Declarative local tool bindings |
 | `[registries.*]` | Named extension registry instances |

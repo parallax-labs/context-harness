@@ -352,8 +352,10 @@ runtime preparation discovers their schemas.
 
 ### `ctx agent list`
 
-List standalone resources and legacy TOML/Lua prompt agents with descriptions
-and tool lists. Use `--json` for provenance and resource metadata.
+List standalone executable agents and MCP profiles with descriptions and tool
+lists. Profiles still use the historical `[agents.inline.*]` and
+`[agents.script.*]` configuration keys. Use `--json` for provenance and resource
+metadata.
 
 ```bash
 $ ctx agent list
@@ -431,9 +433,11 @@ ctx agent resume <run-id> --json --non-interactive
 Resume rejects completed runs, unsafe or uncertain tool state, changed agent or
 binding identities, exhausted budgets, and non-resumable MCP sessions.
 
-### `ctx agent test <name> [--arg key=value]`
+### `ctx agent test <profile> [--arg key=value]`
 
-Resolve an agent's prompt with arguments and print the result. Useful for debugging Lua agents.
+Resolve an MCP profile's prompt with arguments and print the result. This does
+not call a model or create an agent run; it is useful for debugging scripted
+profiles. The command name is retained for backward compatibility.
 
 Standalone resources can also be previewed, but they reject `--arg` because
 their prompts are static. Use `ctx agent run` to test the local runtime.

@@ -6,9 +6,10 @@ weight = 2
 
 Context Harness can run standalone agents directly in a project. These agents
 use a configured model, select a small set of local tools, and record their runs
-in the project's SQLite database. They are different from the prompt-only agents
-served over MCP: a standalone agent owns a bounded model/tool loop and can be
-inspected or resumed locally.
+in the project's SQLite database. They are different from MCP **profiles**: a
+standalone agent owns a bounded model/tool loop and can be inspected or resumed
+locally, while a profile only prepares a conversation owned by another client.
+See [Profiles and Agents](@/docs/guides/agents.md) for a direct comparison.
 
 This guide builds a generic project researcher. The same structure works for
 code review, release preparation, incident analysis, migration planning, and
@@ -212,6 +213,23 @@ and terminal state without storing credential values or provider response bodies
 Resume rejects a changed agent, model binding, tool schema, fixed configuration,
 restriction, or uncertain side effect. MCP-backed runs are non-resumable because
 their external session cannot be reconstructed safely.
+
+### Conversation history and memory
+
+Conversation state is retained **within one run**. Each model response, tool call,
+and tool result is carried into the next turn. Safe checkpoints preserve those
+messages so an interrupted run can continue with `ctx agent resume <run-id>`.
+
+A new `ctx agent run` starts a new conversation containing only the configured
+system prompt and the new input. Previous runs are persisted for audit and
+inspection, but they are not automatically placed in the new model request and
+are not currently exposed as searchable agent memory. Profiles retain no
+conversation state at all; their external client owns it.
+
+To carry knowledge between runs today, persist the durable result in a configured
+connector source and sync it into Context Harness. Automatic cross-run memory
+should be treated as a separate, opt-in feature with explicit retention, scope,
+provenance, and deletion controls—not as an implicit replay of every transcript.
 
 ### Permissions and approvals
 
