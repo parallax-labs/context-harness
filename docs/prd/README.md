@@ -31,6 +31,7 @@ it. A spec references both for traceability from product intent to implementatio
 | [0010](0010-distribution-and-packaging.md) | Distribution and Packaging | Planned |
 | [0011](0011-multi-workspace-mcp-router.md) | Multi-Workspace MCP Router | Draft |
 | [0013](0013-declarative-tool-bindings.md) | Declarative Tool Bindings and Runtime Extensions | Delivered |
+| [0014](0014-durable-agent-runs.md) | Durable Long-Running Agent Runs | Draft |
 
 ## Creating a New PRD
 

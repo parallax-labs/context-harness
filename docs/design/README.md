@@ -33,6 +33,7 @@ See [DESIGN-0000](0000-design-policy.md) for the full policy.
 | [0010](0010-local-agent-runtime.md) | Context Harness Local Agent Runtime | Proposed |
 | [0011](0011-local-agent-runtime-execution-plan.md) | Local Agent Runtime Execution Plan | Reference |
 | [0013](0013-declarative-tool-bindings.md) | Declarative Tool Bindings and Runtime Extensions | Delivered |
+| [0014](0014-structured-agent-run-state.md) | Structured Agent Run State and Context Projection | Draft |
 
 ## Creating a New Design Doc
 
