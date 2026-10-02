@@ -185,6 +185,16 @@ Move OpenAI/fake construction out of provider-name branching into a trusted prov
 factory catalog. Add deterministic identity/collision behavior and external compiled
 registration without provider calls during validation.
 
+**Slice status (2026-10-02): Implemented.** `ModelProviderCatalog` now owns all
+provider-name dispatch, registers the existing OpenAI and fake implementations through
+the same factory interface, rejects duplicate provider names without replacement, and
+exposes stable non-secret implementation ID/version metadata. A public fixture factory
+proves trusted compiled host registration. Catalog validation validates definitions and
+factory-specific settings without constructing providers, resolving credentials, opening
+the database, starting processes, or making model/network calls. Existing registry
+identity and checkpoint bindings remain unchanged; consuming implementation metadata in
+checkpoint compatibility is deferred to a versioned checkpoint slice.
+
 **Likely modules:** `agent_model`, `agent_resource`, config inspection, crate exports.
 
 **Acceptance:** OpenAI/fake tests remain unchanged in behavior; a fixture provider

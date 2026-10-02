@@ -2,8 +2,11 @@
 //! Recorded calls persist metadata only; conversation snapshots belong to the
 //! runtime. No credentials or raw provider errors enter the event log.
 
+mod catalog;
 pub mod fake;
 pub mod openai;
+
+pub use catalog::{ModelProviderCatalog, ModelProviderFactory, ModelProviderImplementation};
 
 use anyhow::{ensure, Context};
 use async_trait::async_trait;
@@ -271,6 +274,7 @@ pub trait ModelProvider: Send + Sync {
 struct RegisteredModel {
     provider_name: String,
     model_name: String,
+    implementation: ModelProviderImplementation,
     provider: Arc<dyn ModelProvider>,
 }
 #[derive(Default)]
@@ -281,28 +285,25 @@ impl ModelRegistry {
     /// Configured fake models return a clearly labelled synthetic final answer.
     /// Tests can instead register a FakeModel with a scripted sequence.
     pub fn from_config(models: &BTreeMap<String, ModelDefinition>) -> anyhow::Result<Self> {
+        Self::from_config_with_catalog(models, &ModelProviderCatalog::with_builtins()?)
+    }
+
+    /// Construct configured models from factories explicitly trusted by the host.
+    pub fn from_config_with_catalog(
+        models: &BTreeMap<String, ModelDefinition>,
+        catalog: &ModelProviderCatalog,
+    ) -> anyhow::Result<Self> {
+        catalog.validate_config(models)?;
         let mut registry = Self::default();
         for (alias, definition) in models {
-            definition
-                .validate()
-                .with_context(|| format!("model '{alias}'"))?;
-            let provider: Arc<dyn ModelProvider> = match definition.provider.as_str() {
-                "openai" => Arc::new(openai::OpenAiProvider::new(
-                    &definition.model,
-                    definition
-                        .api_key_env
-                        .as_deref()
-                        .unwrap_or("OPENAI_API_KEY"),
-                )?),
-                "fake" => Arc::new(fake::FakeModel::new([Ok(ModelResponse::text(
-                    "Synthetic response from FakeModel; no model service was called.",
-                ))])),
-                _ => anyhow::bail!(
-                    "unsupported model provider '{}' for '{alias}'",
-                    definition.provider
-                ),
-            };
-            registry.register(alias, &definition.provider, &definition.model, provider)?;
+            let (provider, implementation) = catalog.build(alias, definition)?;
+            registry.register_with_implementation(
+                alias,
+                &definition.provider,
+                &definition.model,
+                implementation,
+                provider,
+            )?;
         }
         Ok(registry)
     }
@@ -312,6 +313,23 @@ impl ModelRegistry {
         alias: &str,
         provider_name: &str,
         model_name: &str,
+        provider: Arc<dyn ModelProvider>,
+    ) -> anyhow::Result<()> {
+        self.register_with_implementation(
+            alias,
+            provider_name,
+            model_name,
+            ModelProviderImplementation::new(provider_name, "unversioned"),
+            provider,
+        )
+    }
+
+    fn register_with_implementation(
+        &mut self,
+        alias: &str,
+        provider_name: &str,
+        model_name: &str,
+        implementation: ModelProviderImplementation,
         provider: Arc<dyn ModelProvider>,
     ) -> anyhow::Result<()> {
         ensure!(
@@ -329,6 +347,7 @@ impl ModelRegistry {
             RegisteredModel {
                 provider_name: provider_name.into(),
                 model_name: model_name.into(),
+                implementation,
                 provider,
             },
         );
@@ -339,6 +358,18 @@ impl ModelRegistry {
     pub fn identity(&self, alias: &str) -> anyhow::Result<(&str, &str)> {
         let model = self.models.get(alias).context("unknown model alias")?;
         Ok((&model.provider_name, &model.model_name))
+    }
+
+    /// Stable adapter identity available for future checkpoint compatibility.
+    pub fn implementation_identity(
+        &self,
+        alias: &str,
+    ) -> anyhow::Result<&ModelProviderImplementation> {
+        Ok(&self
+            .models
+            .get(alias)
+            .context("unknown model alias")?
+            .implementation)
     }
 
     pub async fn generate(
