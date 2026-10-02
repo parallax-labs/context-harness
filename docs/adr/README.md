@@ -34,6 +34,7 @@ including the context, alternatives considered, and consequences of each decisio
 | [0023](0023-request-origin-binding.md) | Request Origin via HTTP Header | Proposed |
 | [0024](0024-local-agent-runtime.md) | Optional Local Agent Execution | Accepted |
 | [0025](0025-declarative-tool-bindings.md) | Declarative Bindings over the Existing Tool Registry | Accepted |
+| [0026](0026-native-ollama-local-generation.md) | Native Ollama API for Local Generation | Accepted |
 
 ## Creating a New ADR
 

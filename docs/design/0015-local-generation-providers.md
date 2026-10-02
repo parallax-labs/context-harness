@@ -1,9 +1,9 @@
 # DESIGN-0015: Local Generation Providers
 
-**Status:** Draft
+**Status:** Planning
 **Date:** 2026-10-02
 **Author:** Context Harness contributors
-**Related:** [PRD-0015](../prd/0015-local-generation-providers.md), [DESIGN-0010](0010-local-agent-runtime.md), [SPEC-0016](../spec/0016-model-runtime.md), [SPEC-0017](../spec/0017-local-agent-execution.md)
+**Related:** [PRD-0015](../prd/0015-local-generation-providers.md), [DESIGN-0010](0010-local-agent-runtime.md), [ADR-0026](../adr/0026-native-ollama-local-generation.md), [SPEC-0016](../spec/0016-model-runtime.md), [SPEC-0017](../spec/0017-local-agent-execution.md)
 
 ## Context
 
@@ -52,12 +52,11 @@ provider = "ollama"
 model = "installed-model-name"
 base_url = "http://127.0.0.1:11434"
 timeout_seconds = 120
-local_only = true
 ```
 
 Static validation checks syntax, limits, and endpoint policy but does not connect to
-Ollama or claim the model is installed. An explicit readiness command may query the
-configured endpoint and report server/model capability separately.
+Ollama or claim the model is installed. Readiness is deferred from the initial
+adapter.
 
 The adapter converts existing `ModelMessage` variants and `ModelTool` schemas to the
 provider protocol. It reconstructs assistant tool calls and tool results on subsequent
@@ -65,9 +64,15 @@ turns, maps text and finish reason, preserves reported usage, and validates ever
 response against the original `ModelRequest`. Missing usage remains `None`.
 
 The HTTP client bounds request/response size, applies connect and total timeouts,
-propagates cancellation, and disables or validates redirects. With `local_only`, the
-resolved destination must remain loopback (and optionally a future enrolled Unix
-socket). No provider fallback occurs. The adapter never invokes a model-pull endpoint.
+propagates cancellation, and disables redirects. The resolved destination must be a
+literal loopback HTTP origin. No provider fallback occurs. The adapter never invokes a
+model-pull endpoint.
+
+**Contract status (2026-10-02): Resolved.** [ADR-0026](../adr/0026-native-ollama-local-generation.md)
+selects the native API and a literal-loopback HTTP boundary. The revised
+[SPEC-0016](../spec/0016-model-runtime.md) defines typed configuration, protocol
+mapping, capability failures, identity, body and time limits, cancellation and static
+inspection. Readiness remains outside the first adapter.
 
 ### Capability and identity behavior
 
@@ -106,10 +111,7 @@ DESIGN-0016.
 2. Define typed provider-specific configuration, redaction, and identity behavior.
 3. Implement Ollama request/response mapping with fixture HTTP tests.
 4. Add local-only endpoint enforcement, body bounds, timeouts, and cancellation.
-5. Add explicit readiness/capability diagnostics if approved by the spec.
-6. Publish an opt-in live smoke test and small tool-calling evaluation fixture.
-7. Update SPEC-0016 and write an ADR for the initial local protocol decision before
-   declaring behavior authoritative.
+5. Publish an opt-in live smoke test and small tool-calling evaluation fixture.
 
 ## Acceptance Criteria
 
@@ -121,10 +123,8 @@ DESIGN-0016.
 - A custom compiled provider registers without a new runtime match branch.
 - OpenAI/fake behavior and checkpoint identity tests remain compatible.
 
-## Open Questions
+## Deferred questions
 
-1. Native Ollama API or OpenAI-compatible API for the first adapter?
-2. Exact provider configuration schema and identity fields?
-3. Loopback HTTP only, or enrolled Unix sockets too?
-4. Minimum tool/structured-output capability declaration and readiness surface?
-5. Which models form the non-normative live evaluation set?
+1. Should a later provider support enrolled LAN/HTTPS endpoints or Unix sockets?
+2. Which installed models form the non-normative live quality evaluation set?
+3. Does a later explicit readiness command justify a stable capability-report schema?
