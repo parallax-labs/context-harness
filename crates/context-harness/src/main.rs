@@ -50,6 +50,8 @@
 //! ```
 
 #[allow(dead_code)]
+mod agent_host;
+#[allow(dead_code)]
 mod agent_model;
 mod agent_resource;
 #[allow(dead_code)]
