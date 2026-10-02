@@ -167,7 +167,9 @@ $ ctx sync all
 - [Connectors](@/docs/connectors/built-in.md) — filesystem, Git, and S3 setup
 - [Lua Connectors](@/docs/connectors/lua-connectors.md) — index Jira, Slack, Notion, anything
 - [Lua Tools](@/docs/connectors/lua-tools.md) — give AI agents custom actions
-- [Agent Integration](@/docs/guides/agent-integration.md) — connect to Cursor, Claude Desktop, Continue.dev
+- [Profiles Overview](@/docs/profiles/overview.md) — give Cursor, Claude, or your own client a reusable project role
+- [Agents Overview](@/docs/agents/overview.md) — run durable, policy-controlled agents in a project
+- [Connect External AI Clients](@/docs/guides/agent-integration.md) — connect to Cursor, Claude Desktop, and Continue.dev
 - [Multi-Repo Context](@/docs/guides/multi-repo.md) — unified search across multiple repos
 - [Build a RAG Agent](@/docs/guides/rag-agent.md) — build a Python agent with your knowledge base
 - [Deployment](@/docs/reference/deployment.md) — Docker, systemd, CI/CD

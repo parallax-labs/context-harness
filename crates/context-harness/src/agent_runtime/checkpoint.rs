@@ -2,6 +2,7 @@
 //! tool from a partially persisted turn, even if it appears to have completed.
 use super::*;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 const VERSION: i64 = 1;
 const LIMIT: usize = 16 * 1024 * 1024;
@@ -16,6 +17,42 @@ struct Snapshot {
     request: ModelRequest,
 }
 impl AgentRuntime {
+    fn uses_unrecoverable_tool(&self, resource: &LoadedAgentResource) -> bool {
+        resource.definition.agent.tools.iter().any(|name| {
+            name.starts_with("mcp.")
+                || name == "agent.invoke"
+                || self.tool_bindings.get(name).is_some_and(|binding| {
+                    tool_binding::mcp_reference(&binding.definition.tool.implementation).is_some()
+                })
+        })
+    }
+
+    pub(super) fn selected_binding_metadata(
+        &self,
+        resource: &LoadedAgentResource,
+    ) -> Result<Value> {
+        self.selected_binding_metadata_with(resource, None)
+    }
+
+    pub(super) fn selected_binding_metadata_with(
+        &self,
+        resource: &LoadedAgentResource,
+        external: Option<&ToolRegistry>,
+    ) -> Result<Value> {
+        let mut bindings = serde_json::Map::new();
+        for name in &resource.definition.agent.tools {
+            if let Some(metadata) = self
+                .tools
+                .find(name)
+                .or_else(|| external.and_then(|tools| tools.find(name)))
+                .and_then(|tool| tool.binding_metadata())
+            {
+                bindings.insert(name.clone(), metadata);
+            }
+        }
+        Ok(Value::Object(bindings))
+    }
+
     fn binding(&self, resource: &LoadedAgentResource) -> Result<String> {
         let alias = &resource.definition.agent.model;
         let (provider, model) = self.models.identity(alias)?;
@@ -25,6 +62,8 @@ impl AgentRuntime {
             "candidate_k_keyword":self.config.retrieval.candidate_k_keyword.clamp(1,1000),
             "provider":provider,"model":model,"definition":self.config.models.get(alias),
             "tools":self.declarations(resource)?,
+            "tool_binding_contract": tool_binding::CATALOG_CONTRACT_VERSION,
+            "tool_bindings": self.selected_binding_metadata(resource)?,
             "policy_allow":self.policy.allow,"policy_approval":self.policy.require_approval,
         });
         Ok(format!(
@@ -47,13 +86,7 @@ impl AgentRuntime {
         {
             return Ok(());
         }
-        if resource
-            .definition
-            .agent
-            .tools
-            .iter()
-            .any(|name| name.starts_with("mcp.") || name == "agent.invoke")
-        {
+        if self.uses_unrecoverable_tool(resource) {
             return Ok(());
         }
         request.validate()?;
@@ -90,12 +123,7 @@ impl AgentRuntime {
             .await?
             .context("run not found in workspace")?;
         ensure!(
-            !resource
-                .definition
-                .agent
-                .tools
-                .iter()
-                .any(|name| name.starts_with("mcp.") || name == "agent.invoke"),
+            !self.uses_unrecoverable_tool(resource),
             "MCP-backed or delegating runs cannot resume; tree/session recovery is unsupported"
         );
         ensure!(
@@ -172,10 +200,17 @@ impl AgentRuntime {
             }
         }
         ensure!(
-            invocations.len() == restored_results.len(),
+            invocations
+                .iter()
+                .filter(|invocation| !invocation.tool_name.starts_with("runtime."))
+                .count()
+                == restored_results.len(),
             "tool history is not captured by checkpoint; manual reconciliation required"
         );
         for invocation in &invocations {
+            if invocation.tool_name.starts_with("runtime.") {
+                continue;
+            }
             let call = restored_calls
                 .get(invocation.call_id.as_str())
                 .context("tool call missing from checkpoint; manual reconciliation required")?;

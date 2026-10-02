@@ -1,6 +1,6 @@
 # DESIGN-0013: Declarative Tool Bindings and Runtime Extensions
 
-**Status:** Planning
+**Status:** Delivered
 **Date:** 2026-09-30
 **Author:** Context Harness contributors
 **Related:** [PRD-0013](../prd/0013-declarative-tool-bindings.md), [ADR-0025](../adr/0025-declarative-tool-bindings.md), [DESIGN-0010](0010-local-agent-runtime.md), [DESIGN-0011](0011-local-agent-runtime-execution-plan.md)
@@ -62,9 +62,9 @@ required arguments, change incompatible types, or silently override implementati
 validation. Initially support fixed parameters and explicit scoping, not arbitrary
 expression evaluation, shell interpolation or a general workflow language.
 
-Exact TOML keys, directory layout and descriptor API are open design decisions.
-Examples in the later spec should use only the chosen schema; no runnable-looking
-placeholder configuration is published here.
+The exact TOML schema, directory layout, descriptor/factory boundary, authority
+rules, backend trust modes, CLI surface, and identity/recovery behavior are resolved
+by [SPEC-0023](../spec/0023-declarative-tool-bindings.md).
 
 ### Example usage pattern: a release reviewer
 
@@ -248,25 +248,41 @@ never silently reinterpret previously accepted names or merge precedence.
 
 ## Implementation Plan
 
-This PR adds documents only for this milestone. First review this design, resolve
-open choices, accept/amend ADR-0025 and create an authoritative spec. The user tests
-and merges the existing runtime foundation. Subsequent implementation follows the
-agreed spec; do not begin the slices below in this documentation update.
+Implementation is complete against SPEC-0023. The slices below were delivered as
+separate, reviewable commits and verified with focused backend suites plus the full
+workspace regression gate. RUNBOOK-0019 records the repeatable validation procedure.
 
 | Slice | Deliverable | Requirement / acceptance gate | Status |
 |---|---|---|---|
-| 1. Contracts | Descriptor, factory, bound-tool and authority contracts; chosen resource schema | D1/D3/D4: distinguish implemented capabilities from declarations; reject unenforceable scopes | Pending |
-| 2. Resolution | Resource parser, layered discovery, aliases, provenance and identities | D1/D2/D6: deterministic results, explicit isolation, collision/override tests, side-effect-free inspection | Pending |
-| 3. Runtime integration | Host-supplied catalog and generic adapter validation/dispatch; compatibility bindings | D3/D5/D8: second fixture tool requires no name branch; built-ins retain argument/policy behavior | Pending |
-| 4. Extension backends | Rust API, Lua authority adapter and MCP alias validation | D4/D5/D8: approved extensions use common lifecycle; unknown authority denied; remote schema drift detected | Pending |
-| 5. History/recovery | Binding metadata, checkpoint compatibility and legacy migration | D6/D7/D8: redacted inspection; changed implementation/config cannot silently resume | Pending |
-| 6. Acceptance and docs | Two unrelated fixture compositions, adversarial tests, spec and runbook validation | D1–D8: complete foundation demonstrated; limitations explicit | Pending |
+| 1. Contracts | Descriptor, factory, bound-tool and authority contracts; chosen resource schema | D1/D3/D4: distinguish implemented capabilities from declarations; reject unenforceable scopes | Complete |
+| 2. Resolution | Resource parser, layered discovery, aliases, provenance and identities | D1/D2/D6: deterministic results, explicit isolation, collision/override tests, side-effect-free inspection | Complete |
+| 3. Runtime integration | Host-supplied catalog and generic adapter validation/dispatch; compatibility bindings | D3/D5/D8: second fixture tool requires no name branch; built-ins retain argument/policy behavior | Complete |
+| 4. Extension backends | Rust API, Lua authority adapter and MCP alias validation | D4/D5/D8: approved extensions use common lifecycle; unknown authority denied; remote schema drift detected | Complete |
+| 5. History/recovery | Binding metadata, checkpoint compatibility and legacy migration | D6/D7/D8: redacted inspection; changed implementation/config cannot silently resume | Complete |
+| 6. Acceptance and docs | Two unrelated fixture compositions, adversarial tests, spec and runbook validation | D1–D8: complete foundation demonstrated; limitations explicit | Complete |
 
 Dependencies: 1 precedes 2/3; 4 follows their integration; 5 follows stable identities
 and adapters; 6 verifies all. Supporting input/schema libraries are selected only after
 reviewing existing dependencies. Use focused tests per slice, then the repository's
 feature/build matrix at integration gates. Do not label completion from one happy-path
 fixture or a fake provider response alone.
+
+### Delivered evidence and limits
+
+- One scoped reader is bound twice and tested against fixed-key overrides, traversal,
+  cross-root access, and symlink escape. Source-scoped search and direct lookup are a
+  separate composition with no domain-name dispatch.
+- Compiled, privileged Lua, and MCP fixtures use the common validation, policy,
+  approval, execution, output-bound, cancellation, and durable-history lifecycle.
+- Compatibility tools declare validation, dispatch mode, and stable identity through
+  their adapters. Direct MCP identity includes server configuration and discovery
+  schema; declared aliases reject schema drift before model use.
+- Static CLI inspection does not create a database or start extensions, distinguishes
+  unresolved remote metadata, and renders secret references without resolving values.
+- Lua cancellation is cooperative at VM instruction-hook boundaries. A blocking host
+  API call is bounded by that API's own timeout and cannot be interrupted mid-call.
+- MCP-backed runs remain intentionally non-resumable. Legacy server-only Lua tools are
+  not promoted into local-agent bindings without an explicit privileged manifest.
 
 ### Acceptance matrix
 
@@ -298,9 +314,9 @@ fixture or a fake provider response alone.
 - Build a general workflow/configuration language: unnecessary for fixed tool binding;
   defer arbitrary transformations and expressions.
 
-## Open Questions
+## Resolved Questions
 
-Resolve before creating the authoritative spec:
+The six decision groups below are resolved normatively by SPEC-0023:
 
 1. Exact resource schema/version, discovery directories, reserved namespaces and
    compatibility/override rules for existing script configuration and MCP names.
@@ -316,14 +332,12 @@ Resolve before creating the authoritative spec:
 
 ## Handoff and completion gates
 
-- Document chain: PRD-0013 -> DESIGN-0013 -> proposed ADR-0025 -> future spec -> tested
-  implementation -> verified setup/operation runbook. Index every artifact when created.
-- This update removes detailed wiki planning, changes no runtime behavior and does not
-  activate hooks, download models or grant unattended writes.
-- Current source anchors and missing functionality are in the audit above; completed
-  initial slices remain recorded in DESIGN-0011 with a scope qualification.
-- Next action: review/resolve the six open decision groups, then write the spec. Spec
-  requirements should reference D1–D8 and the acceptance matrix before coding begins.
+- Document chain: PRD-0013 -> DESIGN-0013 -> ADR-0025 -> SPEC-0023 -> tested
+  implementation -> RUNBOOK-0019 is complete and indexed.
+- The implementation does not activate hooks, download models, grant unattended
+  writes, auto-promote legacy Lua tools, or enable MCP-session recovery.
+- Repeat RUNBOOK-0019 before merge and whenever a descriptor, binding identity,
+  compatibility adapter, Lua host API, or MCP discovery contract changes.
 - After the foundation passes, revisit the wiki manager as the first real application.
   Its later design will still need local inference, executable MCP exposure, hook
   delivery, publication/reindexing and budget measurement; this milestone does not

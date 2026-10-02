@@ -50,7 +50,10 @@ use async_trait::async_trait;
 use mlua::prelude::*;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use std::time::{Duration, Instant};
 
 use crate::config::{Config, ScriptToolConfig};
@@ -435,10 +438,23 @@ pub async fn execute_tool(
 ) -> Result<serde_json::Value> {
     let tool = tool.clone();
     let config = app_config.clone();
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let worker_cancelled = cancelled.clone();
+    let _cancel_on_drop = CancelOnDrop(cancelled);
 
-    tokio::task::spawn_blocking(move || run_lua_tool(&tool, params, &config))
+    tokio::task::spawn_blocking(move || run_lua_tool(&tool, params, &config, worker_cancelled))
         .await
         .context("Lua tool task panicked")?
+}
+
+/// Dropping the async execution future signals its blocking Lua worker. The VM
+/// instruction hook observes this even though Tokio cannot abort spawn_blocking.
+struct CancelOnDrop(Arc<AtomicBool>);
+
+impl Drop for CancelOnDrop {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Release);
+    }
 }
 
 /// Run the Lua tool synchronously on a blocking thread.
@@ -446,6 +462,7 @@ fn run_lua_tool(
     tool: &ToolDefinition,
     params: serde_json::Value,
     config: &Config,
+    cancelled: Arc<AtomicBool>,
 ) -> Result<serde_json::Value> {
     let script_dir = tool
         .script_path
@@ -461,7 +478,9 @@ fn run_lua_tool(
     lua.set_hook(
         mlua::HookTriggers::new().every_nth_instruction(10_000),
         move |_lua, _debug| {
-            if Instant::now() > deadline {
+            if cancelled.load(Ordering::Acquire) {
+                Err(mlua::Error::RuntimeError("tool cancelled".into()))
+            } else if Instant::now() > deadline {
                 Err(mlua::Error::RuntimeError(format!(
                     "tool timed out after {} seconds",
                     timeout_secs
@@ -914,4 +933,44 @@ pub fn list_tools(config: &Config) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod cancellation_tests {
+    use super::*;
+    use std::sync::mpsc;
+
+    #[test]
+    fn cancellation_interrupts_cpu_bound_lua_before_its_timeout() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let tool = ToolDefinition {
+            name: "loop".into(),
+            description: "loop forever".into(),
+            parameters_schema: serde_json::json!({
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }),
+            script_path: temp.path().join("loop.lua"),
+            script_source: "tool = {}; function tool.execute() while true do end end".into(),
+            config: toml::Table::new(),
+            timeout: 30,
+        };
+        let config = Config::minimal();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let worker_cancelled = cancelled.clone();
+        let (sender, receiver) = mpsc::channel();
+        std::thread::spawn(move || {
+            let result = run_lua_tool(&tool, serde_json::json!({}), &config, worker_cancelled);
+            sender.send(result).unwrap();
+        });
+
+        std::thread::sleep(Duration::from_millis(25));
+        cancelled.store(true, Ordering::Release);
+        let error = receiver
+            .recv_timeout(Duration::from_secs(2))
+            .expect("Lua worker ignored cancellation")
+            .unwrap_err();
+        assert!(format!("{error:#}").contains("tool cancelled"));
+    }
 }

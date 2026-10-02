@@ -25,6 +25,15 @@ pub struct RunFiles {
     _lock: std::fs::File,
 }
 
+impl Drop for RunFiles {
+    fn drop(&mut self) {
+        // Release ownership before any of the held directory descriptors are
+        // dropped. Relying on descriptor close alone proved racy when the same
+        // run was reacquired immediately under Rust 1.99 on Linux.
+        let _ = std::fs::File::unlock(&self._lock);
+    }
+}
+
 pub fn acquire(root: &Path, id: &str) -> Result<RunFiles> {
     // Require the canonical UUID spelling: no filesystem syntax or aliases.
     ensure!(

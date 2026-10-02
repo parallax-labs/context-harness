@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Local agent runtime** — define standalone, workspace-scoped agents as TOML
+  resources, run them through configured model adapters, and retain durable run
+  state and event history for inspection and recovery.
+- **Declarative tool bindings** — bind agents to source-scoped retrieval,
+  path-scoped file reading, compiled tools, Lua tools, and remote MCP tools with
+  static, side-effect-free validation.
+- **Agent lifecycle commands** — `ctx agent show`, `validate`, `run`, `history`,
+  `inspect`, and `resume`, including cancellation and permission-aware recovery.
+- **Generic local-agent examples and setup skill** — reusable project researcher
+  and code-review configurations under `examples/local-agents`, plus the
+  `skills/context-harness-agents` bootstrap and implementation workflow.
+- **Local agents documentation** — a complete website guide, expanded CLI and
+  configuration references, and a release blog post covering the recent agent
+  runtime and tool-binding work.
 - **Lua MCP tool extensions** — define custom MCP tools in Lua that AI agents can discover via `GET /tools/list` and call via `POST /tools/{name}`. Tool scripts define a `tool` table with `name`, `description`, `parameters`, and an `execute(params, context)` function. The `context` bridge provides `search()`, `get()`, `sources()`, and `config` for RAG-powered tools. Parameter schemas are converted to OpenAI function-calling JSON Schema format.
 - **`GET /tools/list`** endpoint — returns all registered tools (built-in + Lua) with their parameter schemas.
 - **`POST /tools/{name}`** endpoint — calls a registered Lua tool with validated parameters. Returns `400` for validation errors, `404` for unknown tools, `408` for timeouts, `500` for script errors.
@@ -110,4 +124,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `demo.sh` script for automated setup and launch.
 - Browser-only demo (`site/demo/`) running entirely client-side with sql.js, Transformers.js (WASM), and BM25 in JavaScript.
 - Use Cases section on the marketing page.
-

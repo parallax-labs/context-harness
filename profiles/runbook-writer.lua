@@ -1,5 +1,5 @@
 --[[
-  Context Harness Agent: runbook-writer
+  Context Harness Profile: runbook-writer
 
   Writes operational runbooks following the Runbook policy
   (docs/runbook/0000-runbook-policy.md). Runbooks are step-by-step
@@ -7,15 +7,15 @@
 
   Configuration (add to ctx.toml):
 
-    [agents.script.runbook-writer]
-    path = "agents/runbook-writer.lua"
+    [profiles.script.runbook-writer]
+    path = "profiles/runbook-writer.lua"
     search_limit = "8"
 
   Usage:
-    ctx agent test runbook-writer --arg task="deploy to kubernetes"
+    ctx profile test runbook-writer --arg task="deploy to kubernetes"
 ]]
 
-agent = {
+profile = {
     name = "runbook-writer",
     description = "Writes operational runbooks with step-by-step procedures",
     tools = { "search", "get" },
@@ -33,7 +33,7 @@ agent = {
     },
 }
 
-function agent.resolve(args, config, context)
+function profile.resolve(args, config, context)
     local task = args.task or "unnamed task"
     local status = args.status or "Draft"
     local search_limit = tonumber(config.search_limit) or 8

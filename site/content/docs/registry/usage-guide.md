@@ -13,7 +13,7 @@ Run `ctx registry init` to clone the community registry and add it to your confi
 ```bash
 $ ctx registry init
 Cloning community extension registry...
-Installed: 10 connectors, 4 tools, 2 agents
+Installed: 10 connectors, 4 tools, 2 profiles
 Added [registries.community] to ./config/ctx.toml
 Run `ctx registry list` to see available extensions.
 ```
@@ -33,13 +33,13 @@ $ ctx registry list
 Registries:
 
   community — ~/.ctx/registries/community (git) [readonly]
-    10 connectors, 4 tools, 2 agents
+    10 connectors, 4 tools, 2 profiles
 
 Available extensions:
 
-  agents:
-    incident-responder — Incident response agent [incident, ops, runbook, sre]
-    researcher — Research agent with citations [research, search, synthesis]
+  profiles:
+    incident-responder — Incident response profile [incident, ops, runbook, sre]
+    researcher — Research profile with citations [research, search, synthesis]
   connectors:
     confluence — Confluence Cloud pages [confluence, atlassian, wiki]
     devto — Dev.to articles [devto, blog, articles]
@@ -119,9 +119,9 @@ sync script:rss
 ok
 ```
 
-### 5. Tools and agents auto-discover
+### 5. Tools and profiles auto-discover
 
-Unlike connectors, **tools and agents from registries are automatically available** when you start the MCP server. No config entry needed:
+Unlike connectors, **tools and profiles from registries are automatically available** when you start the MCP server. No config entry needed:
 
 ```bash
 $ ctx serve mcp
@@ -133,9 +133,9 @@ Registered 7 tools:
   POST /tools/create-jira-ticket — Create Jira tickets (lua)
   POST /tools/send-slack-message — Post Slack messages (lua)
   POST /tools/create-github-issue — Create GitHub issues (lua)
-Registered 2 agents:
-  POST /agents/researcher/prompt — Research agent (lua)
-  POST /agents/incident-responder/prompt — Incident response (lua)
+Registered 2 profiles:
+  POST /profiles/researcher/prompt — Research profile (lua)
+  POST /profiles/incident-responder/prompt — Incident response (lua)
 MCP server listening on http://127.0.0.1:7331
 ```
 

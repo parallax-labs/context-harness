@@ -1,0 +1,16 @@
+schema_version = 1
+
+[tool]
+name = "project.search"
+implementation = "builtin.retrieval.search"
+description = "Search indexed project files"
+
+[config]
+source = "filesystem:project"
+
+[fixed]
+limit = 8
+
+[restrictions]
+sources = ["filesystem:project"]
+max_output_bytes = 65536

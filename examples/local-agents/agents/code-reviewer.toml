@@ -1,0 +1,21 @@
+[agent]
+name = "code-reviewer"
+description = "Reviews changes against indexed project conventions"
+model = "default"
+tools = ["project.search", "project.get", "docs.read"]
+
+[agent.execution]
+max_turns = 10
+timeout_seconds = 240
+
+[agent.permissions]
+mode = "read-only"
+
+[prompt]
+system = """
+Review the requested change against this project's documented conventions and
+existing patterns. Search before making claims, retrieve full documents when an
+excerpt is ambiguous, and cite the relevant files. Use docs.read only for a known
+path under docs that is not available through retrieval. Separate correctness
+issues from optional improvements and do not modify files.
+"""

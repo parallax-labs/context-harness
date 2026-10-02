@@ -32,7 +32,7 @@ See [DESIGN-0000](0000-design-policy.md) for the full policy.
 | [0009](0009-workspace-scoped-extensions.md) | Workspace-Scoped Extensions and Request Origin | Draft |
 | [0010](0010-local-agent-runtime.md) | Context Harness Local Agent Runtime | Proposed |
 | [0011](0011-local-agent-runtime-execution-plan.md) | Local Agent Runtime Execution Plan | Reference |
-| [0013](0013-declarative-tool-bindings.md) | Declarative Tool Bindings and Runtime Extensions | Planning |
+| [0013](0013-declarative-tool-bindings.md) | Declarative Tool Bindings and Runtime Extensions | Delivered |
 
 ## Creating a New Design Doc
 

@@ -7,11 +7,11 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use chrono::Utc;
-use context_harness::agents::{Agent, AgentPrompt, AgentRegistry};
 use context_harness::config::Config;
 use context_harness::ingest::run_sync_with_extensions;
 use context_harness::migrate;
 use context_harness::models::SourceItem;
+use context_harness::profiles::{Profile, ProfilePrompt, ProfileRegistry};
 use context_harness::search::search_documents;
 use context_harness::server::run_server_with_extensions;
 use context_harness::traits::{
@@ -341,7 +341,7 @@ async fn test_custom_tool_via_http_server() {
     // Start server in background
     let cfg_clone = cfg.clone();
     let tools_clone = tools.clone();
-    let agents = Arc::new(AgentRegistry::new());
+    let agents = Arc::new(ProfileRegistry::new());
     let server_handle = tokio::spawn(async move {
         run_server_with_extensions(&cfg_clone, tools_clone, agents)
             .await
@@ -421,7 +421,7 @@ async fn test_tool_list_includes_builtins_and_custom() {
 
     let cfg_clone = cfg.clone();
     let tools_clone = tools.clone();
-    let agents = Arc::new(AgentRegistry::new());
+    let agents = Arc::new(ProfileRegistry::new());
     let server_handle = tokio::spawn(async move {
         run_server_with_extensions(&cfg_clone, tools_clone, agents)
             .await
@@ -463,7 +463,7 @@ async fn test_tool_list_includes_builtins_and_custom() {
 struct TestAgent;
 
 #[async_trait]
-impl Agent for TestAgent {
+impl Profile for TestAgent {
     fn name(&self) -> &str {
         "test-agent"
     }
@@ -480,9 +480,9 @@ impl Agent for TestAgent {
         "rust"
     }
 
-    async fn resolve(&self, args: Value, _ctx: &ToolContext) -> Result<AgentPrompt> {
+    async fn resolve(&self, args: Value, _ctx: &ToolContext) -> Result<ProfilePrompt> {
         let topic = args["topic"].as_str().unwrap_or("testing");
-        Ok(AgentPrompt {
+        Ok(ProfilePrompt {
             system: format!("You are a test agent focused on {}.", topic),
             tools: self.tools(),
             messages: vec![],
@@ -490,24 +490,24 @@ impl Agent for TestAgent {
     }
 }
 
-/// Prove that custom agents appear in /agents/list and can be resolved.
+/// Prove that custom profiles appear in /profiles/list and can be resolved.
 #[tokio::test]
-async fn test_custom_agent_list_and_resolve() {
+async fn test_custom_profile_list_and_resolve() {
     let port = find_free_port();
     let tmp = TempDir::new().unwrap();
     let cfg = test_config_with_port(&tmp, port);
     migrate::run_migrations(&cfg).await.unwrap();
 
     let tools = Arc::new(ToolRegistry::new());
-    let mut agents = AgentRegistry::new();
-    agents.register(Box::new(TestAgent));
-    let agents = Arc::new(agents);
+    let mut profiles = ProfileRegistry::new();
+    profiles.register(Box::new(TestAgent));
+    let profiles = Arc::new(profiles);
 
     let cfg_clone = cfg.clone();
     let tools_clone = tools.clone();
-    let agents_clone = agents.clone();
+    let profiles_clone = profiles.clone();
     let server_handle = tokio::spawn(async move {
-        run_server_with_extensions(&cfg_clone, tools_clone, agents_clone)
+        run_server_with_extensions(&cfg_clone, tools_clone, profiles_clone)
             .await
             .ok();
     });
@@ -515,25 +515,25 @@ async fn test_custom_agent_list_and_resolve() {
 
     let client = reqwest::Client::new();
 
-    // Verify agent appears in /agents/list
-    let list_url = format!("http://127.0.0.1:{}/agents/list", port);
+    // Verify profile appears in /profiles/list
+    let list_url = format!("http://127.0.0.1:{}/profiles/list", port);
     let resp = client.get(&list_url).send().await.unwrap();
     assert_eq!(resp.status(), 200);
     let body: Value = resp.json().await.unwrap();
-    let agent_names: Vec<&str> = body["agents"]
+    let profile_names: Vec<&str> = body["profiles"]
         .as_array()
         .unwrap()
         .iter()
         .map(|a| a["name"].as_str().unwrap())
         .collect();
     assert!(
-        agent_names.contains(&"test-agent"),
-        "Custom agent should appear in /agents/list, got: {:?}",
-        agent_names
+        profile_names.contains(&"test-agent"),
+        "Custom agent should appear in /profiles/list, got: {:?}",
+        profile_names
     );
 
-    // Verify agent metadata
-    let agent_info = body["agents"]
+    // Verify profile metadata
+    let agent_info = body["profiles"]
         .as_array()
         .unwrap()
         .iter()
@@ -545,8 +545,8 @@ async fn test_custom_agent_list_and_resolve() {
         "A test agent for integration tests"
     );
 
-    // Resolve the agent's prompt
-    let resolve_url = format!("http://127.0.0.1:{}/agents/test-agent/prompt", port);
+    // Resolve the profile's prompt
+    let resolve_url = format!("http://127.0.0.1:{}/profiles/test-agent/prompt", port);
     let resp = client
         .post(&resolve_url)
         .json(&json!({"topic": "deployment"}))
@@ -573,10 +573,10 @@ async fn test_custom_agent_list_and_resolve() {
     let body: Value = resp.json().await.unwrap();
     assert!(body["system"].as_str().unwrap().contains("testing"));
 
-    // Non-existent agent → 404
+    // Non-existent profile → 404
     let resp = client
         .post(format!(
-            "http://127.0.0.1:{}/agents/nonexistent/prompt",
+            "http://127.0.0.1:{}/profiles/nonexistent/prompt",
             port
         ))
         .json(&json!({}))

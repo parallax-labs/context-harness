@@ -17,10 +17,12 @@ impl AgentRuntime {
         // Validate every declaration before starting any process, including known
         // builtins, so a denied or missing declaration cannot trigger startup.
         for name in &resource.definition.agent.tools {
-            if let Some(rest) = name.strip_prefix("mcp.") {
-                let (server, tool) = rest
-                    .split_once('.')
-                    .context("MCP tool name must be mcp.<server>.<tool>")?;
+            let implementation = self
+                .tool_bindings
+                .get(name)
+                .map(|binding| binding.definition.tool.implementation.as_str())
+                .unwrap_or(name);
+            if let Some((server, tool)) = tool_binding::mcp_reference(implementation) {
                 ensure!(!tool.is_empty(), "MCP tool name is empty");
                 let config = self
                     .config
@@ -84,6 +86,33 @@ impl AgentRuntime {
                             )
                             .await?;
                         anyhow::bail!("MCP discovery failed");
+                    }
+                    for binding in resource
+                        .definition
+                        .agent
+                        .tools
+                        .iter()
+                        .filter_map(|tool| self.tool_bindings.get(tool))
+                        .filter(|binding| {
+                            tool_binding::mcp_reference(&binding.definition.tool.implementation)
+                                .is_some_and(|(binding_server, _)| binding_server == name)
+                        })
+                    {
+                        if session
+                            .register_alias(binding, config, &mut registry)
+                            .is_err()
+                        {
+                            self.store
+                                .finish_tool(
+                                    id,
+                                    &call_id,
+                                    ToolOutcome::Failed(
+                                        "MCP alias schema validation failed".into(),
+                                    ),
+                                )
+                                .await?;
+                            anyhow::bail!("MCP alias schema validation failed");
+                        }
                     }
                     self.store
                         .finish_tool(

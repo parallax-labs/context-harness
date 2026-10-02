@@ -116,9 +116,9 @@ token = "${GITHUB_TOKEN}"
 state = "all"
 max_pages = 10
 
-# ── Agents ───────────────────────────────────────────────────
+# ── Profiles ───────────────────────────────────────────────────
 
-[agents.inline.code-reviewer]
+[profiles.inline.code-reviewer]
 description = "Reviews code against project conventions and patterns"
 tools = ["search", "get"]
 system_prompt = """
@@ -130,7 +130,7 @@ reviewing code:
    potential issues — not style nitpicks
 """
 
-[agents.inline.oncall]
+[profiles.inline.oncall]
 description = "Helps triage production incidents using runbooks and past issues"
 tools = ["search", "get"]
 system_prompt = """
@@ -197,7 +197,7 @@ Commit this to each repo so everyone gets it automatically. If the server runs o
 - *"How do I roll back a deployment on the auth service?"*
 
 **Review code with team conventions:**
-- Select the *code-reviewer* agent and paste a diff
+- Select the *code-reviewer* profile and paste a diff
 - It searches for relevant ADRs and coding standards, then reviews against them
 
 ### Keep it fresh

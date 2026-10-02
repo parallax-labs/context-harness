@@ -14,11 +14,12 @@ use policy::{ApprovalHandler, ApprovalRequest, Authorization, DenyApprovals, Run
 
 use crate::{
     agent_model::{FinishReason, ModelMessage, ModelRegistry, ModelRequest, ModelTool},
-    agent_resource::LoadedAgentResource,
+    agent_resource::{Capability, LoadedAgentResource, ResourceDirectory},
     agent_store::{AgentRun, AgentRunStore, RunOutcome, ToolOutcome},
     app_store::SqliteAppStore,
     config::Config,
-    traits::{ToolContext, ToolRegistry},
+    tool_binding::{self, HostToolAuthority},
+    traits::{ToolContext, ToolRegistry, ToolRuntimeDispatch},
 };
 use anyhow::{ensure, Context, Result};
 use serde_json::json;
@@ -53,6 +54,7 @@ pub struct AgentRuntime {
     policy: RuntimePolicy,
     approvals: Arc<dyn ApprovalHandler>,
     resources: Arc<std::collections::BTreeMap<String, LoadedAgentResource>>,
+    tool_bindings: Arc<std::collections::BTreeMap<String, tool_binding::LoadedToolResource>>,
     execution: Option<delegation::ExecutionContext>,
 }
 impl AgentRuntime {
@@ -75,6 +77,7 @@ impl AgentRuntime {
             tools: Arc::new(tools),
             models: Arc::new(models),
             resources: Arc::new(Default::default()),
+            tool_bindings: Arc::new(Default::default()),
             execution: None,
             policy: RuntimePolicy::default(),
             approvals: Arc::new(DenyApprovals),
@@ -92,6 +95,90 @@ impl AgentRuntime {
         self.policy = policy;
         self.approvals = approvals;
         self
+    }
+
+    /// Resolve and bind standalone tool resources through the trusted core catalog.
+    /// Host authority is the existing workspace read boundary; resources only narrow it.
+    pub async fn with_tool_bindings(self, directories: &[ResourceDirectory]) -> Result<Self> {
+        let mut authority = HostToolAuthority::new(&self.root, vec![Capability::ReadOnly])?;
+        authority.enroll_path(&self.root)?;
+        let sources = self
+            .config
+            .connectors
+            .filesystem
+            .keys()
+            .map(|name| format!("filesystem:{name}"))
+            .chain(
+                self.config
+                    .connectors
+                    .git
+                    .keys()
+                    .map(|name| format!("git:{name}")),
+            )
+            .chain(
+                self.config
+                    .connectors
+                    .s3
+                    .keys()
+                    .map(|name| format!("s3:{name}")),
+            )
+            .chain(
+                self.config
+                    .connectors
+                    .script
+                    .keys()
+                    .map(|name| format!("script:{name}")),
+            );
+        for source in sources {
+            authority.enroll_source(source)?;
+        }
+        let catalog = tool_binding::core_catalog()?;
+        self.bind_tool_resources(directories, &catalog, Arc::new(authority))
+            .await
+    }
+
+    /// Bind resources using a catalog and authority supplied by a trusted embedding host.
+    pub async fn with_tool_binding_catalog(
+        self,
+        directories: &[ResourceDirectory],
+        catalog: &tool_binding::ToolImplementationCatalog,
+        authority: Arc<HostToolAuthority>,
+    ) -> Result<Self> {
+        self.bind_tool_resources(directories, catalog, authority)
+            .await
+    }
+
+    async fn bind_tool_resources(
+        mut self,
+        directories: &[ResourceDirectory],
+        catalog: &tool_binding::ToolImplementationCatalog,
+        authority: Arc<HostToolAuthority>,
+    ) -> Result<Self> {
+        let loaded = tool_binding::load_resources(directories, &self.config)?;
+        if loaded.is_empty() {
+            return Ok(self);
+        }
+        let local = loaded
+            .iter()
+            .filter(|(_, resource)| {
+                tool_binding::mcp_reference(&resource.definition.tool.implementation).is_none()
+            })
+            .map(|(name, resource)| (name.clone(), resource.clone()))
+            .collect();
+        let bindings = tool_binding::bind_resources(&local, catalog, authority).await?;
+        self.tool_bindings = Arc::new(loaded);
+        let tools = Arc::get_mut(&mut self.tools).context("runtime tool registry is shared")?;
+        for tool in bindings.tools() {
+            ensure!(
+                tools.find(tool.name()).is_none(),
+                "tool binding '{}' conflicts with an existing runtime tool",
+                tool.name()
+            );
+        }
+        for tool in bindings.into_tools() {
+            tools.register(tool);
+        }
+        Ok(self)
     }
 
     pub fn store(&self) -> &AgentRunStore {
@@ -216,7 +303,12 @@ impl AgentRuntime {
         let agent = &resource.definition.agent;
         let mut declarations = Vec::new();
         for name in &agent.tools {
-            if name == "agent.invoke" {
+            let tool = self
+                .tools
+                .find(name)
+                .or_else(|| external.find(name))
+                .context("unsupported runtime tool declaration")?;
+            if tool.runtime_dispatch() == ToolRuntimeDispatch::AgentDelegation {
                 ensure!(
                     !agent.delegation.allow.is_empty()
                         && agent
@@ -227,11 +319,6 @@ impl AgentRuntime {
                     "delegation targets unavailable"
                 );
             }
-            let tool = self
-                .tools
-                .find(name)
-                .or_else(|| external.find(name))
-                .context("unsupported runtime tool declaration")?;
             let capabilities = tool
                 .capabilities()
                 .context("tool capability metadata is unavailable")?;
@@ -240,7 +327,7 @@ impl AgentRuntime {
                 "tool capability is not permitted by agent and host policy"
             );
             let mut parameters = tool.parameters_schema();
-            if name == "agent.invoke" {
+            if tool.runtime_dispatch() == ToolRuntimeDispatch::AgentDelegation {
                 parameters["properties"]["agent"]["enum"] = json!(agent.delegation.allow);
             }
             declarations.push(ModelTool {
@@ -276,11 +363,17 @@ impl AgentRuntime {
                     &json!({
                         "workspace_root": self.root, "agent_version": resource.version,
                         "tools": agent.tools, "retrieval": "keyword",
+                        "tool_binding_contract": tool_binding::CATALOG_CONTRACT_VERSION,
+                        "tool_bindings": self.selected_binding_metadata_with(resource, Some(&external))?,
                         "host_policy": {"allow":self.policy.allow, "require_approval":self.policy.require_approval}
                     }),
                 )
                 .await?;
             let context = ToolContext::new(self.config.clone());
+            if restored.is_none() {
+                self.prepare_selected_tools(id, resource, &external, &context)
+                    .await?;
+            }
             let mut request = restored.unwrap_or_else(|| ModelRequest {
                 messages: vec![
                     ModelMessage::System {
@@ -345,18 +438,15 @@ impl AgentRuntime {
                         .request_tool(id, &call.id, &call.name, &call.arguments)
                         .await?;
                     let tool = self.tools.find(&call.name).or_else(|| external.find(&call.name)).context("tool unavailable")?;
+                    let dispatch = tool.runtime_dispatch();
                     let authorization = tool
                         .capabilities()
                         .map(|caps| self.policy.authorize(&agent.permissions, &caps))
                         .unwrap_or(Authorization::Denied);
-                    let valid = if matches!(call.name.as_str(), "search" | "get") {
-                        tools::validate(&call.name, &call.arguments)
-                    } else if call.name == "agent.invoke" {
+                    let valid = if dispatch == ToolRuntimeDispatch::AgentDelegation {
                         self.validate_delegation(resource, &call.arguments)
-                    } else if call.name.starts_with("mcp.") {
-                        mcp_client::validate_arguments(&call.arguments)
                     } else {
-                        developer::validate(&self.root, &call.name, &call.arguments)
+                        tool.validate_arguments(&call.arguments)
                     };
                     if !agent.tools.contains(&call.name)
                         || authorization == Authorization::Denied
@@ -373,9 +463,10 @@ impl AgentRuntime {
                             .await?;
                         anyhow::bail!("tool permission or argument validation rejected");
                     }
-                    self.approve_invocation(id, &call.id, &call.name, &call.arguments, authorization).await?;
+                    let approval_arguments = tool.approval_arguments(&call.arguments)?;
+                    self.approve_invocation(id, &call.id, &call.name, &approval_arguments, authorization).await?;
                     self.store.start_tool(id, &call.id).await?;
-                    let result = if call.name == "agent.invoke" {
+                    let result = if dispatch == ToolRuntimeDispatch::AgentDelegation {
                         self.invoke(id, &call.id, resource, call.arguments).await
                     } else {tool.execute(call.arguments, &context).await};
                     match result {
@@ -421,6 +512,64 @@ impl AgentRuntime {
             session.close().await;
         }
         result
+    }
+
+    async fn prepare_selected_tools(
+        &self,
+        id: &str,
+        resource: &LoadedAgentResource,
+        external: &ToolRegistry,
+        context: &ToolContext,
+    ) -> Result<()> {
+        for name in &resource.definition.agent.tools {
+            let tool = self
+                .tools
+                .find(name)
+                .or_else(|| external.find(name))
+                .context("tool unavailable")?;
+            let Some(preparation) = tool.preparation() else {
+                continue;
+            };
+            let call_id = format!("prepare:{name}");
+            self.store
+                .request_tool(id, &call_id, &preparation.name, &preparation.arguments)
+                .await?;
+            let authorization = self.policy.authorize(
+                &resource.definition.agent.permissions,
+                &preparation.capabilities,
+            );
+            self.approve_invocation(
+                id,
+                &call_id,
+                &preparation.name,
+                &preparation.arguments,
+                authorization,
+            )
+            .await?;
+            self.store.start_tool(id, &call_id).await?;
+            match tool.prepare(context).await {
+                Ok(()) => {
+                    self.store
+                        .finish_tool(
+                            id,
+                            &call_id,
+                            ToolOutcome::Completed(json!({"prepared":true})),
+                        )
+                        .await?;
+                }
+                Err(_) => {
+                    self.store
+                        .finish_tool(
+                            id,
+                            &call_id,
+                            ToolOutcome::Failed("tool preparation failed".into()),
+                        )
+                        .await?;
+                    anyhow::bail!("tool preparation failed");
+                }
+            }
+        }
+        Ok(())
     }
 }
 

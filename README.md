@@ -18,11 +18,12 @@ Context Harness ingests external knowledge (files, Git repos, S3, Lua scripts) i
 
 - **Connector-driven ingestion** — plug in any source (filesystem, Git repos, S3 buckets, Lua scripts)
 - **Multi-format file support** — plain text (e.g. Markdown, `.txt`) plus **PDF**, **Word** (`.docx`), **PowerPoint** (`.pptx`), and **Excel** (`.xlsx`) with automatic text extraction when you include those extensions in `include_globs`
-- **Extension registries** — install community connectors, tools, and agents from Git-backed repos
+- **Extension registries** — install community connectors, tools, and profiles from Git-backed repos
 - **Local-first storage** — SQLite with FTS5 for keyword search
 - **Embedding pipeline** — local (fastembed or tract), Ollama, and OpenAI embeddings with automatic batching, retry, and staleness detection
 - **Hybrid retrieval** — keyword + semantic + weighted merge (configurable alpha)
 - **MCP server** — expose context to Cursor and other AI tools via HTTP
+- **Local agents** — run durable, workspace-scoped agents with declarative tools, history, inspection, and resume support
 - **CLI-first** — everything accessible via the `ctx` command
 - **Incremental sync** — checkpointed, idempotent, deterministic
 
@@ -140,6 +141,37 @@ Add to `.cursor/mcp.json`:
 }
 ```
 
+### 6. Add a reusable profile
+
+Profiles give Cursor, Claude, and custom MCP clients a repeatable role without
+moving the conversation into Context Harness:
+
+```bash
+ctx profile init code-reviewer
+ctx profile validate
+ctx profile test code-reviewer
+```
+
+See [Profiles](https://parallax-labs.github.io/context-harness/docs/profiles/overview/)
+for inline TOML, Lua, Rust, MCP, and REST examples.
+
+### 7. Run a local agent
+
+Start from the generic [`examples/local-agents`](examples/local-agents) setup or
+use the reusable [`context-harness-agents` skill](skills/context-harness-agents)
+to configure a project. Then validate and run it from the workspace:
+
+```bash
+ctx tool bindings validate
+ctx agent validate
+ctx agent run project-researcher "Summarize the architecture and cite the relevant files"
+```
+
+See the [local agents guide](https://parallax-labs.github.io/context-harness/docs/agents/build-local-agents/)
+for explicit model, connector, agent, tool, permission, history, inspection, and
+resume configuration. The [agent setup skill guide](https://parallax-labs.github.io/context-harness/docs/agents/setup-skill/)
+covers installation, invocation, customization, generated files, and validation.
+
 ## Architecture
 
 ```
@@ -180,6 +212,15 @@ Full reference: [CLI docs](https://parallax-labs.github.io/context-harness/docs/
 | `ctx registry update` | Pull latest changes for registries |
 | `ctx registry search <q>` | Search extensions by name, tag, or description |
 | `ctx registry add <ext>` | Scaffold a config entry for a registry extension |
+| `ctx tool bindings validate` | Validate declarative tool bindings without executing them |
+| `ctx profile list` | List reusable MCP prompt profiles |
+| `ctx profile test <name>` | Resolve and preview a profile without calling a model |
+| `ctx profile init <name>` | Scaffold a Lua profile |
+| `ctx agent validate` | Validate local agent resources and their tool references |
+| `ctx agent run <name> <prompt>` | Run a workspace-scoped local agent |
+| `ctx agent history` | List durable runs for the current workspace |
+| `ctx agent inspect <run-id>` | Inspect run state, permissions, and tool activity |
+| `ctx agent resume <run-id>` | Resume an interrupted or awaiting-input run |
 | `ctx completions <shell>` | Generate shell completions (bash, zsh, fish) |
 
 ## HTTP API
@@ -193,8 +234,8 @@ The server exposes an MCP Streamable HTTP endpoint and REST endpoints. See [MCP 
 | POST | `/tools/get` | Retrieve a document by ID (REST) |
 | GET | `/tools/list` | List all registered tools (REST) |
 | GET | `/tools/sources` | List connector status (REST) |
-| GET | `/agents/list` | List all registered agents (REST) |
-| POST | `/agents/{name}/prompt` | Resolve agent prompt (REST) |
+| GET | `/profiles/list` | List all registered profiles (REST) |
+| POST | `/profiles/{name}/prompt` | Resolve a profile prompt (REST) |
 | GET | `/health` | Health check |
 
 Errors follow a consistent format:
@@ -302,7 +343,7 @@ See `examples/connectors/github-issues.lua` for a complete example.
 
 ## Extension Registries
 
-Install community connectors, tools, and agents from Git-backed repositories. See [Registry overview](https://parallax-labs.github.io/context-harness/docs/registry/overview/) and [Usage guide](https://parallax-labs.github.io/context-harness/docs/registry/usage-guide/) on the docs site.
+Install community connectors, tools, and profiles from Git-backed repositories. See [Registry overview](https://parallax-labs.github.io/context-harness/docs/registry/overview/) and [Usage guide](https://parallax-labs.github.io/context-harness/docs/registry/usage-guide/) on the docs site.
 
 ### Install the Community Registry
 
@@ -328,7 +369,7 @@ ctx registry info connectors/jira --config ./config/ctx.toml
 ctx registry add connectors/jira --config ./config/ctx.toml
 ```
 
-Tools and agents from registries are **auto-discovered** at server startup — they appear in `GET /tools/list` and `GET /agents/list` without explicit config. Connectors need credentials, so they require explicit activation via `ctx registry add`.
+Tools and profiles from registries are **auto-discovered** at server startup — they appear in `GET /tools/list` and `GET /profiles/list` without explicit config. Connectors need credentials, so they require explicit activation via `ctx registry add`.
 
 ### Configure Multiple Registries
 
@@ -349,7 +390,7 @@ Registries are resolved with precedence: explicit config > `.ctx/` project-local
 
 ### Project-Local Extensions
 
-Place a `.ctx/` directory in your project root with Lua scripts organized as `connectors/<name>/connector.lua`, `tools/<name>/tool.lua`, or `agents/<name>/agent.lua`. They are auto-discovered from any subdirectory.
+Place a `.ctx/` directory in your project root with Lua scripts organized as `connectors/<name>/connector.lua`, `tools/<name>/tool.lua`, or `profiles/<name>/profile.lua`. Legacy `agents/<name>/agent.lua` profile extensions remain discoverable. They are auto-discovered from any subdirectory.
 
 ### Customize an Extension
 
@@ -454,7 +495,9 @@ See [`config/ctx.example.toml`](config/ctx.example.toml) for a complete example,
 | [Configuration](https://parallax-labs.github.io/context-harness/docs/reference/configuration/) | Full `ctx.toml` reference, embedding providers, platform table |
 | [CLI reference](https://parallax-labs.github.io/context-harness/docs/reference/cli/) | Every command and flag |
 | [Connectors & registry](https://parallax-labs.github.io/context-harness/docs/connectors/built-in/) | Built-in connectors, [Lua connectors](https://parallax-labs.github.io/context-harness/docs/connectors/lua-connectors/), [extension registry](https://parallax-labs.github.io/context-harness/docs/registry/overview/) |
-| [Guides](https://parallax-labs.github.io/context-harness/docs/guides/agents/) | Agent integration, Cursor, RAG, multi-repo, deployment |
+| [Agents](https://parallax-labs.github.io/context-harness/docs/agents/overview/) | Executable local agents, scoped tools, setup skill, permissions, history, and recovery |
+| [Profiles](https://parallax-labs.github.io/context-harness/docs/profiles/overview/) | Reusable MCP roles and context for Cursor, Claude, and custom clients |
+| [Guides](https://parallax-labs.github.io/context-harness/docs/guides/agent-integration/) | External client integration, RAG, chatbots, and multi-repo context |
 | [API (Rustdoc)](https://parallax-labs.github.io/context-harness/api/context_harness/) | Generated Rust API docs |
 | [Local agent execution](docs/spec/0017-local-agent-execution.md) | Standalone agent run/history/inspect commands, supported tools, and a local fake-provider example |
 | [Developer tools and approvals](docs/spec/0018-developer-tools-and-approvals.md) | Workspace/Git tools, patch and process permissions, and interactive approval |

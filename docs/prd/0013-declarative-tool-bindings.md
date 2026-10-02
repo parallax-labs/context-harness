@@ -1,6 +1,6 @@
 # PRD-0013: Declarative Tool Bindings and Runtime Extensions
 
-**Status:** Draft
+**Status:** Delivered
 **Date:** 2026-09-30
 **Author:** Context Harness contributors
 
@@ -95,12 +95,12 @@ can hide privilege or collide with existing names; inspection and validation nee
 to expose effective behavior. Generic argument mapping can become a programming
 language; the initial scope should be fixed bindings, not arbitrary expressions.
 
-## Open Questions
+## Resolved Questions
 
-Resolve before promotion to Planned/In Progress: initial resource schema/location,
-capability descriptor and binding contract, eligible Lua host APIs, MCP trust and
-argument-schema validation, extension identity/versioning, and migration rules.
-DESIGN-0013 tracks the corresponding technical decisions and acceptance gates.
+SPEC-0023 resolves the initial resource schema/location, capability descriptor and
+binding contract, eligible Lua trust mode, MCP trust and argument-schema validation,
+extension identity/versioning, and migration rules. DESIGN-0013 retains the
+implementation sequence and acceptance gates.
 
 ## Related Documents
 
@@ -110,6 +110,6 @@ DESIGN-0013 tracks the corresponding technical decisions and acceptance gates.
 - [DESIGN-0010](../design/0010-local-agent-runtime.md): original architectural intent.
 - [DESIGN-0011](../design/0011-local-agent-runtime-execution-plan.md): completed initial
   slices, explicitly not completion of runtime extension composition.
-- Future feature spec: create after design review and decision resolution, before
-  implementation. No placeholder normative spec is created in this documentation PR.
+- [SPEC-0023](../spec/0023-declarative-tool-bindings.md): authoritative resource,
+  authority, runtime, backend, inspection, and recovery contract.
 - Future runbook: create with verified setup, inspection and migration behavior.

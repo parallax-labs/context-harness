@@ -7,9 +7,9 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use crate::agents::TomlAgent;
 use crate::config::{Config, ResolvedConfig};
 use crate::ctx_dirs::{self, ConfigSourceKind};
+use crate::profiles::TomlProfile;
 
 /// A declarative model alias. Credentials are referenced, never read here.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -238,16 +238,22 @@ impl AgentResource {
         ))
     }
 
-    /// Adapt the static prompt to the existing Agent trait without changing its
+    /// Adapt the static prompt to the profile trait without changing its
     /// contract. This does not grant runtime permissions to an external client.
-    #[allow(dead_code)]
-    pub fn prompt_agent(&self) -> TomlAgent {
-        TomlAgent::new(
+    pub fn prompt_profile(&self) -> TomlProfile {
+        TomlProfile::new(
             self.agent.name.clone(),
             self.agent.description.clone(),
             self.agent.tools.clone(),
             self.prompt.system.clone(),
         )
+    }
+
+    /// Deprecated compatibility name for [`Self::prompt_profile`].
+    #[allow(dead_code)]
+    #[deprecated(note = "use prompt_profile")]
+    pub fn prompt_agent(&self) -> TomlProfile {
+        self.prompt_profile()
     }
 }
 
@@ -360,8 +366,12 @@ pub fn load_resources(
                 "duplicate agent '{name}' in {}",
                 canonical.display()
             );
-            ensure!(!config.agents.inline.contains_key(name) && !config.agents.script.contains_key(name),
-                "agent resource {} conflicts with legacy agent '{name}'; rename or migrate the legacy definition", path.display());
+            ensure!(
+                !config.profiles.inline.contains_key(name)
+                    && !config.profiles.script.contains_key(name),
+                "agent resource {} conflicts with profile '{name}'; rename one of the definitions",
+                path.display()
+            );
             if let Some(previous) = resources.get(name) {
                 ensure!(
                     definition.agent.override_existing,
@@ -399,14 +409,14 @@ pub fn load_resources(
     Ok(resources)
 }
 
-/// Combined discovery view. Legacy agents remain prompt-only and need no model.
+/// Combined profile discovery view. Profiles remain prompt-only and need no model.
 #[derive(Debug, Serialize)]
-pub struct AgentEntry {
+pub struct ProfileEntry {
     pub name: String,
     pub description: String,
     pub source: String,
     pub tools: Vec<String>,
-    pub arguments: Vec<crate::agents::AgentArgument>,
+    pub arguments: Vec<crate::profiles::ProfileArgument>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_prompt: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -416,37 +426,37 @@ pub struct AgentEntry {
 pub fn catalog(
     config: &Config,
     directories: &[ResourceDirectory],
-) -> Result<BTreeMap<String, AgentEntry>> {
+) -> Result<BTreeMap<String, ProfileEntry>> {
     let resources = load_resources(directories, config)?;
     let mut entries = BTreeMap::new();
-    for (name, agent) in &config.agents.inline {
+    for (name, profile) in &config.profiles.inline {
         entries.insert(
             name.clone(),
-            AgentEntry {
+            ProfileEntry {
                 name: name.clone(),
-                description: agent.description.clone(),
+                description: profile.description.clone(),
                 source: "toml".into(),
-                tools: agent.tools.clone(),
+                tools: profile.tools.clone(),
                 arguments: vec![],
-                system_prompt: Some(agent.system_prompt.clone()),
+                system_prompt: Some(profile.system_prompt.clone()),
                 resource: None,
             },
         );
     }
-    for agent in crate::agent_script::load_agent_definitions(config)? {
+    for profile in crate::profile_script::load_profile_definitions(config)? {
         ensure!(
-            !entries.contains_key(&agent.name),
-            "ambiguous legacy agent '{}' (inline and Lua)",
-            agent.name
+            !entries.contains_key(&profile.name),
+            "ambiguous profile '{}' (inline and Lua)",
+            profile.name
         );
         entries.insert(
-            agent.name.clone(),
-            AgentEntry {
-                name: agent.name,
-                description: agent.description,
+            profile.name.clone(),
+            ProfileEntry {
+                name: profile.name,
+                description: profile.description,
                 source: "lua".into(),
-                tools: agent.tools,
-                arguments: agent.arguments,
+                tools: profile.tools,
+                arguments: profile.arguments,
                 system_prompt: None,
                 resource: None,
             },
@@ -456,7 +466,7 @@ pub fn catalog(
         let agent = &resource.definition.agent;
         entries.insert(
             name.clone(),
-            AgentEntry {
+            ProfileEntry {
                 name,
                 description: agent.description.clone(),
                 source: "resource".into(),
@@ -470,7 +480,11 @@ pub fn catalog(
     Ok(entries)
 }
 
-pub fn list(config: &Config, directories: &[ResourceDirectory], json_output: bool) -> Result<()> {
+pub fn list_profiles(
+    config: &Config,
+    directories: &[ResourceDirectory],
+    json_output: bool,
+) -> Result<()> {
     let entries = catalog(config, directories)?;
     if json_output {
         println!(
@@ -478,7 +492,10 @@ pub fn list(config: &Config, directories: &[ResourceDirectory], json_output: boo
             serde_json::to_string_pretty(&entries.values().collect::<Vec<_>>())?
         );
     } else {
-        println!("{:<24} {:<10} {:<44} TOOLS", "AGENT", "TYPE", "DESCRIPTION");
+        println!(
+            "{:<24} {:<10} {:<44} TOOLS",
+            "PROFILE", "TYPE", "DESCRIPTION"
+        );
         for entry in entries.values() {
             println!(
                 "{:<24} {:<10} {:<44} {}",
@@ -489,13 +506,13 @@ pub fn list(config: &Config, directories: &[ResourceDirectory], json_output: boo
             );
         }
         if entries.is_empty() {
-            println!("No agents configured.");
+            println!("No profiles configured.");
         }
     }
     Ok(())
 }
 
-pub fn show(
+pub fn show_profile(
     config: &Config,
     directories: &[ResourceDirectory],
     name: &str,
@@ -504,12 +521,12 @@ pub fn show(
     let mut entries = catalog(config, directories)?;
     let entry = entries
         .remove(name)
-        .with_context(|| format!("agent '{name}' not found"))?;
+        .with_context(|| format!("profile '{name}' not found"))?;
     if json_output {
         println!("{}", serde_json::to_string_pretty(&entry)?);
     } else {
         println!(
-            "Agent: {}\nSource: {}\nDescription: {}\nTools: {}",
+            "Profile: {}\nSource: {}\nDescription: {}\nTools: {}",
             entry.name,
             entry.source,
             entry.description,
@@ -535,7 +552,7 @@ pub fn show(
     Ok(())
 }
 
-pub fn validate(config: &Config, directories: &[ResourceDirectory]) -> Result<()> {
+pub fn validate_profiles(config: &Config, directories: &[ResourceDirectory]) -> Result<()> {
     for (alias, model) in &config.models {
         ensure!(identifier(alias), "invalid model alias '{alias}'");
         model
@@ -544,30 +561,30 @@ pub fn validate(config: &Config, directories: &[ResourceDirectory]) -> Result<()
     }
     let entries = catalog(config, directories)?;
     println!(
-        "Validated {} agents ({} standalone resources).",
+        "Validated {} profiles ({} projected from executable agents).",
         entries.len(),
         entries.values().filter(|e| e.resource.is_some()).count()
     );
     Ok(())
 }
 
-pub async fn test(
+pub async fn test_profile(
     config: &Config,
     directories: &[ResourceDirectory],
     name: &str,
     args: Vec<(String, String)>,
 ) -> Result<()> {
-    // Preserve targeted legacy resolution: an unrelated broken Lua script or
-    // resource must not prevent testing a configured legacy agent.
-    if config.agents.script.contains_key(name) {
-        return crate::agent_script::test_agent(name, args, config).await;
+    // Preserve targeted profile resolution: an unrelated broken Lua script or
+    // resource must not prevent testing the selected profile.
+    if config.profiles.script.contains_key(name) {
+        return crate::profile_script::test_profile(name, args, config).await;
     }
     if !args.is_empty() {
-        bail!("static agent '{name}' does not accept arguments");
+        bail!("static profile '{name}' does not accept arguments");
     }
-    if let Some(agent) = config.agents.inline.get(name) {
+    if let Some(agent) = config.profiles.inline.get(name) {
         println!(
-            "Agent: {name}\nSource: toml\nTools: {}\n\nSystem prompt:\n{}",
+            "Profile: {name}\nSource: toml\nTools: {}\n\nSystem prompt:\n{}",
             agent.tools.join(", "),
             agent.system_prompt
         );
@@ -575,12 +592,100 @@ pub async fn test(
         let mut resources = load_resources(directories, config)?;
         let resource = resources
             .remove(name)
-            .with_context(|| format!("agent '{name}' not found"))?;
+            .with_context(|| format!("profile '{name}' not found"))?;
         println!(
-            "Agent: {name}\nSource: resource\nTools: {}\n\nSystem prompt:\n{}",
+            "Profile: {name}\nSource: agent projection\nTools: {}\n\nSystem prompt:\n{}",
             resource.definition.agent.tools.join(", "),
             resource.definition.prompt.system
         );
     }
     Ok(())
+}
+
+/// List executable standalone agents only. Prompt-only profiles are exposed by
+/// the separate `ctx profile` command.
+pub fn list(config: &Config, directories: &[ResourceDirectory], json_output: bool) -> Result<()> {
+    let resources = resource_catalog(config, directories)?;
+    if json_output {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&resources.values().collect::<Vec<_>>())?
+        );
+    } else {
+        println!("{:<24} {:<44} MODEL", "AGENT", "DESCRIPTION");
+        for entry in resources.values() {
+            let resource = entry.resource.as_ref().expect("resource catalog entry");
+            println!(
+                "{:<24} {:<44} {}",
+                entry.name, entry.description, resource.definition.agent.model
+            );
+        }
+        if resources.is_empty() {
+            println!("No executable agents configured.");
+        }
+    }
+    Ok(())
+}
+
+/// Show one executable standalone agent.
+pub fn show(
+    config: &Config,
+    directories: &[ResourceDirectory],
+    name: &str,
+    json_output: bool,
+) -> Result<()> {
+    let mut resources = resource_catalog(config, directories)?;
+    let entry = resources
+        .remove(name)
+        .with_context(|| format!("executable agent '{name}' not found"))?;
+    if json_output {
+        println!("{}", serde_json::to_string_pretty(&entry)?);
+    } else {
+        let resource = entry.resource.as_ref().expect("resource catalog entry");
+        println!(
+            "Agent: {}\nDescription: {}\nPath: {}\nScope: {:?}\nVersion: {}\nModel: {}\nTools: {}\nMax turns: {}\nTimeout: {}s\nAllowed capabilities: {}\nApproval required: {}\n\nSystem prompt:\n{}",
+            entry.name,
+            entry.description,
+            resource.path.display(),
+            resource.scope,
+            resource.version,
+            resource.definition.agent.model,
+            entry.tools.join(", "),
+            resource.definition.agent.execution.max_turns,
+            resource.definition.agent.execution.timeout_seconds,
+            serde_json::to_string(&resource.definition.agent.permissions.allowed())?,
+            serde_json::to_string(&resource.definition.agent.permissions.require_approval)?,
+            entry.system_prompt.as_deref().unwrap_or_default(),
+        );
+    }
+    Ok(())
+}
+
+/// Validate executable agent resources and their model references.
+pub fn validate(config: &Config, directories: &[ResourceDirectory]) -> Result<()> {
+    let resources = load_resources(directories, config)?;
+    println!("Validated {} executable agents.", resources.len());
+    Ok(())
+}
+
+fn resource_catalog(
+    config: &Config,
+    directories: &[ResourceDirectory],
+) -> Result<BTreeMap<String, ProfileEntry>> {
+    Ok(load_resources(directories, config)?
+        .into_iter()
+        .map(|(name, resource)| {
+            let agent = &resource.definition.agent;
+            let entry = ProfileEntry {
+                name: name.clone(),
+                description: agent.description.clone(),
+                source: "resource".into(),
+                tools: agent.tools.clone(),
+                arguments: vec![],
+                system_prompt: Some(resource.definition.prompt.system.clone()),
+                resource: Some(resource),
+            };
+            (name, entry)
+        })
+        .collect())
 }

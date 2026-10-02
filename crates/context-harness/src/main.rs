@@ -1,3 +1,7 @@
+// `async_trait` generates `#[must_use]` futures whose `Result` outputs are
+// already `#[must_use]`; Rust 1.99's Clippy reports the generated overlap.
+#![allow(clippy::double_must_use)]
+
 //! # Context Harness CLI (`ctx`)
 //!
 //! The `ctx` binary is the primary interface for Context Harness. It provides
@@ -73,6 +77,8 @@ mod lua_runtime;
 mod mcp;
 mod migrate;
 mod models;
+mod profile_script;
+mod profiles;
 mod progress;
 #[allow(dead_code)]
 mod redact;
@@ -82,6 +88,8 @@ mod server;
 mod sources;
 mod sqlite_store;
 mod stats;
+#[allow(dead_code)]
+mod tool_binding;
 mod tool_script;
 #[allow(dead_code)]
 mod traits;
@@ -89,6 +97,7 @@ mod vector_index;
 #[allow(dead_code)]
 mod workspace;
 
+use anyhow::{ensure, Context};
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{generate, Shell};
 use std::path::PathBuf;
@@ -277,16 +286,24 @@ enum Commands {
         action: ToolAction,
     },
 
-    /// Manage agents (personas with system prompts and tool scoping).
+    /// Manage reusable prompt profiles.
     ///
-    /// Create, test, and list agents that provide "assume a role" workflows
-    /// for Cursor, Claude, and other MCP clients.
+    /// Create, test, and list personas exposed as MCP prompts. Profiles do not
+    /// execute model turns or retain conversation history.
+    Profile {
+        #[command(subcommand)]
+        action: ProfileAction,
+    },
+
+    /// Manage executable local agents.
+    ///
+    /// Run policy-controlled agents and inspect their durable run history.
     Agent {
         #[command(subcommand)]
         action: AgentAction,
     },
 
-    /// Manage extension registries (community connectors, tools, agents).
+    /// Manage extension registries (community connectors, tools, profiles).
     ///
     /// Install, update, search, and scaffold config entries for extensions
     /// from Git-backed registries.
@@ -405,6 +422,32 @@ enum ToolAction {
     },
     /// List all configured tools (built-in and Lua).
     List,
+    /// Inspect and validate standalone declarative tool bindings.
+    Bindings {
+        #[command(subcommand)]
+        action: ToolBindingsAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum ToolBindingsAction {
+    /// List resolved standalone bindings without executing implementations.
+    List {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show one resolved standalone binding.
+    Show {
+        name: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Validate standalone binding declarations without executing them.
+    Validate {
+        name: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Agent management subcommands.
@@ -445,7 +488,7 @@ enum AgentAction {
         #[arg(long)]
         json: bool,
     },
-    /// List standalone resources and existing TOML/Lua agents.
+    /// List executable standalone agent resources.
     List {
         #[arg(long)]
         json: bool,
@@ -456,27 +499,44 @@ enum AgentAction {
         #[arg(long)]
         json: bool,
     },
-    /// Validate agent resources, model references and existing agent definitions.
+    /// Validate executable agent resources and model references.
     Validate,
-    /// Test an agent by resolving its prompt.
-    ///
-    /// Loads the agent, calls its `resolve()` function with the provided
-    /// arguments, and prints the resulting system prompt and messages.
+    /// Deprecated alias for `ctx profile test`.
+    #[command(hide = true)]
     Test {
-        /// Name of a standalone resource, inline TOML agent, or Lua agent.
         name: String,
-        /// Agent arguments as `key=value` pairs.
         #[arg(long = "arg", value_parser = parse_key_val)]
         args: Vec<(String, String)>,
     },
-    /// Scaffold a new Lua agent script from a template.
-    ///
-    /// Creates `agents/<name>.lua` with a commented template showing
-    /// the agent interface.
-    Init {
-        /// Name for the new agent (e.g., `code-reviewer`).
-        name: String,
+    /// Deprecated alias for `ctx profile init`.
+    #[command(hide = true)]
+    Init { name: String },
+}
+
+/// Prompt profile management subcommands.
+#[derive(Subcommand)]
+enum ProfileAction {
+    /// List configured profiles and executable-agent prompt projections.
+    List {
+        #[arg(long)]
+        json: bool,
     },
+    /// Show a profile definition and its provenance.
+    Show {
+        name: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Validate profile definitions and agent prompt projections.
+    Validate,
+    /// Resolve a profile and print its prompt.
+    Test {
+        name: String,
+        #[arg(long = "arg", value_parser = parse_key_val)]
+        args: Vec<(String, String)>,
+    },
+    /// Scaffold a Lua profile in `profiles/<name>.lua`.
+    Init { name: String },
 }
 
 /// Registry management subcommands.
@@ -627,7 +687,14 @@ async fn main() -> anyhow::Result<()> {
         Commands::Agent {
             action: AgentAction::Init { name },
         } => {
-            agent_script::scaffold_agent(name)?;
+            eprintln!("warning: `ctx agent init` is deprecated; use `ctx profile init`");
+            profile_script::scaffold_profile(name)?;
+            return Ok(());
+        }
+        Commands::Profile {
+            action: ProfileAction::Init { name },
+        } => {
+            profile_script::scaffold_profile(name)?;
             return Ok(());
         }
         Commands::Registry {
@@ -734,9 +801,21 @@ async fn main() -> anyhow::Result<()> {
     let config_path = resolved_config.path.clone();
     let agent_resource_dirs = if matches!(
         &cli.command,
-        Commands::Agent { .. } | Commands::Serve { .. }
+        Commands::Agent { .. } | Commands::Profile { .. } | Commands::Serve { .. }
     ) {
         agent_resource::cli_resource_directories(&resolved_config)?
+    } else {
+        vec![]
+    };
+    let tool_resource_dirs = if matches!(
+        &cli.command,
+        Commands::Tool {
+            action: ToolAction::Bindings { .. }
+        } | Commands::Agent {
+            action: AgentAction::Run { .. } | AgentAction::Resume { .. }
+        }
+    ) {
+        tool_binding::cli_resource_directories(&resolved_config)?
     } else {
         vec![]
     };
@@ -874,7 +953,7 @@ async fn main() -> anyhow::Result<()> {
                 server::run_server_with_resources(
                     &cfg,
                     std::sync::Arc::new(traits::ToolRegistry::new()),
-                    std::sync::Arc::new(agents::AgentRegistry::new()),
+                    std::sync::Arc::new(profiles::ProfileRegistry::new()),
                     &agent_resource_dirs,
                 )
                 .await?;
@@ -899,6 +978,112 @@ async fn main() -> anyhow::Result<()> {
             }
             ToolAction::List => {
                 tool_script::list_tools(&cfg)?;
+            }
+            ToolAction::Bindings { action } => {
+                let catalog = tool_binding::core_metadata_catalog()?;
+                let selected = match &action {
+                    ToolBindingsAction::Show { name, .. } => Some(name.as_str()),
+                    ToolBindingsAction::Validate {
+                        name: Some(name), ..
+                    } => Some(name.as_str()),
+                    _ => None,
+                };
+                let loaded = if let Some(name) = selected {
+                    tool_binding::load_named_resource(&tool_resource_dirs, &cfg, name)?
+                } else {
+                    tool_binding::load_resources(&tool_resource_dirs, &cfg)?
+                };
+                let resolved = tool_binding::resolve_resources(loaded, &catalog)?;
+                match action {
+                    ToolBindingsAction::List { json } => {
+                        if json {
+                            println!(
+                                "{}",
+                                serde_json::to_string_pretty(&tool_binding::inspection_values(
+                                    &resolved
+                                )?)?
+                            );
+                        } else {
+                            for item in resolved.values() {
+                                println!(
+                                    "{} — {} [{} {}]",
+                                    item.binding.name,
+                                    item.binding.description,
+                                    item.binding.implementation_id,
+                                    item.binding.implementation_version
+                                );
+                            }
+                        }
+                    }
+                    ToolBindingsAction::Show { name, json } => {
+                        let item = resolved
+                            .get(&name)
+                            .with_context(|| format!("unknown tool binding '{name}'"))?;
+                        if json {
+                            println!(
+                                "{}",
+                                serde_json::to_string_pretty(&tool_binding::inspection_value(
+                                    item
+                                )?)?
+                            );
+                        } else {
+                            let inspected = tool_binding::inspection_value(item)?;
+                            println!("Tool: {}", item.binding.name);
+                            println!("Description: {}", item.binding.description);
+                            println!(
+                                "Implementation description: {}",
+                                item.binding.implementation_description
+                            );
+                            println!(
+                                "Implementation: {} {}",
+                                item.binding.implementation_id, item.binding.implementation_version
+                            );
+                            println!("Scope: {:?}", item.scope);
+                            println!("Path: {}", item.path.display());
+                            println!("Binding version: {}", item.binding.binding_version);
+                            println!("Trust: {:?}", item.binding.trust_class);
+                            println!(
+                                "Capabilities: {}",
+                                serde_json::to_string(&item.binding.capabilities)?
+                            );
+                            println!(
+                                "Restrictions: {}",
+                                serde_json::to_string(&item.binding.restrictions)?
+                            );
+                            println!(
+                                "Configuration: {}",
+                                serde_json::to_string(&inspected["binding"]["config"])?
+                            );
+                            println!(
+                                "Fixed arguments: {}",
+                                serde_json::to_string(&inspected["binding"]["fixed"])?
+                            );
+                            println!(
+                                "Public schema: {}",
+                                serde_json::to_string_pretty(&item.binding.public_schema)?
+                            );
+                        }
+                    }
+                    ToolBindingsAction::Validate { name, json } => {
+                        if let Some(name) = name.as_deref() {
+                            ensure!(resolved.contains_key(name), "unknown tool binding '{name}'");
+                        }
+                        if json {
+                            println!(
+                                "{}",
+                                serde_json::json!({
+                                    "valid": true,
+                                    "bindings": resolved.len(),
+                                    "name": name
+                                })
+                            );
+                        } else if let Some(name) = name.as_deref() {
+                            println!("Validated tool binding '{name}'.");
+                        } else {
+                            println!("Validated {} tool bindings.", resolved.len());
+                        }
+                    }
+                }
             }
             ToolAction::Init { .. } => {
                 // Handled above (before config loading)
@@ -946,6 +1131,7 @@ async fn main() -> anyhow::Result<()> {
                 agent_runtime::cli::run(
                     cfg,
                     &agent_resource_dirs,
+                    &tool_resource_dirs,
                     &name,
                     &input,
                     json,
@@ -961,6 +1147,7 @@ async fn main() -> anyhow::Result<()> {
                 agent_runtime::cli::resume(
                     cfg,
                     &agent_resource_dirs,
+                    &tool_resource_dirs,
                     &run_id,
                     json,
                     non_interactive,
@@ -988,12 +1175,28 @@ async fn main() -> anyhow::Result<()> {
                 agent_resource::validate(&cfg, &agent_resource_dirs)?;
             }
             AgentAction::Test { name, args } => {
-                agent_resource::test(&cfg, &agent_resource_dirs, &name, args).await?;
+                eprintln!("warning: `ctx agent test` is deprecated; use `ctx profile test`");
+                agent_resource::test_profile(&cfg, &agent_resource_dirs, &name, args).await?;
             }
             AgentAction::Init { .. } => {
                 // Handled above (before config loading)
                 unreachable!()
             }
+        },
+        Commands::Profile { action } => match action {
+            ProfileAction::List { json } => {
+                agent_resource::list_profiles(&cfg, &agent_resource_dirs, json)?;
+            }
+            ProfileAction::Show { name, json } => {
+                agent_resource::show_profile(&cfg, &agent_resource_dirs, &name, json)?;
+            }
+            ProfileAction::Validate => {
+                agent_resource::validate_profiles(&cfg, &agent_resource_dirs)?;
+            }
+            ProfileAction::Test { name, args } => {
+                agent_resource::test_profile(&cfg, &agent_resource_dirs, &name, args).await?;
+            }
+            ProfileAction::Init { .. } => unreachable!(),
         },
     }
 

@@ -63,6 +63,13 @@ fallback = "sqlite"
 [server]
 bind = "127.0.0.1:7331"               # HTTP server bind address
 
+# ── Local agent model aliases ─────────────────────────────
+
+[models.default]
+provider = "openai"                    # built-in local runtime adapter
+model = "gpt-5-mini"                   # use a model available to your account
+api_key_env = "OPENAI_API_KEY"         # environment-variable name, never the key
+
 # ── Connectors (all types are named instances) ───────────
 
 [connectors.filesystem.local]
@@ -105,9 +112,9 @@ jira_url = "https://mycompany.atlassian.net"
 jira_project = "ENG"
 jira_token = "${JIRA_API_TOKEN}"
 
-# ── Inline agents (static prompts) ──────────────
+# ── Inline profiles (static prompts) ────────────
 
-[agents.inline.code-reviewer]
+[profiles.inline.code-reviewer]
 description = "Reviews code changes against project conventions"
 tools = ["search", "get"]
 system_prompt = """
@@ -115,7 +122,7 @@ You are a senior code reviewer. Use search to find coding conventions.
 Be specific — cite which convention a suggestion relates to.
 """
 
-[agents.inline.architect]
+[profiles.inline.architect]
 description = "Answers architecture questions using indexed docs"
 tools = ["search", "get", "sources"]
 system_prompt = """
@@ -123,10 +130,10 @@ You are a software architect. Search for ADRs and design documents.
 When recommending changes, explain tradeoffs and cite sources.
 """
 
-# ── Lua scripted agents (dynamic prompts) ────────
+# ── Lua scripted profiles (dynamic prompts) ──────
 
-[agents.script.incident-responder]
-path = "agents/incident-responder.lua"
+[profiles.script.incident-responder]
+path = "profiles/incident-responder.lua"
 timeout = 30
 search_limit = 5
 
@@ -139,6 +146,32 @@ path = "~/.ctx/registries/community"
 readonly = true                        # Don't write to this registry
 auto_update = true                     # Pull on startup
 ```
+
+### Standalone local resources
+
+Standalone local agents and declarative tool bindings live beside the effective
+config rather than inside it:
+
+```
+.ctx/
+├── config.toml
+├── agents/
+│   └── project-researcher.toml
+└── tools/
+    ├── project-search.toml
+    └── project-get.toml
+```
+
+When `--config` or `CTX_CONFIG` selects a config, only its sibling `agents` and
+`tools` directories are used. Otherwise Context Harness layers the global config
+directory below the current workspace's `.ctx` directories. Workspace collisions
+require explicit whole-resource overrides; individual fields are never merged.
+
+Agent resources select a model alias from `[models.*]`, execution limits,
+permissions, a system prompt, and public tool names. Tool resources select a
+trusted implementation, fixed arguments, and enforceable restrictions. See
+[Build Local Agents](@/docs/agents/build-local-agents.md) for complete schemas and a
+runnable example.
 
 ### Environment variable expansion
 
@@ -160,11 +193,17 @@ workspace = "acme"                      # Plain string, no expansion
 | `[embedding]` | Embedding provider (`disabled`, `openai`, `ollama`, `local`) |
 | `[retrieval]` | Hybrid alpha, candidate counts, result limits |
 | `[server]` | HTTP bind address |
+| `[models.*]` | Model aliases used by standalone local agents |
 | `[connectors.filesystem.*]` | Named filesystem connector instances (see [Built-in connectors](/docs/connectors/built-in/#supported-file-formats) for supported formats) |
 | `[connectors.git.*]` | Named git connector instances |
 | `[connectors.s3.*]` | Named S3 connector instances |
 | `[connectors.script.*]` | Named Lua scripted connector instances |
 | `[tools.script.*]` | Lua scripted tool configs |
-| `[agents.inline.*]` | Inline TOML agents (static system prompt) |
-| `[agents.script.*]` | Lua scripted agents (dynamic prompts) |
+| `[profiles.inline.*]` | MCP profiles with static prompts |
+| `[profiles.script.*]` | MCP profiles with Lua-resolved dynamic prompts |
+| sibling `agents/*.toml` | Standalone local agent resources |
+| sibling `tools/*.toml` | Declarative local tool bindings |
 | `[registries.*]` | Named extension registry instances |
+
+The deprecated `[agents.inline.*]` and `[agents.script.*]` spellings are still
+accepted as aliases for existing configurations.

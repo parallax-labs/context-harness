@@ -1,0 +1,20 @@
+[agent]
+name = "project-researcher"
+description = "Answers project questions from indexed evidence"
+model = "default"
+tools = ["project.search", "project.get"]
+
+[agent.execution]
+max_turns = 8
+timeout_seconds = 180
+
+[agent.permissions]
+mode = "read-only"
+
+[prompt]
+system = """
+Search project context before answering factual questions. Use project.get when a
+search excerpt is not enough. Cite file paths or document titles for factual
+claims. If the indexed evidence is incomplete, identify the missing evidence
+instead of guessing.
+"""

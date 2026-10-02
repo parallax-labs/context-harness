@@ -198,6 +198,28 @@ pub trait Tool: Send + Sync {
         None
     }
 
+    /// Sanitized immutable identity for declaratively bound tools. History and
+    /// recovery use this without loading implementations or resolving secrets.
+    fn binding_metadata(&self) -> Option<Value> {
+        None
+    }
+
+    /// Select runtime-owned execution context without coupling the dispatcher
+    /// to a public tool name. Most tools execute directly.
+    fn runtime_dispatch(&self) -> ToolRuntimeDispatch {
+        ToolRuntimeDispatch::Direct
+    }
+
+    /// Optional host-owned preparation that must complete through the durable
+    /// approval lifecycle before this tool can be advertised to a model.
+    fn preparation(&self) -> Option<ToolPreparation> {
+        None
+    }
+
+    async fn prepare(&self, _ctx: &ToolContext) -> Result<()> {
+        Ok(())
+    }
+
     /// Returns the tool's name.
     ///
     /// Used as the route path (`POST /tools/{name}`) and in
@@ -224,6 +246,19 @@ pub trait Tool: Send + Sync {
     /// `properties`, and optionally `required`.
     fn parameters_schema(&self) -> Value;
 
+    /// Validate model-visible arguments before authorization and tool start.
+    /// Bound adapters override this with their resolved public contract.
+    fn validate_arguments(&self, params: &Value) -> Result<()> {
+        anyhow::ensure!(params.is_object(), "tool arguments must be an object");
+        Ok(())
+    }
+
+    /// Sanitized effective arguments covered by approval. Bound tools override
+    /// this to include immutable fixed values and reject override attempts.
+    fn approval_arguments(&self, params: &Value) -> Result<Value> {
+        Ok(params.clone())
+    }
+
     /// Execute the tool with validated parameters.
     ///
     /// Called each time an agent invokes the tool via `POST /tools/{name}`.
@@ -238,6 +273,19 @@ pub trait Tool: Send + Sync {
     /// A JSON value that will be wrapped in `{ "result": ... }` in the
     /// HTTP response.
     async fn execute(&self, params: Value, ctx: &ToolContext) -> Result<Value>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolRuntimeDispatch {
+    Direct,
+    AgentDelegation,
+}
+
+#[derive(Debug, Clone)]
+pub struct ToolPreparation {
+    pub name: String,
+    pub capabilities: Vec<crate::agent_resource::Capability>,
+    pub arguments: Value,
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1034,6 +1082,11 @@ impl ToolRegistry {
     /// Get all registered tools.
     pub fn tools(&self) -> &[Box<dyn Tool>] {
         &self.tools
+    }
+
+    /// Consume the registry and return its tools for composition into another registry.
+    pub fn into_tools(self) -> Vec<Box<dyn Tool>> {
+        self.tools
     }
 
     /// Find a tool by name.

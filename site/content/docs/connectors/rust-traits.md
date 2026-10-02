@@ -144,25 +144,25 @@ Tools registered via `ToolRegistry` automatically appear in `GET /tools/list` an
 
 ---
 
-### Custom agent
+### Custom profile
 
-Implement the `Agent` trait for compiled agents:
+Implement the `Profile` trait for compiled prompt profiles:
 
 ```rust
-use context_harness::{Agent, AgentPrompt, AgentArgument};
+use context_harness::{Profile, ProfilePrompt, ProfileArgument};
 use context_harness::traits::ToolContext;
 use async_trait::async_trait;
 
 pub struct DatabaseExpert;
 
 #[async_trait]
-impl Agent for DatabaseExpert {
+impl Profile for DatabaseExpert {
     fn name(&self) -> &str { "db-expert" }
     fn description(&self) -> &str { "Database design and query optimization" }
     fn tools(&self) -> Vec<String> { vec!["search".into(), "get".into(), "run_query".into()] }
 
-    fn arguments(&self) -> Vec<AgentArgument> {
-        vec![AgentArgument {
+    fn arguments(&self) -> Vec<ProfileArgument> {
+        vec![ProfileArgument {
             name: "database".into(),
             description: "Target database".into(),
             required: false,
@@ -171,7 +171,7 @@ impl Agent for DatabaseExpert {
 
     async fn resolve(
         &self, args: serde_json::Value, ctx: &ToolContext,
-    ) -> anyhow::Result<AgentPrompt> {
+    ) -> anyhow::Result<ProfilePrompt> {
         let db = args["database"].as_str().unwrap_or("analytics");
 
         // Pre-fetch relevant schema docs
@@ -180,7 +180,7 @@ impl Agent for DatabaseExpert {
             .map(|r| format!("- {}", r.title.as_deref().unwrap_or("?")))
             .collect::<Vec<_>>().join("\n");
 
-        Ok(AgentPrompt {
+        Ok(ProfilePrompt {
             system: format!(
                 "You are a database expert for '{}'.\n\nRelevant docs:\n{}\n\n\
                  Use search to find more context. Use run_query for read-only queries.",
@@ -203,7 +203,7 @@ Here's a complete custom binary with all three extension types:
 use context_harness::config::Config;
 use context_harness::server::run_server_with_extensions;
 use context_harness::traits::{ConnectorRegistry, ToolRegistry};
-use context_harness::agents::AgentRegistry;
+use context_harness::profiles::ProfileRegistry;
 use std::sync::Arc;
 use clap::Parser;
 
@@ -230,8 +230,8 @@ async fn main() -> anyhow::Result<()> {
     let mut tools = ToolRegistry::new();
     tools.register(Box::new(RunQueryTool));
 
-    let mut agents = AgentRegistry::new();
-    agents.register(Box::new(DatabaseExpert));
+    let mut profiles = ProfileRegistry::new();
+    profiles.register(Box::new(DatabaseExpert));
 
     let mut connectors = ConnectorRegistry::new();
     connectors.register(Box::new(ApiDocsConnector { /* ... */ }));
@@ -246,7 +246,7 @@ async fn main() -> anyhow::Result<()> {
             run_server_with_extensions(
                 &config,
                 Arc::new(tools),
-                Arc::new(agents),
+                Arc::new(profiles),
             ).await?;
         }
     }
@@ -288,8 +288,6 @@ async fn execute(&self, params: Value, ctx: &ToolContext) -> Result<Value> {
 
 ### What's next?
 
-- [MCP Agents](@/docs/guides/agents.md) — define agents in TOML, Lua, or Rust
+- [Profiles Overview](@/docs/profiles/overview.md) — compare MCP profiles with executable local agents
 - [Lua Tools](@/docs/connectors/lua-tools.md) — Lua-based tools for rapid prototyping
 - [Deployment](@/docs/reference/deployment.md) — deploy custom binaries in Docker
-
-

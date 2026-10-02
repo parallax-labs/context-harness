@@ -2,7 +2,8 @@
 use super::*;
 use crate::{
     agent_resource::{Capability, Permissions},
-    traits::Tool,
+    tool_binding::{self, ToolTrustClass},
+    traits::{Tool, ToolRuntimeDispatch},
 };
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -21,7 +22,7 @@ pub(super) struct ExecutionContext {
 impl ExecutionContext {
     pub fn consume(&self) -> Result<()> {
         self.remaining
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
+            .try_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
                 left.checked_sub(1)
             })
             .map_err(|_| anyhow::anyhow!("shared model turn budget exhausted"))?;
@@ -56,6 +57,21 @@ impl Tool for InvokeTool {
     }
     fn capabilities(&self) -> Option<Vec<Capability>> {
         Some(vec![Capability::AgentDelegate])
+    }
+    fn binding_metadata(&self) -> Option<Value> {
+        Some(tool_binding::compatibility_binding_metadata(
+            self.name(),
+            "builtin.agent.invoke",
+            self.parameters_schema(),
+            self.capabilities().unwrap(),
+            ToolTrustClass::Builtin,
+        ))
+    }
+    fn runtime_dispatch(&self) -> ToolRuntimeDispatch {
+        ToolRuntimeDispatch::AgentDelegation
+    }
+    fn validate_arguments(&self, arguments: &Value) -> Result<()> {
+        validate(arguments)
     }
     async fn execute(&self, _: Value, _: &ToolContext) -> Result<Value> {
         anyhow::bail!("delegation requires runtime context")

@@ -3,6 +3,7 @@
 use crate::{
     config::Config,
     sqlite_store::SqliteStore,
+    tool_binding::{self, ToolTrustClass},
     traits::{GetTool, SearchTool, Tool, ToolContext, ToolRegistry},
 };
 use anyhow::{ensure, Context, Result};
@@ -117,6 +118,15 @@ impl Tool for ReadSearch {
     fn capabilities(&self) -> Option<Vec<crate::agent_resource::Capability>> {
         Some(vec![crate::agent_resource::Capability::ReadOnly])
     }
+    fn binding_metadata(&self) -> Option<Value> {
+        Some(tool_binding::compatibility_binding_metadata(
+            self.name(),
+            "builtin.compat.search",
+            self.parameters_schema(),
+            self.capabilities().unwrap(),
+            ToolTrustClass::Builtin,
+        ))
+    }
     fn name(&self) -> &str {
         "search"
     }
@@ -134,6 +144,9 @@ impl Tool for ReadSearch {
         schema["properties"]["limit"]["maximum"] = json!(100);
         schema["properties"]["filters"]["additionalProperties"] = json!(false);
         schema
+    }
+    fn validate_arguments(&self, arguments: &Value) -> Result<()> {
+        validate(self.name(), arguments)
     }
     async fn execute(&self, arguments: Value, _ctx: &ToolContext) -> Result<Value> {
         validate("search", &arguments)?;
@@ -164,6 +177,15 @@ impl Tool for ReadGet {
     fn capabilities(&self) -> Option<Vec<crate::agent_resource::Capability>> {
         Some(vec![crate::agent_resource::Capability::ReadOnly])
     }
+    fn binding_metadata(&self) -> Option<Value> {
+        Some(tool_binding::compatibility_binding_metadata(
+            self.name(),
+            "builtin.compat.get",
+            self.parameters_schema(),
+            self.capabilities().unwrap(),
+            ToolTrustClass::Builtin,
+        ))
+    }
     fn name(&self) -> &str {
         "get"
     }
@@ -177,6 +199,9 @@ impl Tool for ReadGet {
         let mut schema = GetTool.parameters_schema();
         schema["additionalProperties"] = json!(false);
         schema
+    }
+    fn validate_arguments(&self, arguments: &Value) -> Result<()> {
+        validate(self.name(), arguments)
     }
     async fn execute(&self, arguments: Value, _ctx: &ToolContext) -> Result<Value> {
         validate("get", &arguments)?;

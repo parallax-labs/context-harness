@@ -2,9 +2,9 @@ use context_harness::agent_resource::{
     catalog, load_resources, resource_directories, AgentResource, Capability, ModelDefinition,
     ResourceDirectory, ResourceScope,
 };
-use context_harness::agents::AgentRegistry;
 use context_harness::config::{Config, ResolvedConfig};
 use context_harness::ctx_dirs::ConfigSourceKind;
+use context_harness::profiles::ProfileRegistry;
 use context_harness::traits::ToolContext;
 use serde_json::Value;
 use std::fs;
@@ -174,7 +174,7 @@ fn duplicate_names_unknown_models_and_legacy_collisions_are_errors() {
     assert!(load_resources(&directories, &legacy)
         .unwrap_err()
         .to_string()
-        .contains("conflicts with legacy"));
+        .contains("conflicts with profile"));
 }
 
 #[test]
@@ -216,8 +216,8 @@ async fn standalone_prompt_uses_existing_agent_trait_and_legacy_agents_coexist()
     assert_eq!(entries.len(), 3);
     assert_eq!(entries["legacy_lua"].source, "lua");
     let resource = entries["researcher"].resource.as_ref().unwrap();
-    let mut registry = AgentRegistry::from_config(&cfg).unwrap();
-    registry.register(Box::new(resource.definition.prompt_agent()));
+    let mut registry = ProfileRegistry::from_config(&cfg).unwrap();
+    registry.register(Box::new(resource.definition.prompt_profile()));
     let ctx = ToolContext::new(Arc::new(cfg));
     let prompt = registry
         .find("researcher")
@@ -262,7 +262,8 @@ fn cli_lists_shows_validates_and_previews_without_credentials_or_database() {
         .starts_with("sha256:"));
     let human = success(run(&root, &global, &["agent", "show", "researcher"]));
     assert!(human.contains("Allowed capabilities: [\"read_only\"]"));
-    assert!(success(run(&root, &global, &["agent", "validate"])).contains("Validated 1 agents"));
+    assert!(success(run(&root, &global, &["agent", "validate"]))
+        .contains("Validated 1 executable agents"));
     assert!(
         success(run(&root, &global, &["agent", "test", "researcher"]))
             .contains("Use project context")
@@ -306,7 +307,7 @@ fn cli_explicit_config_and_env_config_isolate_resources_and_models() {
         .args(["agent", "validate"])
         .output()
         .unwrap();
-    assert!(success(output).contains("Validated 1 agents"));
+    assert!(success(output).contains("Validated 1 executable agents"));
 }
 
 #[test]

@@ -30,8 +30,8 @@ async fn isolated_prompt_server(use_env_config: bool) {
     let port = listener.local_addr().unwrap().port();
     drop(listener);
     let db = root.join("uncreated/database.sqlite");
-    let lua = selected.join("legacy.lua");
-    write(&lua, "agent = {name = 'legacy_lua', description = 'Legacy Lua', tools = {'search'}}\nfunction agent.resolve(args, config, context) return {system = 'Lua topic: ' .. args.topic, tools = {'search'}} end");
+    let lua = selected.join("reviewer.lua");
+    write(&lua, "profile = {name = 'dynamic_review', description = 'Dynamic review', tools = {'search'}}\nfunction profile.resolve(args, config, context) return {system = 'Lua topic: ' .. args.topic, tools = {'search'}} end");
     let config = selected.join("config.toml");
     write(
         &config,
@@ -51,11 +51,11 @@ model = "unused-test-model"
 api_key_env = "CTX_PROMPT_SERVER_MISSING_KEY"
 [mcp_servers.unstarted]
 command = "ctx-prompt-test-command-that-does-not-exist"
-[agents.inline.legacy_inline]
-description = "Legacy inline"
+[profiles.inline.static_review]
+description = "Static review"
 tools = ["get"]
 system_prompt = "Inline prompt"
-[agents.script.legacy_lua]
+[profiles.script.dynamic_review]
 path = {lua:?}
 "#,
             db = db.to_str().unwrap(),
@@ -103,7 +103,7 @@ system = "Use project context before answering."
                     fs::read_to_string(&stderr_path).unwrap()
                 );
             }
-            if let Ok(response) = client.get(format!("{base}/agents/list")).send().await {
+            if let Ok(response) = client.get(format!("{base}/profiles/list")).send().await {
                 if response.status().is_success() {
                     break response.json::<Value>().await.unwrap();
                 }
@@ -113,10 +113,10 @@ system = "Use project context before answering."
     })
     .await
     .expect("prompt server did not become ready");
-    let agents = ready["agents"].as_array().unwrap();
-    assert_eq!(agents.len(), 3, "unexpected agents: {ready}");
-    for name in ["researcher", "legacy_inline", "legacy_lua"] {
-        assert!(agents.iter().any(|entry| entry["name"] == name));
+    let profiles = ready["profiles"].as_array().unwrap();
+    assert_eq!(profiles.len(), 3, "unexpected profiles: {ready}");
+    for name in ["researcher", "static_review", "dynamic_review"] {
+        assert!(profiles.iter().any(|entry| entry["name"] == name));
     }
     for (name, args, expected) in [
         (
@@ -124,15 +124,15 @@ system = "Use project context before answering."
             json!({}),
             "Use project context before answering.",
         ),
-        ("legacy_inline", json!({}), "Inline prompt"),
+        ("static_review", json!({}), "Inline prompt"),
         (
-            "legacy_lua",
+            "dynamic_review",
             json!({"topic": "compatibility"}),
             "Lua topic: compatibility",
         ),
     ] {
         let response = client
-            .post(format!("{base}/agents/{name}/prompt"))
+            .post(format!("{base}/profiles/{name}/prompt"))
             .json(&args)
             .send()
             .await
@@ -141,6 +141,26 @@ system = "Use project context before answering."
         let body: Value = response.json().await.unwrap();
         assert_eq!(body["system"], expected);
     }
+    // Historical REST paths and response shape remain available.
+    let legacy_list: Value = client
+        .get(format!("{base}/agents/list"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(legacy_list["agents"].as_array().unwrap().len(), 3);
+    let legacy_prompt: Value = client
+        .post(format!("{base}/agents/static_review/prompt"))
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(legacy_prompt["system"], "Inline prompt");
     let tools: Value = client
         .get(format!("{base}/tools/list"))
         .send()
