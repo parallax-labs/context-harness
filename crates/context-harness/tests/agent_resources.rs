@@ -311,6 +311,37 @@ fn cli_explicit_config_and_env_config_isolate_resources_and_models() {
 }
 
 #[test]
+fn ollama_static_validation_and_inspection_are_offline_and_sanitized() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path().join("project");
+    let global = tmp.path().join("global");
+    let config = CONFIG
+        .replace("provider = \"fake\"", "provider = \"ollama\"")
+        .replace("model = \"test-model\"", "model = \"qwen3\"")
+        .replace(
+            "api_key_env = \"CTX_TEST_UNUSED_KEY\"",
+            "base_url = \"http://127.0.0.1:9\"\ntimeout_seconds = 45",
+        );
+    write(&root.join(".ctx/config.toml"), &config);
+    write(&root.join(".ctx/agents/researcher.toml"), RESOURCE);
+
+    assert!(success(run(&root, &global, &["agent", "validate"]))
+        .contains("Validated 1 executable agents"));
+    let shown: Value = serde_json::from_str(&success(run(
+        &root,
+        &global,
+        &["agent", "show", "researcher", "--json"],
+    )))
+    .unwrap();
+    assert_eq!(shown["model_config"]["provider"], "ollama");
+    assert_eq!(shown["model_config"]["model"], "qwen3");
+    assert_eq!(shown["model_config"]["base_url"], "http://127.0.0.1:9");
+    assert_eq!(shown["model_config"]["timeout_seconds"], 45);
+    assert_eq!(shown["model_config"]["local_only"], true);
+    assert!(!root.join(".ctx/data").exists());
+}
+
+#[test]
 fn cli_global_defaults_and_workspace_override_are_consistent() {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path().join("project");

@@ -2,7 +2,6 @@
 //! See SPEC-0016 for supported items and intentionally deferred streaming.
 use super::*;
 use reqwest::{redirect::Policy, Client};
-use sha2::{Digest, Sha256};
 use std::time::Duration;
 
 const MAX_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
@@ -21,6 +20,7 @@ impl OpenAiProvider {
             provider: "openai".into(),
             model: model.into(),
             api_key_env: Some(api_key_env.into()),
+            ..Default::default()
         }
         .validate()?;
         Ok(Self {
@@ -185,10 +185,6 @@ impl OpenAiProvider {
         response.validate(request)?;
         Ok(response)
     }
-}
-
-fn wire_name(name: &str) -> String {
-    format!("{:x}", Sha256::digest(name.as_bytes()))
 }
 
 fn decode_items(

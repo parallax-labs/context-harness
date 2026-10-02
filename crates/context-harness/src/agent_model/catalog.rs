@@ -3,7 +3,7 @@
 //! Configuration selects only factories already registered by the host. Static
 //! validation never constructs a provider or resolves credentials.
 
-use super::{fake, openai, ModelProvider, ModelResponse};
+use super::{fake, ollama, openai, ModelProvider, ModelResponse};
 use crate::agent_resource::ModelDefinition;
 use anyhow::{ensure, Context};
 use std::collections::BTreeMap;
@@ -83,6 +83,7 @@ impl ModelProviderCatalog {
         let mut catalog = Self::new();
         catalog.register(Arc::new(OpenAiFactory))?;
         catalog.register(Arc::new(FakeFactory))?;
+        catalog.register(Arc::new(OllamaFactory))?;
         Ok(catalog)
     }
 
@@ -177,7 +178,11 @@ impl ModelProviderFactory for OpenAiFactory {
         ModelProviderImplementation::new("context-harness.openai-responses", "1")
     }
 
-    fn validate(&self, _definition: &ModelDefinition) -> anyhow::Result<()> {
+    fn validate(&self, definition: &ModelDefinition) -> anyhow::Result<()> {
+        ensure!(
+            definition.base_url.is_none() && definition.timeout_seconds.is_none(),
+            "base_url and timeout_seconds are only supported by the ollama provider"
+        );
         Ok(())
     }
 
@@ -203,7 +208,11 @@ impl ModelProviderFactory for FakeFactory {
         ModelProviderImplementation::new("context-harness.fake", "1")
     }
 
-    fn validate(&self, _definition: &ModelDefinition) -> anyhow::Result<()> {
+    fn validate(&self, definition: &ModelDefinition) -> anyhow::Result<()> {
+        ensure!(
+            definition.base_url.is_none() && definition.timeout_seconds.is_none(),
+            "base_url and timeout_seconds are only supported by the ollama provider"
+        );
         Ok(())
     }
 
@@ -211,5 +220,27 @@ impl ModelProviderFactory for FakeFactory {
         Ok(Arc::new(fake::FakeModel::new([Ok(ModelResponse::text(
             "Synthetic response from FakeModel; no model service was called.",
         ))])))
+    }
+}
+
+struct OllamaFactory;
+
+impl ModelProviderFactory for OllamaFactory {
+    fn provider_name(&self) -> &str {
+        "ollama"
+    }
+
+    fn implementation(&self) -> ModelProviderImplementation {
+        ModelProviderImplementation::new("context-harness.ollama-chat", "1")
+    }
+
+    fn validate(&self, definition: &ModelDefinition) -> anyhow::Result<()> {
+        ollama::validate_definition(definition)
+    }
+
+    fn build(&self, definition: &ModelDefinition) -> anyhow::Result<Arc<dyn ModelProvider>> {
+        Ok(Arc::new(ollama::OllamaProvider::from_definition(
+            definition,
+        )?))
     }
 }

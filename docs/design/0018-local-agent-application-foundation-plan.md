@@ -263,6 +263,13 @@ Split if necessary:
 unavailable model and protocol errors are distinct; network observation finds no
 fallback request.
 
+**Slice status (2026-10-02): Implemented.** The built-in catalog now constructs the
+native Ollama chat adapter from typed, statically validated configuration. Fixture
+coverage exercises the protocol mapping, local-only transport policy, bounded bodies,
+timeouts, cancellation and classified failures, and an ordinary `AgentRuntime` test
+completes `search -> get -> final answer`. Readiness, model download and live quality
+evaluation remain deferred.
+
 #### 2B. Targeted create/update refresh
 
 Add host-issued enrolled source scope, bounded batch validation, structured per-item

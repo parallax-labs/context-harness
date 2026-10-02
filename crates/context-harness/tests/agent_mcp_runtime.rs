@@ -515,6 +515,7 @@ fn cli_noninteractive_denies_startup_before_spawning() {
             provider: "fake".into(),
             model: "test".into(),
             api_key_env: None,
+            ..Default::default()
         },
     );
     let config_path = tmp.path().join("config.toml");

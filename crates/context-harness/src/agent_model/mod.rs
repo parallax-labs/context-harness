@@ -4,6 +4,7 @@
 
 mod catalog;
 pub mod fake;
+pub mod ollama;
 pub mod openai;
 
 pub use catalog::{ModelProviderCatalog, ModelProviderFactory, ModelProviderImplementation};
@@ -12,6 +13,7 @@ use anyhow::{ensure, Context};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -235,10 +237,16 @@ pub enum ModelErrorKind {
     Authentication,
     RateLimited,
     Unavailable,
+    ModelUnavailable,
+    UnsupportedCapability,
     Timeout,
     Transport,
     ProviderFailure,
     ScriptExhausted,
+}
+
+fn wire_name(name: &str) -> String {
+    format!("{:x}", Sha256::digest(name.as_bytes()))
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ModelError {

@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use axum::{extract::State, routing::post, Json, Router};
 use context_harness::{
     agent_model::{fake::FakeModel, *},
     agent_resource::{AgentResource, LoadedAgentResource, ResourceScope},
@@ -11,6 +12,7 @@ use context_harness::{
 };
 use context_harness_core::store::Store;
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::{
     path::Path,
     sync::{
@@ -415,4 +417,98 @@ async fn shared_database_history_is_isolated_by_canonical_workspace_root() {
         .await
         .is_err());
     assert!(rb.store().tool_invocations(&run.id).await.is_err());
+}
+
+#[tokio::test]
+async fn ollama_agent_completes_search_get_and_final_answer() {
+    #[derive(Clone)]
+    struct OllamaFixture {
+        calls: Arc<AtomicUsize>,
+    }
+    async fn chat(State(state): State<OllamaFixture>, Json(body): Json<Value>) -> Json<Value> {
+        let wire = |name: &str| format!("{:x}", Sha256::digest(name.as_bytes()));
+        let (content, tool_calls) = match state.calls.fetch_add(1, Ordering::SeqCst) {
+            0 => (
+                "",
+                json!([{"type":"function","function":{
+                    "name":wire("search"), "arguments":{"query":"deployment"}
+                }}]),
+            ),
+            1 => {
+                assert_eq!(
+                    body["messages"].as_array().unwrap().last().unwrap()["role"],
+                    "tool"
+                );
+                (
+                    "",
+                    json!([{"type":"function","function":{
+                        "name":wire("get"), "arguments":{"id":"doc-a"}
+                    }}]),
+                )
+            }
+            2 => {
+                assert!(
+                    body["messages"].as_array().unwrap().last().unwrap()["content"]
+                        .as_str()
+                        .unwrap()
+                        .contains("local SQLite")
+                );
+                ("The deployment uses local SQLite.", json!([]))
+            }
+            _ => panic!("unexpected extra Ollama call"),
+        };
+        Json(json!({
+            "model":"qwen3", "done":true, "done_reason":"stop",
+            "message":{"role":"assistant", "content":content, "tool_calls":tool_calls},
+            "prompt_eval_count":10, "eval_count":2
+        }))
+    }
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let app = Router::new()
+        .route("/api/chat", post(chat))
+        .with_state(OllamaFixture {
+            calls: calls.clone(),
+        });
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    let tmp = TempDir::new().unwrap();
+    let mut cfg = config(tmp.path());
+    cfg.models.insert(
+        "test".into(),
+        context_harness::agent_resource::ModelDefinition {
+            provider: "ollama".into(),
+            model: "qwen3".into(),
+            base_url: Some(base_url),
+            timeout_seconds: Some(10),
+            ..Default::default()
+        },
+    );
+    seed(&cfg, "Our deployment uses local SQLite.").await;
+    let models = ModelRegistry::from_config(&cfg.models).unwrap();
+    let runtime = AgentRuntime::new(cfg, tmp.path(), models).await.unwrap();
+    let (_sender, cancel) = watch::channel(false);
+    let run = runtime
+        .run(
+            &resource(&["search", "get"], 4, 10),
+            "Explain deployment",
+            cancel,
+        )
+        .await
+        .unwrap();
+    server.abort();
+
+    assert_eq!(run.status, "completed");
+    assert_eq!(
+        run.output.as_deref(),
+        Some("The deployment uses local SQLite.")
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 3);
+    let tool_calls = runtime.store().tool_invocations(&run.id).await.unwrap();
+    assert_eq!(tool_calls.len(), 2);
+    assert!(tool_calls.iter().all(|call| call.status == "completed"));
 }
