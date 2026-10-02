@@ -1,6 +1,6 @@
 # PRD-0015: Local Generation Providers
 
-**Status:** Draft
+**Status:** Planned
 **Date:** 2026-10-02
 **Author:** Context Harness contributors
 
@@ -89,17 +89,14 @@ usage reporting, context limits, cancellation, and error bodies. “Loopback” 
 network destination but cannot prove that a provider will not proxy elsewhere.
 Model quality must be evaluated separately from protocol correctness.
 
-## Open Questions
+## Contract decisions
 
-1. Should the first adapter use Ollama's native chat API or an OpenAI-compatible API?
-2. Which endpoint schemes count as local-only: loopback HTTP, Unix sockets, or both?
-3. How are provider-specific settings represented without turning model definitions
-   into an unvalidated catch-all?
-4. Which capability/readiness checks belong in the initial CLI?
-5. How should structured output and tool calls interact when a model/server cannot
-   reliably provide both?
-
-These questions must be resolved before this PRD moves to Planned.
+[ADR-0026](../adr/0026-native-ollama-local-generation.md) and the revised
+[SPEC-0016](../spec/0016-model-runtime.md) resolve the initial provider contract:
+native non-streaming chat, literal-loopback HTTP only, strict typed fields, no
+redirects or fallback, tools and structured output preserved together, and no
+readiness command in the first adapter. Model installation and quality remain live
+operator concerns rather than static validation.
 
 ## Related Documents
 
@@ -111,4 +108,5 @@ These questions must be resolved before this PRD moves to Planned.
 - [SPEC-0017](../spec/0017-local-agent-execution.md): bounded execution loop.
 - [PRD-0016](0016-durable-background-agent-tasks.md): separate asynchronous task
   lifecycle that can consume any configured provider.
-- Future ADR/spec updates are deferred until the design questions are resolved.
+- [ADR-0026](../adr/0026-native-ollama-local-generation.md): accepted native API and
+  local-only transport decision.

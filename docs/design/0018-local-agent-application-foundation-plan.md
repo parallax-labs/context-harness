@@ -3,7 +3,7 @@
 **Status:** Draft
 **Date:** 2026-10-02
 **Author:** Context Harness contributors
-**Related:** [PRD-0014](../prd/0014-durable-agent-runs.md), [DESIGN-0014](0014-structured-agent-run-state.md), [PRD-0015](../prd/0015-local-generation-providers.md), [DESIGN-0015](0015-local-generation-providers.md), [PRD-0016](../prd/0016-durable-background-agent-tasks.md), [DESIGN-0016](0016-durable-background-agent-tasks.md), [PRD-0017](../prd/0017-targeted-document-refresh.md), [DESIGN-0017](0017-targeted-document-refresh.md), [ADR-0024](../adr/0024-local-agent-runtime.md), [SPEC-0016](../spec/0016-model-runtime.md), [SPEC-0017](../spec/0017-local-agent-execution.md), [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md), [SPEC-0023](../spec/0023-declarative-tool-bindings.md)
+**Related:** [PRD-0014](../prd/0014-durable-agent-runs.md), [DESIGN-0014](0014-structured-agent-run-state.md), [PRD-0015](../prd/0015-local-generation-providers.md), [DESIGN-0015](0015-local-generation-providers.md), [PRD-0016](../prd/0016-durable-background-agent-tasks.md), [DESIGN-0016](0016-durable-background-agent-tasks.md), [PRD-0017](../prd/0017-targeted-document-refresh.md), [DESIGN-0017](0017-targeted-document-refresh.md), [ADR-0024](../adr/0024-local-agent-runtime.md), [ADR-0026](../adr/0026-native-ollama-local-generation.md), [SPEC-0016](../spec/0016-model-runtime.md), [SPEC-0017](../spec/0017-local-agent-execution.md), [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md), [SPEC-0023](../spec/0023-declarative-tool-bindings.md)
 
 ## Context
 
@@ -143,6 +143,12 @@ readiness. Record the initial protocol choice in an ADR and update SPEC-0016.
 
 **Gate P:** The provider catalog seam may preserve behavior before this decision;
 the production local adapter waits for it.
+
+**Gate P complete (2026-10-02):** [ADR-0026](../adr/0026-native-ollama-local-generation.md)
+selects native non-streaming Ollama chat over literal-loopback HTTP with redirects
+disabled and no fallback, model download or readiness side effects. The revised
+[SPEC-0016](../spec/0016-model-runtime.md) fixes provider fields, identity, message and
+tool mapping, structured output, bounds, errors, cancellation and offline inspection.
 
 #### 0C. Background-task contract
 
