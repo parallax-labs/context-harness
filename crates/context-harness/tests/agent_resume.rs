@@ -30,6 +30,7 @@ fn config(tmp: &TempDir) -> Config {
             provider: "fake".into(),
             model: "test".into(),
             api_key_env: None,
+            ..Default::default()
         },
     );
     c

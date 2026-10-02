@@ -181,6 +181,7 @@ implementation = "rust.fixture.echo"
             provider: "fixture".into(),
             model: "fixture-model".into(),
             api_key_env: None,
+            ..Default::default()
         },
     );
     let directory = |path| ResourceDirectory {

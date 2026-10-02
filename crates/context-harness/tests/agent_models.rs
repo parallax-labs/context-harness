@@ -226,6 +226,7 @@ async fn config_registry_is_lazy_about_credentials_and_rejects_unknown_providers
             provider: "openai".into(),
             model: "test-model".into(),
             api_key_env: Some(format!("CTX_ABSENT_{}", uuid::Uuid::new_v4().simple())),
+            ..Default::default()
         },
     );
     models.insert(
@@ -234,6 +235,7 @@ async fn config_registry_is_lazy_about_credentials_and_rejects_unknown_providers
             provider: "fake".into(),
             model: "test-model".into(),
             api_key_env: None,
+            ..Default::default()
         },
     );
     let registry = ModelRegistry::from_config(&models).unwrap();
@@ -288,6 +290,7 @@ async fn compiled_host_factory_registers_through_public_catalog_api() {
             provider: "fixture".into(),
             model: "fixture-model".into(),
             api_key_env: None,
+            ..Default::default()
         },
     )]);
 
@@ -330,6 +333,7 @@ fn provider_catalog_rejects_collisions_and_unknown_providers_deterministically()
             provider: "missing".into(),
             model: "fixture-model".into(),
             api_key_env: None,
+            ..Default::default()
         },
     )]);
     assert_eq!(
@@ -350,15 +354,38 @@ fn built_in_implementation_identity_is_stable_and_validation_is_offline() {
         catalog.implementation("fake").unwrap(),
         &ModelProviderImplementation::new("context-harness.fake", "1")
     );
+    assert_eq!(
+        catalog.implementation("ollama").unwrap(),
+        &ModelProviderImplementation::new("context-harness.ollama-chat", "1")
+    );
     let models = BTreeMap::from([(
         "real".into(),
         ModelDefinition {
             provider: "openai".into(),
             model: "test-model".into(),
             api_key_env: Some(format!("CTX_ABSENT_{}", uuid::Uuid::new_v4().simple())),
+            ..Default::default()
         },
     )]);
     catalog.validate_config(&models).unwrap();
+
+    let ollama = BTreeMap::from([(
+        "local".into(),
+        ModelDefinition {
+            provider: "ollama".into(),
+            model: "qwen3".into(),
+            base_url: Some("http://127.0.0.1:9".into()),
+            timeout_seconds: Some(30),
+            ..Default::default()
+        },
+    )]);
+    catalog.validate_config(&ollama).unwrap();
+    let registry = ModelRegistry::from_config_with_catalog(&ollama, &catalog).unwrap();
+    assert_eq!(registry.identity("local").unwrap(), ("ollama", "qwen3"));
+    assert_eq!(
+        registry.implementation_identity("local").unwrap(),
+        &ModelProviderImplementation::new("context-harness.ollama-chat", "1")
+    );
 }
 
 #[test]

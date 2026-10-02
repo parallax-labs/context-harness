@@ -12,13 +12,17 @@ use crate::ctx_dirs::{self, ConfigSourceKind};
 use crate::profiles::TomlProfile;
 
 /// A declarative model alias. Credentials are referenced, never read here.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModelDefinition {
     pub provider: String,
     pub model: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_key_env: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout_seconds: Option<u64>,
 }
 
 impl ModelDefinition {
@@ -421,6 +425,22 @@ pub struct ProfileEntry {
     pub system_prompt: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resource: Option<LoadedAgentResource>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_config: Option<ModelInspection>,
+}
+
+/// Sanitized effective model settings for static inspection.
+#[derive(Debug, Serialize)]
+pub struct ModelInspection {
+    pub alias: String,
+    pub provider: String,
+    pub model: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout_seconds: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub local_only: Option<bool>,
 }
 
 pub fn catalog(
@@ -440,6 +460,7 @@ pub fn catalog(
                 arguments: vec![],
                 system_prompt: Some(profile.system_prompt.clone()),
                 resource: None,
+                model_config: None,
             },
         );
     }
@@ -459,11 +480,13 @@ pub fn catalog(
                 arguments: profile.arguments,
                 system_prompt: None,
                 resource: None,
+                model_config: None,
             },
         );
     }
     for (name, resource) in resources {
         let agent = &resource.definition.agent;
+        let model_config = inspect_model(config, &agent.model)?;
         entries.insert(
             name.clone(),
             ProfileEntry {
@@ -474,6 +497,7 @@ pub fn catalog(
                 arguments: vec![],
                 system_prompt: Some(resource.definition.prompt.system.clone()),
                 resource: Some(resource),
+                model_config: Some(model_config),
             },
         );
     }
@@ -553,11 +577,10 @@ pub fn show_profile(
 }
 
 pub fn validate_profiles(config: &Config, directories: &[ResourceDirectory]) -> Result<()> {
+    let providers = crate::agent_model::ModelProviderCatalog::with_builtins()?;
     for (alias, model) in &config.models {
         ensure!(identifier(alias), "invalid model alias '{alias}'");
-        model
-            .validate()
-            .with_context(|| format!("model '{alias}'"))?;
+        providers.validate_definition(alias, model)?;
     }
     let entries = catalog(config, directories)?;
     println!(
@@ -606,6 +629,7 @@ pub async fn test_profile(
 /// the separate `ctx profile` command.
 pub fn list(config: &Config, directories: &[ResourceDirectory], json_output: bool) -> Result<()> {
     let resources = resource_catalog(config, directories)?;
+    validate_builtin_models(config, resources.values())?;
     if json_output {
         println!(
             "{}",
@@ -638,6 +662,7 @@ pub fn show(
     let entry = resources
         .remove(name)
         .with_context(|| format!("executable agent '{name}' not found"))?;
+    validate_builtin_models(config, std::iter::once(&entry))?;
     if json_output {
         println!("{}", serde_json::to_string_pretty(&entry)?);
     } else {
@@ -657,6 +682,17 @@ pub fn show(
             serde_json::to_string(&resource.definition.agent.permissions.require_approval)?,
             entry.system_prompt.as_deref().unwrap_or_default(),
         );
+        if let Some(model) = &entry.model_config {
+            if model.local_only == Some(true) {
+                println!(
+                    "Model provider: {}\nProvider model: {}\nBase URL: {}\nProvider timeout: {}s\nLocal only: true",
+                    model.provider,
+                    model.model,
+                    model.base_url.as_deref().expect("Ollama base URL"),
+                    model.timeout_seconds.expect("Ollama timeout"),
+                );
+            }
+        }
     }
     Ok(())
 }
@@ -664,7 +700,31 @@ pub fn show(
 /// Validate executable agent resources and their model references.
 pub fn validate(config: &Config, directories: &[ResourceDirectory]) -> Result<()> {
     let resources = load_resources(directories, config)?;
+    let providers = crate::agent_model::ModelProviderCatalog::with_builtins()?;
+    for resource in resources.values() {
+        let alias = &resource.definition.agent.model;
+        providers.validate_definition(
+            alias,
+            config.models.get(alias).context("model alias not found")?,
+        )?;
+    }
     println!("Validated {} executable agents.", resources.len());
+    Ok(())
+}
+
+fn validate_builtin_models<'a>(
+    config: &Config,
+    entries: impl IntoIterator<Item = &'a ProfileEntry>,
+) -> Result<()> {
+    let providers = crate::agent_model::ModelProviderCatalog::with_builtins()?;
+    for entry in entries {
+        let resource = entry.resource.as_ref().expect("agent resource entry");
+        let alias = &resource.definition.agent.model;
+        providers.validate_definition(
+            alias,
+            config.models.get(alias).context("model alias not found")?,
+        )?;
+    }
     Ok(())
 }
 
@@ -676,6 +736,8 @@ fn resource_catalog(
         .into_iter()
         .map(|(name, resource)| {
             let agent = &resource.definition.agent;
+            let model_config = inspect_model(config, &agent.model)
+                .expect("loaded agent has a validated model definition");
             let entry = ProfileEntry {
                 name: name.clone(),
                 description: agent.description.clone(),
@@ -684,8 +746,28 @@ fn resource_catalog(
                 arguments: vec![],
                 system_prompt: Some(resource.definition.prompt.system.clone()),
                 resource: Some(resource),
+                model_config: Some(model_config),
             };
             (name, entry)
         })
         .collect())
+}
+
+fn inspect_model(config: &Config, alias: &str) -> Result<ModelInspection> {
+    let definition = config
+        .models
+        .get(alias)
+        .with_context(|| format!("unknown model alias '{alias}'"))?;
+    let ollama = definition.provider == "ollama";
+    let effective_ollama = ollama
+        .then(|| crate::agent_model::ollama::effective_config(definition))
+        .transpose()?;
+    Ok(ModelInspection {
+        alias: alias.into(),
+        provider: definition.provider.clone(),
+        model: definition.model.clone(),
+        base_url: effective_ollama.as_ref().map(|(url, _)| url.clone()),
+        timeout_seconds: effective_ollama.map(|(_, timeout)| timeout),
+        local_only: ollama.then_some(true),
+    })
 }
