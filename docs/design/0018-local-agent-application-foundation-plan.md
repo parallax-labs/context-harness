@@ -217,6 +217,18 @@ Consolidate the supported construction path for resolved config, canonical works
 stores, model catalog, tool implementation catalog, runtime registry and host
 authority. Direct execution is the only behavior initially.
 
+**Slice status (2026-10-02): Implemented.** `AgentHostBuilder` is the public,
+direct-execution assembly path for resolved configuration, a canonical workspace,
+agent resources, a trusted `ModelProviderCatalog`, optional trusted tool factories and
+explicit `HostToolAuthority`, runtime policy, approvals and the existing durable run
+store. The CLI run and resume paths use the same builder. Builder configuration is
+inert, and assembly performs no model invocation, tool execution, credential
+resolution or worker startup. The default builder grants no capabilities and installs
+no tool authority; the CLI opts into its existing read-only authority and runtime
+policy explicitly. A public-API fixture composes external model and tool factories and
+proves direct run behavior without adding task semantics, lifecycle states or schema
+changes.
+
 **Likely modules:** new host/builder module, `agent_runtime`, `tool_binding`, crate
 exports, one external fixture.
 

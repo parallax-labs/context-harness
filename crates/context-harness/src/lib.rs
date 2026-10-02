@@ -103,6 +103,7 @@
 //! See [`config`] for all available options and [`config::load_config`] for
 //! validation rules.
 
+pub mod agent_host;
 pub mod agent_model;
 pub mod agent_resource;
 pub mod agent_runtime;

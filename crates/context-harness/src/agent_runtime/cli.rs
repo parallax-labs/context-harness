@@ -1,8 +1,10 @@
 //! CLI wiring. Inspection is read-only and independent of model credentials.
 use super::*;
-use crate::agent_resource::{load_resources, ResourceDirectory};
+use crate::{
+    agent_host::AgentHostBuilder, agent_model::ModelProviderCatalog,
+    agent_resource::ResourceDirectory,
+};
 use serde_json::Value;
-use std::collections::BTreeMap;
 
 pub async fn run(
     config: Config,
@@ -13,64 +15,26 @@ pub async fn run(
     json_output: bool,
     non_interactive: bool,
 ) -> Result<()> {
-    let resources = load_resources(directories, &config)?;
-    let resource = resources
-        .get(name)
-        .cloned()
-        .context("standalone agent not found; profiles are prompt-only")?;
-    let models = catalog_models(&config, &resources, name)?;
-    let mut runtime = AgentRuntime::new(config, &std::env::current_dir()?, models)
-        .await?
-        .with_tool_bindings(tool_directories)
-        .await?
-        .with_resources(resources);
-    if !non_interactive {
-        runtime = runtime.with_policy(
-            RuntimePolicy::default(),
-            Arc::new(super::terminal::TerminalApprovals),
-        );
-    }
+    let root = std::env::current_dir()?;
+    let (catalog, authority) = cli_tool_bindings(&config, &root)?;
+    let mut builder = AgentHostBuilder::new(config, &root, ModelProviderCatalog::with_builtins()?)?
+        .with_agent_resources(directories.to_vec())
+        .with_tool_bindings(tool_directories.to_vec(), catalog, authority);
+    let approvals: Arc<dyn ApprovalHandler> = if non_interactive {
+        Arc::new(DenyApprovals)
+    } else {
+        Arc::new(super::terminal::TerminalApprovals)
+    };
+    builder = builder.with_policy(RuntimePolicy::default(), approvals);
+    let host = builder.build(name).await?;
     let (sender, receiver) = watch::channel(false);
     let signal = tokio::spawn(async move {
         let _ = tokio::signal::ctrl_c().await;
         let _ = sender.send(true);
     });
-    let result = runtime.run(&resource, input, receiver).await;
+    let result = host.run(input, receiver).await;
     signal.abort();
     print_run(result?, json_output)
-}
-
-fn catalog_models(
-    config: &Config,
-    resources: &BTreeMap<String, LoadedAgentResource>,
-    root: &str,
-) -> Result<ModelRegistry> {
-    let mut names = vec![root.to_owned()];
-    let mut visited = std::collections::HashSet::new();
-    let mut definitions = BTreeMap::new();
-    while let Some(name) = names.pop() {
-        if !visited.insert(name.clone()) {
-            continue;
-        }
-        ensure!(
-            visited.len() <= 256,
-            "delegation catalog exceeds 256 reachable agents"
-        );
-        let resource = resources
-            .get(&name)
-            .context("delegation target not found")?;
-        let agent = &resource.definition.agent;
-        definitions.insert(
-            agent.model.clone(),
-            config
-                .models
-                .get(&agent.model)
-                .context("model alias not found")?
-                .clone(),
-        );
-        names.extend(agent.delegation.allow.iter().cloned());
-    }
-    ModelRegistry::from_config(&definitions)
 }
 
 fn print_run(run: AgentRun, json_output: bool) -> Result<()> {
@@ -109,35 +73,61 @@ pub async fn resume(
         .get_run(id)
         .await?
         .context("run not found in workspace")?;
-    let mut resources = load_resources(directories, &config)?;
-    let resource = resources
-        .remove(&previous.agent_name)
-        .context("agent resource no longer exists")?;
-    let alias = &resource.definition.agent.model;
-    let definition = config
-        .models
-        .get(alias)
-        .context("model alias not found")?
-        .clone();
-    let models = ModelRegistry::from_config(&BTreeMap::from([(alias.clone(), definition)]))?;
-    let mut runtime = AgentRuntime::new(config, &std::env::current_dir()?, models)
-        .await?
-        .with_tool_bindings(tool_directories)
-        .await?;
-    if !non_interactive {
-        runtime = runtime.with_policy(
-            RuntimePolicy::default(),
-            Arc::new(super::terminal::TerminalApprovals),
-        );
-    }
+    let root = std::env::current_dir()?;
+    let (catalog, authority) = cli_tool_bindings(&config, &root)?;
+    let mut builder = AgentHostBuilder::new(config, &root, ModelProviderCatalog::with_builtins()?)?
+        .with_agent_resources(directories.to_vec())
+        .with_tool_bindings(tool_directories.to_vec(), catalog, authority);
+    let approvals: Arc<dyn ApprovalHandler> = if non_interactive {
+        Arc::new(DenyApprovals)
+    } else {
+        Arc::new(super::terminal::TerminalApprovals)
+    };
+    builder = builder.with_policy(RuntimePolicy::default(), approvals);
+    let host = builder.build(&previous.agent_name).await?;
     let (sender, receiver) = watch::channel(false);
     let signal = tokio::spawn(async move {
         let _ = tokio::signal::ctrl_c().await;
         let _ = sender.send(true);
     });
-    let result = runtime.resume(id, &resource, receiver).await;
+    let result = host.resume(id, receiver).await;
     signal.abort();
     print_run(result?, json_output)
+}
+
+fn cli_tool_bindings(
+    config: &Config,
+    root: &Path,
+) -> Result<(
+    tool_binding::ToolImplementationCatalog,
+    Arc<HostToolAuthority>,
+)> {
+    let mut authority = HostToolAuthority::new(root, vec![Capability::ReadOnly])?;
+    authority.enroll_path(root)?;
+    let sources = config
+        .connectors
+        .filesystem
+        .keys()
+        .map(|name| format!("filesystem:{name}"))
+        .chain(
+            config
+                .connectors
+                .git
+                .keys()
+                .map(|name| format!("git:{name}")),
+        )
+        .chain(config.connectors.s3.keys().map(|name| format!("s3:{name}")))
+        .chain(
+            config
+                .connectors
+                .script
+                .keys()
+                .map(|name| format!("script:{name}")),
+        );
+    for source in sources {
+        authority.enroll_source(source)?;
+    }
+    Ok((tool_binding::core_catalog()?, Arc::new(authority)))
 }
 
 async fn read_store(mut config: Config) -> Result<Option<AgentRunStore>> {
