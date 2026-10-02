@@ -5,6 +5,7 @@ use context_harness::app_store::SqliteAppStore;
 use context_harness::config::Config;
 use serde_json::json;
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tempfile::TempDir;
 
@@ -245,6 +246,119 @@ async fn config_registry_is_lazy_about_credentials_and_rejects_unknown_providers
     );
     models.get_mut("real").unwrap().provider = "unknown".into();
     assert!(ModelRegistry::from_config(&models).is_err());
+}
+
+struct FixtureFactory {
+    builds: Arc<AtomicUsize>,
+}
+
+impl ModelProviderFactory for FixtureFactory {
+    fn provider_name(&self) -> &str {
+        "fixture"
+    }
+
+    fn implementation(&self) -> ModelProviderImplementation {
+        ModelProviderImplementation::new("fixture.example-model", "1")
+    }
+
+    fn validate(&self, _definition: &ModelDefinition) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn build(&self, _definition: &ModelDefinition) -> anyhow::Result<Arc<dyn ModelProvider>> {
+        self.builds.fetch_add(1, Ordering::SeqCst);
+        Ok(Arc::new(FakeModel::new([Ok(ModelResponse::text(
+            "fixture response",
+        ))])))
+    }
+}
+
+#[tokio::test]
+async fn compiled_host_factory_registers_through_public_catalog_api() {
+    let builds = Arc::new(AtomicUsize::new(0));
+    let mut catalog = ModelProviderCatalog::with_builtins().unwrap();
+    catalog
+        .register(Arc::new(FixtureFactory {
+            builds: builds.clone(),
+        }))
+        .unwrap();
+    let models = BTreeMap::from([(
+        "custom".into(),
+        ModelDefinition {
+            provider: "fixture".into(),
+            model: "fixture-model".into(),
+            api_key_env: None,
+        },
+    )]);
+
+    catalog.validate_config(&models).unwrap();
+    assert_eq!(builds.load(Ordering::SeqCst), 0);
+    let registry = ModelRegistry::from_config_with_catalog(&models, &catalog).unwrap();
+    assert_eq!(builds.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        registry.generate("custom", &request()).await.unwrap().text,
+        "fixture response"
+    );
+    assert_eq!(
+        registry.implementation_identity("custom").unwrap(),
+        &ModelProviderImplementation::new("fixture.example-model", "1")
+    );
+}
+
+#[test]
+fn provider_catalog_rejects_collisions_and_unknown_providers_deterministically() {
+    let builds = Arc::new(AtomicUsize::new(0));
+    let mut catalog = ModelProviderCatalog::with_builtins().unwrap();
+    catalog
+        .register(Arc::new(FixtureFactory {
+            builds: builds.clone(),
+        }))
+        .unwrap();
+    let error = catalog
+        .register(Arc::new(FixtureFactory {
+            builds: builds.clone(),
+        }))
+        .unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "model provider 'fixture' is already registered"
+    );
+
+    let unknown = BTreeMap::from([(
+        "custom".into(),
+        ModelDefinition {
+            provider: "missing".into(),
+            model: "fixture-model".into(),
+            api_key_env: None,
+        },
+    )]);
+    assert_eq!(
+        catalog.validate_config(&unknown).unwrap_err().to_string(),
+        "unsupported model provider 'missing' for 'custom'"
+    );
+    assert_eq!(builds.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn built_in_implementation_identity_is_stable_and_validation_is_offline() {
+    let catalog = ModelProviderCatalog::with_builtins().unwrap();
+    assert_eq!(
+        catalog.implementation("openai").unwrap(),
+        &ModelProviderImplementation::new("context-harness.openai-responses", "1")
+    );
+    assert_eq!(
+        catalog.implementation("fake").unwrap(),
+        &ModelProviderImplementation::new("context-harness.fake", "1")
+    );
+    let models = BTreeMap::from([(
+        "real".into(),
+        ModelDefinition {
+            provider: "openai".into(),
+            model: "test-model".into(),
+            api_key_env: Some(format!("CTX_ABSENT_{}", uuid::Uuid::new_v4().simple())),
+        },
+    )]);
+    catalog.validate_config(&models).unwrap();
 }
 
 #[test]
