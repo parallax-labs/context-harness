@@ -1,5 +1,5 @@
 --[[
-  Context Harness Agent: design-writer
+  Context Harness Profile: design-writer
 
   Writes design documents following the Design Doc policy
   (docs/design/0000-design-policy.md). Design docs explore
@@ -7,15 +7,15 @@
 
   Configuration (add to ctx.toml):
 
-    [agents.script.design-writer]
-    path = "agents/design-writer.lua"
+    [profiles.script.design-writer]
+    path = "profiles/design-writer.lua"
     search_limit = "8"
 
   Usage:
-    ctx agent test design-writer --arg feature="plugin marketplace"
+    ctx profile test design-writer --arg feature="plugin marketplace"
 ]]
 
-agent = {
+profile = {
     name = "design-writer",
     description = "Writes design documents that explore approaches and plan implementation",
     tools = { "search", "get" },
@@ -33,7 +33,7 @@ agent = {
     },
 }
 
-function agent.resolve(args, config, context)
+function profile.resolve(args, config, context)
     local feature = args.feature or "unnamed feature"
     local status = args.status or "Draft"
     local search_limit = tonumber(config.search_limit) or 8

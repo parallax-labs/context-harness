@@ -44,7 +44,7 @@ COPY --from=builder /usr/local/cargo/bin/ctx /usr/local/bin/ctx
 COPY config/ /app/config/
 COPY connectors/ /app/connectors/
 COPY tools/ /app/tools/
-COPY agents/ /app/agents/
+COPY profiles/ /app/profiles/
 
 WORKDIR /app
 RUN mkdir -p /app/data
@@ -73,8 +73,8 @@ $ docker run -d \
 $ curl localhost:7331/health
 {"status":"ok","version":"0.1.0"}
 
-# Verify agents are loaded
-$ curl -s localhost:7331/agents/list | jq '.agents[] | .name'
+# Verify profiles are loaded
+$ curl -s localhost:7331/profiles/list | jq '.profiles[] | .name'
 ```
 
 ### Docker Compose
@@ -144,33 +144,33 @@ project/
 ├── tools/
 │   ├── create-ticket.lua   # Lua tools
 │   └── post-slack.lua
-├── agents/
-│   └── incident-responder.lua  # Lua agents
+├── profiles/
+│   └── incident-responder.lua  # Lua profiles
 ├── Dockerfile
 ├── docker-compose.yml
 └── data/                   # Mounted as volume
     └── ctx.sqlite
 ```
 
-Your `ctx.toml` references agents alongside connectors and tools:
+Your `ctx.toml` references profiles alongside connectors and tools:
 
 ```toml
-# Inline agents (static prompts, no Lua needed)
-[agents.inline.code-reviewer]
+# Inline profiles (static prompts, no Lua needed)
+[profiles.inline.code-reviewer]
 description = "Reviews code against conventions"
 tools = ["search", "get"]
 system_prompt = "You are a senior code reviewer..."
 
-# Lua agents (dynamic, pre-search context)
-[agents.script.incident-responder]
-path = "/app/agents/incident-responder.lua"
+# Lua profiles (dynamic, pre-search context)
+[profiles.script.incident-responder]
+path = "/app/profiles/incident-responder.lua"
 timeout = 30
 ```
 
-Verify agents after startup:
+Verify profiles after startup:
 
 ```bash
-$ curl -s localhost:7331/agents/list | jq '.agents[] | {name, description, source}'
+$ curl -s localhost:7331/profiles/list | jq '.profiles[] | {name, description, source}'
 {"name": "code-reviewer", "description": "Reviews code against conventions", "source": "toml"}
 {"name": "incident-responder", "description": "Helps triage incidents", "source": "lua"}
 ```

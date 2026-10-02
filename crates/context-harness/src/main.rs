@@ -77,6 +77,8 @@ mod lua_runtime;
 mod mcp;
 mod migrate;
 mod models;
+mod profile_script;
+mod profiles;
 mod progress;
 #[allow(dead_code)]
 mod redact;
@@ -284,16 +286,24 @@ enum Commands {
         action: ToolAction,
     },
 
-    /// Manage agents (personas with system prompts and tool scoping).
+    /// Manage reusable prompt profiles.
     ///
-    /// Create, test, and list agents that provide "assume a role" workflows
-    /// for Cursor, Claude, and other MCP clients.
+    /// Create, test, and list personas exposed as MCP prompts. Profiles do not
+    /// execute model turns or retain conversation history.
+    Profile {
+        #[command(subcommand)]
+        action: ProfileAction,
+    },
+
+    /// Manage executable local agents.
+    ///
+    /// Run policy-controlled agents and inspect their durable run history.
     Agent {
         #[command(subcommand)]
         action: AgentAction,
     },
 
-    /// Manage extension registries (community connectors, tools, agents).
+    /// Manage extension registries (community connectors, tools, profiles).
     ///
     /// Install, update, search, and scaffold config entries for extensions
     /// from Git-backed registries.
@@ -478,7 +488,7 @@ enum AgentAction {
         #[arg(long)]
         json: bool,
     },
-    /// List standalone resources and existing TOML/Lua agents.
+    /// List executable standalone agent resources.
     List {
         #[arg(long)]
         json: bool,
@@ -489,27 +499,44 @@ enum AgentAction {
         #[arg(long)]
         json: bool,
     },
-    /// Validate agent resources, model references and existing agent definitions.
+    /// Validate executable agent resources and model references.
     Validate,
-    /// Test an agent by resolving its prompt.
-    ///
-    /// Loads the agent, calls its `resolve()` function with the provided
-    /// arguments, and prints the resulting system prompt and messages.
+    /// Deprecated alias for `ctx profile test`.
+    #[command(hide = true)]
     Test {
-        /// Name of a standalone resource, inline TOML agent, or Lua agent.
         name: String,
-        /// Agent arguments as `key=value` pairs.
         #[arg(long = "arg", value_parser = parse_key_val)]
         args: Vec<(String, String)>,
     },
-    /// Scaffold a new Lua agent script from a template.
-    ///
-    /// Creates `agents/<name>.lua` with a commented template showing
-    /// the agent interface.
-    Init {
-        /// Name for the new agent (e.g., `code-reviewer`).
-        name: String,
+    /// Deprecated alias for `ctx profile init`.
+    #[command(hide = true)]
+    Init { name: String },
+}
+
+/// Prompt profile management subcommands.
+#[derive(Subcommand)]
+enum ProfileAction {
+    /// List configured profiles and executable-agent prompt projections.
+    List {
+        #[arg(long)]
+        json: bool,
     },
+    /// Show a profile definition and its provenance.
+    Show {
+        name: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Validate profile definitions and agent prompt projections.
+    Validate,
+    /// Resolve a profile and print its prompt.
+    Test {
+        name: String,
+        #[arg(long = "arg", value_parser = parse_key_val)]
+        args: Vec<(String, String)>,
+    },
+    /// Scaffold a Lua profile in `profiles/<name>.lua`.
+    Init { name: String },
 }
 
 /// Registry management subcommands.
@@ -660,7 +687,14 @@ async fn main() -> anyhow::Result<()> {
         Commands::Agent {
             action: AgentAction::Init { name },
         } => {
-            agent_script::scaffold_agent(name)?;
+            eprintln!("warning: `ctx agent init` is deprecated; use `ctx profile init`");
+            profile_script::scaffold_profile(name)?;
+            return Ok(());
+        }
+        Commands::Profile {
+            action: ProfileAction::Init { name },
+        } => {
+            profile_script::scaffold_profile(name)?;
             return Ok(());
         }
         Commands::Registry {
@@ -767,7 +801,7 @@ async fn main() -> anyhow::Result<()> {
     let config_path = resolved_config.path.clone();
     let agent_resource_dirs = if matches!(
         &cli.command,
-        Commands::Agent { .. } | Commands::Serve { .. }
+        Commands::Agent { .. } | Commands::Profile { .. } | Commands::Serve { .. }
     ) {
         agent_resource::cli_resource_directories(&resolved_config)?
     } else {
@@ -919,7 +953,7 @@ async fn main() -> anyhow::Result<()> {
                 server::run_server_with_resources(
                     &cfg,
                     std::sync::Arc::new(traits::ToolRegistry::new()),
-                    std::sync::Arc::new(agents::AgentRegistry::new()),
+                    std::sync::Arc::new(profiles::ProfileRegistry::new()),
                     &agent_resource_dirs,
                 )
                 .await?;
@@ -1141,12 +1175,28 @@ async fn main() -> anyhow::Result<()> {
                 agent_resource::validate(&cfg, &agent_resource_dirs)?;
             }
             AgentAction::Test { name, args } => {
-                agent_resource::test(&cfg, &agent_resource_dirs, &name, args).await?;
+                eprintln!("warning: `ctx agent test` is deprecated; use `ctx profile test`");
+                agent_resource::test_profile(&cfg, &agent_resource_dirs, &name, args).await?;
             }
             AgentAction::Init { .. } => {
                 // Handled above (before config loading)
                 unreachable!()
             }
+        },
+        Commands::Profile { action } => match action {
+            ProfileAction::List { json } => {
+                agent_resource::list_profiles(&cfg, &agent_resource_dirs, json)?;
+            }
+            ProfileAction::Show { name, json } => {
+                agent_resource::show_profile(&cfg, &agent_resource_dirs, &name, json)?;
+            }
+            ProfileAction::Validate => {
+                agent_resource::validate_profiles(&cfg, &agent_resource_dirs)?;
+            }
+            ProfileAction::Test { name, args } => {
+                agent_resource::test_profile(&cfg, &agent_resource_dirs, &name, args).await?;
+            }
+            ProfileAction::Init { .. } => unreachable!(),
         },
     }
 

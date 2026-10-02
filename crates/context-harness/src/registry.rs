@@ -1,4 +1,4 @@
-//! Extension registry system for community connectors, tools, and agents.
+//! Extension registry system for community connectors, tools, and profiles.
 //!
 //! Registries are directories (optionally backed by Git repositories) that
 //! contain Lua scripts and TOML definitions described by a `registry.toml`
@@ -24,9 +24,9 @@
 //!   summarize/
 //!     tool.lua
 //!     README.md
-//! agents/
+//! profiles/
 //!   runbook/
-//!     agent.lua
+//!     profile.lua
 //!     README.md
 //! ```
 
@@ -59,9 +59,10 @@ pub struct RegistryManifest {
     /// Tool extensions keyed by name.
     #[serde(default)]
     pub tools: HashMap<String, ExtensionEntry>,
-    /// Agent extensions keyed by name.
-    #[serde(default)]
-    pub agents: HashMap<String, ExtensionEntry>,
+    /// Profile extensions keyed by name. Historical `[agents.*]` manifests are
+    /// accepted as an alias.
+    #[serde(default, alias = "agents")]
+    pub profiles: HashMap<String, ExtensionEntry>,
 }
 
 /// Top-level metadata about a registry.
@@ -82,7 +83,7 @@ pub struct RegistryMeta {
     pub min_version: Option<String>,
 }
 
-/// Metadata about a single extension (connector, tool, or agent).
+/// Metadata about a single extension (connector, tool, or profile).
 #[derive(Debug, Deserialize, Clone)]
 pub struct ExtensionEntry {
     /// One-line description of the extension.
@@ -99,7 +100,7 @@ pub struct ExtensionEntry {
     /// Lua host APIs used by this extension.
     #[serde(default)]
     pub host_apis: Vec<String>,
-    /// Tools this agent exposes (agents only).
+    /// Tools this profile exposes (profiles only).
     #[serde(default)]
     pub tools: Vec<String>,
 }
@@ -109,7 +110,7 @@ pub struct ExtensionEntry {
 pub struct ResolvedExtension {
     /// Extension name (e.g. `"jira"`).
     pub name: String,
-    /// Extension type: `"connector"`, `"tool"`, or `"agent"`.
+    /// Extension type: `"connector"`, `"tool"`, or `"profile"`.
     pub kind: String,
     /// Absolute path to the script file.
     pub script_path: PathBuf,
@@ -223,7 +224,7 @@ fn discover_manifest(registry_dir: &Path) -> RegistryManifest {
         registry: RegistryMeta::default(),
         connectors: HashMap::new(),
         tools: HashMap::new(),
-        agents: HashMap::new(),
+        profiles: HashMap::new(),
     };
 
     let scan_dir = |subdir: &str, script_name: &str| -> HashMap<String, ExtensionEntry> {
@@ -260,13 +261,18 @@ fn discover_manifest(registry_dir: &Path) -> RegistryManifest {
     manifest.connectors = scan_dir("connectors", "connector.lua");
     manifest.tools = scan_dir("tools", "tool.lua");
 
-    // Agents can be .lua or .toml
-    let mut agents = scan_dir("agents", "agent.lua");
-    let toml_agents = scan_dir("agents", "agent.toml");
-    for (k, v) in toml_agents {
-        agents.entry(k).or_insert(v);
+    // Prefer canonical profile directories, then merge legacy agent layouts.
+    let mut profiles = scan_dir("profiles", "profile.lua");
+    for (k, v) in scan_dir("profiles", "profile.toml") {
+        profiles.entry(k).or_insert(v);
     }
-    manifest.agents = agents;
+    for (k, v) in scan_dir("agents", "agent.lua") {
+        profiles.entry(k).or_insert(v);
+    }
+    for (k, v) in scan_dir("agents", "agent.toml") {
+        profiles.entry(k).or_insert(v);
+    }
+    manifest.profiles = profiles;
 
     manifest
 }
@@ -381,13 +387,13 @@ impl RegistryManager {
                     },
                 );
             }
-            for (name, entry) in &reg.manifest.agents {
-                let key = format!("agents/{}", name);
+            for (name, entry) in &reg.manifest.profiles {
+                let key = format!("profiles/{}", name);
                 map.insert(
                     key,
                     ResolvedExtension {
                         name: name.clone(),
-                        kind: "agent".to_string(),
+                        kind: "profile".to_string(),
                         script_path: reg.path.join(&entry.path),
                         registry_name: reg.name.clone(),
                         entry: entry.clone(),
@@ -403,6 +409,10 @@ impl RegistryManager {
 
     /// Resolve a specific extension by `"type/name"` (e.g. `"connectors/jira"`).
     pub fn resolve(&self, extension_id: &str) -> Option<ResolvedExtension> {
+        let extension_id = extension_id
+            .strip_prefix("agents/")
+            .map(|name| format!("profiles/{name}"))
+            .unwrap_or_else(|| extension_id.to_string());
         self.list_all()
             .into_iter()
             .find(|e| format!("{}s/{}", e.kind, e.name) == extension_id)
@@ -425,12 +435,19 @@ impl RegistryManager {
             .collect()
     }
 
-    /// List all resolved agents.
-    pub fn list_agents(&self) -> Vec<ResolvedExtension> {
+    /// List all resolved profiles.
+    pub fn list_profiles(&self) -> Vec<ResolvedExtension> {
         self.list_all()
             .into_iter()
-            .filter(|e| e.kind == "agent")
+            .filter(|e| e.kind == "profile")
             .collect()
+    }
+
+    /// Deprecated compatibility name for [`Self::list_profiles`].
+    #[allow(dead_code)]
+    #[deprecated(note = "use list_profiles")]
+    pub fn list_agents(&self) -> Vec<ResolvedExtension> {
+        self.list_profiles()
     }
 
     /// Find the first writable registry path (iterates from highest precedence).
@@ -453,7 +470,7 @@ impl RegistryManager {
                 is_git: is_git_repo(&r.path),
                 connectors: r.manifest.connectors.len(),
                 tools: r.manifest.tools.len(),
-                agents: r.manifest.agents.len(),
+                profiles: r.manifest.profiles.len(),
             })
             .collect()
     }
@@ -467,7 +484,7 @@ pub struct RegistryInfo {
     pub is_git: bool,
     pub connectors: usize,
     pub tools: usize,
-    pub agents: usize,
+    pub profiles: usize,
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -516,14 +533,14 @@ pub fn cmd_list(config: &Config) {
         let git_tag = if r.is_git { " (git)" } else { "" };
         let ro_tag = if r.readonly { " [readonly]" } else { "" };
         println!(
-            "  {} — {}{}{}\n    {} connectors, {} tools, {} agents",
+            "  {} — {}{}{}\n    {} connectors, {} tools, {} profiles",
             r.name,
             r.path.display(),
             git_tag,
             ro_tag,
             r.connectors,
             r.tools,
-            r.agents,
+            r.profiles,
         );
     }
 
@@ -590,10 +607,10 @@ pub fn cmd_install(config: &Config, name: Option<&str>) -> Result<()> {
         match load_manifest(&target) {
             Ok(m) => {
                 println!(
-                    "  Installed: {} connectors, {} tools, {} agents",
+                    "  Installed: {} connectors, {} tools, {} profiles",
                     m.connectors.len(),
                     m.tools.len(),
-                    m.agents.len()
+                    m.profiles.len()
                 );
             }
             Err(_) => {
@@ -781,12 +798,12 @@ pub fn cmd_add(config: &Config, extension_id: &str, config_path: &Path) -> Resul
                 )
             }
         }
-        "agent" => {
+        "profile" => {
             if let Some(example) = &example_content {
-                format!("\n[agents.script.{}]\n{}", ext.name, example)
+                format!("\n[profiles.script.{}]\n{}", ext.name, example)
             } else {
                 format!(
-                    "\n[agents.script.{}]\npath = \"{}\"\n",
+                    "\n[profiles.script.{}]\npath = \"{}\"\n",
                     ext.name,
                     ext.script_path.display()
                 )
@@ -889,10 +906,10 @@ pub fn cmd_init_community(config_path: &Path) -> Result<()> {
         match load_manifest(&default_path) {
             Ok(m) => {
                 println!(
-                    "Installed: {} connectors, {} tools, {} agents",
+                    "Installed: {} connectors, {} tools, {} profiles",
                     m.connectors.len(),
                     m.tools.len(),
-                    m.agents.len()
+                    m.profiles.len()
                 );
             }
             Err(_) => {
@@ -1025,8 +1042,8 @@ tools = ["search", "get"]
             "Summarize a document"
         );
 
-        assert_eq!(manifest.agents.len(), 1);
-        assert_eq!(manifest.agents["runbook"].tools, vec!["search", "get"]);
+        assert_eq!(manifest.profiles.len(), 1);
+        assert_eq!(manifest.profiles["runbook"].tools, vec!["search", "get"]);
     }
 
     #[test]
@@ -1035,7 +1052,7 @@ tools = ["search", "get"]
         let manifest: RegistryManifest = toml::from_str(toml).unwrap();
         assert_eq!(manifest.connectors.len(), 0);
         assert_eq!(manifest.tools.len(), 0);
-        assert_eq!(manifest.agents.len(), 0);
+        assert_eq!(manifest.profiles.len(), 0);
     }
 
     #[test]
@@ -1057,7 +1074,7 @@ tools = ["search", "get"]
         let manifest = discover_manifest(dir.path());
         assert!(manifest.connectors.is_empty());
         assert!(manifest.tools.is_empty());
-        assert!(manifest.agents.is_empty());
+        assert!(manifest.profiles.is_empty());
     }
 
     #[test]
@@ -1084,8 +1101,8 @@ tools = ["search", "get"]
         assert!(manifest.connectors.contains_key("jira"));
         assert_eq!(manifest.tools.len(), 1);
         assert!(manifest.tools.contains_key("summarize"));
-        assert_eq!(manifest.agents.len(), 1);
-        assert!(manifest.agents.contains_key("runbook"));
+        assert_eq!(manifest.profiles.len(), 1);
+        assert!(manifest.profiles.contains_key("runbook"));
     }
 
     #[test]

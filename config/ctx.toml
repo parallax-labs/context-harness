@@ -58,33 +58,33 @@ include_globs = ["**/*.rs"]
 exclude_globs = ["**/target/**"]
 follow_symlinks = false
 
-# ── Documentation Agents (the "doc company") ─────────────────────
+# ── Documentation Profiles ────────────────────────────────────────
 #
-# A coordinated team of agents that manage the five-layer doc
+# Reusable roles that support the five-layer documentation
 # hierarchy: PRD → ADR → Spec → Design → Runbook.
 
-[agents.script.doc-coordinator]
-path = "agents/doc-coordinator.lua"
+[profiles.script.doc-coordinator]
+path = "profiles/doc-coordinator.lua"
 search_limit = "12"
 
-[agents.script.prd-writer]
-path = "agents/prd-writer.lua"
+[profiles.script.prd-writer]
+path = "profiles/prd-writer.lua"
 search_limit = "8"
 
-[agents.script.adr-writer]
-path = "agents/adr-writer.lua"
+[profiles.script.adr-writer]
+path = "profiles/adr-writer.lua"
 search_limit = "8"
 
-[agents.script.spec-writer]
-path = "agents/spec-writer.lua"
+[profiles.script.spec-writer]
+path = "profiles/spec-writer.lua"
 search_limit = "10"
 
-[agents.script.design-writer]
-path = "agents/design-writer.lua"
+[profiles.script.design-writer]
+path = "profiles/design-writer.lua"
 search_limit = "8"
 
-[agents.script.runbook-writer]
-path = "agents/runbook-writer.lua"
+[profiles.script.runbook-writer]
+path = "profiles/runbook-writer.lua"
 search_limit = "8"
 
 # ── Registry ──────────────────────────────────────────────────────

@@ -26,6 +26,35 @@ The result is a practical agent runtime for real projects:
 It is enough machinery to build useful project agents, while keeping the local
 security boundary visible.
 
+### Profiles and agents now have separate jobs
+
+Context Harness previously called its reusable MCP prompt personas “agents.”
+That name implied an execution lifecycle the feature never had. The distinction
+is now explicit across the CLI, configuration, REST API, Lua interface, and Rust
+API:
+
+| Choose | When | Context Harness owns |
+|---|---|---|
+| **Profile** | Cursor, Claude, or another client already owns the conversation | A reusable role, suggested tools, arguments, and optional startup context |
+| **Agent** | You want Context Harness to perform and govern the task | Model calls, tool execution, permissions, approvals, durable history, and recovery |
+
+New profiles use `[profiles.inline.*]` or `[profiles.script.*]`, `ctx profile`,
+the `/profiles/*` REST API, a Lua `profile` table, and the Rust `Profile` trait.
+Existing `[agents.*]` configuration, `/agents/*` integrations, Lua `agent`
+scripts, Rust aliases, and `ctx agent test/init` continue to work as deprecated
+compatibility paths.
+
+Executable agents keep the name because they actually run:
+
+```sh
+ctx profile test code-reviewer       # resolve a role; no model call
+ctx agent run code-reviewer "Review this change"  # execute a durable run
+```
+
+A standalone `.ctx/agents/code-reviewer.toml` can still be projected as an MCP
+profile, letting one role support either execution model without pretending the
+two lifecycles are the same.
+
 ### An agent is now a project resource
 
 A standalone agent is a small TOML file in `.ctx/agents`:

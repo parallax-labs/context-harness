@@ -352,16 +352,13 @@ runtime preparation discovers their schemas.
 
 ### `ctx agent list`
 
-List standalone executable agents and MCP profiles with descriptions and tool
-lists. Profiles still use the historical `[agents.inline.*]` and
-`[agents.script.*]` configuration keys. Use `--json` for provenance and resource
-metadata.
+List executable standalone agents. Prompt-only profiles are listed separately
+with `ctx profile list`. Use `--json` for full resource metadata.
 
 ```bash
 $ ctx agent list
-  code-reviewer        Reviews code changes against project conventions   (tools: search, get)        [toml]
-  architect            Answers architecture questions using indexed docs   (tools: search, get, sources) [toml]
-  incident-responder   Helps triage production incidents with runbooks     (tools: search, get, create_jira_ticket) [lua]
+AGENT                    DESCRIPTION                                  MODEL
+project-researcher       Researches the project with citations        openai
 ```
 
 ### `ctx agent show <name> [--json]`
@@ -433,20 +430,36 @@ ctx agent resume <run-id> --json --non-interactive
 Resume rejects completed runs, unsafe or uncertain tool state, changed agent or
 binding identities, exhausted budgets, and non-resumable MCP sessions.
 
-### `ctx agent test <profile> [--arg key=value]`
+### `ctx profile list [--json]`
+
+List inline, Lua, Rust, and executable-agent-projected profiles:
+
+```bash
+ctx profile list
+```
+
+### `ctx profile show <name> [--json]`
+
+Show a profile's role, suggested tools, arguments, prompt, and provenance.
+
+### `ctx profile validate`
+
+Validate all profile definitions and executable-agent prompt projections.
+
+### `ctx profile test <profile> [--arg key=value]`
 
 Resolve an MCP profile's prompt with arguments and print the result. This does
 not call a model or create an agent run; it is useful for debugging scripted
-profiles. The command name is retained for backward compatibility.
+profiles.
 
 Standalone resources can also be previewed, but they reject `--arg` because
 their prompts are static. Use `ctx agent run` to test the local runtime.
 
 ```bash
-$ ctx agent test incident-responder --arg service=payments-api --arg severity=P1
+$ ctx profile test incident-responder --arg service=payments-api --arg severity=P1
 
-Agent: incident-responder
-Source: lua (agents/incident-responder.lua)
+Profile: incident-responder
+Source: lua (profiles/incident-responder.lua)
 Tools: search, get, create_jira_ticket
 
 System prompt (487 chars):
@@ -456,10 +469,10 @@ System prompt (487 chars):
 Messages (1):
   [assistant] I'm ready to help with the P1 payments-api incident...
 
-# Test a TOML agent (no dynamic resolution)
-$ ctx agent test code-reviewer
+# Test an inline TOML profile (no dynamic resolution)
+$ ctx profile test code-reviewer
 
-Agent: code-reviewer
+Profile: code-reviewer
 Source: toml
 Tools: search, get
 
@@ -467,17 +480,17 @@ System prompt (245 chars):
   You are a senior code reviewer for this project...
 ```
 
-### `ctx agent init <name>`
+### `ctx profile init <name>`
 
-Scaffold a new Lua agent script from a template.
+Scaffold a new Lua profile script from a template.
 
 ```bash
-$ ctx agent init sre-helper
-Created: agents/sre-helper.lua
+$ ctx profile init sre-helper
+Created profile: profiles/sre-helper.lua
 Add to config:
 
-  [agents.script.sre-helper]
-  path = "agents/sre-helper.lua"
+  [profiles.script.sre-helper]
+  path = "profiles/sre-helper.lua"
   timeout = 30
 ```
 
@@ -485,7 +498,7 @@ Add to config:
 
 ### `ctx registry <command>`
 
-Manage extension registries — community connectors, tools, and agents from Git-backed repositories.
+Manage extension registries — community connectors, tools, and profiles from Git-backed repositories.
 
 ```bash
 $ ctx registry --help

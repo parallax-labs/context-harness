@@ -7,8 +7,8 @@
 //! trait implementations — are registered in a unified [`ToolRegistry`] and
 //! dispatched through the same `POST /tools/{name}` handler.
 //!
-//! Agents (named personas with system prompts and tool scoping) are registered
-//! in an [`AgentRegistry`] and discoverable/resolvable via dedicated endpoints.
+//! Profiles (named personas with system prompts and tool scoping) are registered
+//! in a [`ProfileRegistry`] and discoverable/resolvable via dedicated endpoints.
 //!
 //! # Endpoints
 //!
@@ -16,8 +16,10 @@
 //! |--------|------|-------------|
 //! | `GET`  | `/tools/list` | List all registered tools with schemas |
 //! | `POST` | `/tools/{name}` | Call any registered tool by name |
-//! | `GET`  | `/agents/list` | List all registered agents with metadata |
-//! | `POST` | `/agents/{name}/prompt` | Resolve an agent's system prompt |
+//! | `GET`  | `/profiles/list` | List all registered profiles with metadata |
+//! | `POST` | `/profiles/{name}/prompt` | Resolve a profile's system prompt |
+//! | `GET`  | `/agents/list` | Deprecated compatibility alias |
+//! | `POST` | `/agents/{name}/prompt` | Deprecated compatibility alias |
 //! | `GET`  | `/health` | Health check (returns version) |
 //!
 //! # Error Contract
@@ -64,10 +66,10 @@ use serde::Serialize;
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
 
-use crate::agent_script::{load_agent_definitions, LuaAgentAdapter};
-use crate::agents::{AgentInfo, AgentRegistry};
 use crate::config::Config;
 use crate::mcp::McpBridge;
+use crate::profile_script::{load_profile_definitions, LuaProfileAdapter};
+use crate::profiles::{ProfileInfo, ProfileRegistry};
 use crate::registry::RegistryManager;
 use crate::tool_script::{load_tool_definitions, validate_params, LuaToolAdapter, ToolInfo};
 use crate::traits::{ToolContext, ToolRegistry};
@@ -83,12 +85,12 @@ struct AppState {
     mode: ServerMode,
     /// Unified tool registry containing built-in, Lua, and custom Rust tools.
     tools: Arc<ToolRegistry>,
-    /// Agent registry containing TOML, Lua, and custom Rust agents.
-    agents: Arc<AgentRegistry>,
+    /// Profile registry containing TOML, Lua, and custom Rust profiles.
+    profiles: Arc<ProfileRegistry>,
 }
 
-/// Extra extensions (custom Rust tools and agents) passed alongside the main `AppState`.
-type ExtState = (Arc<ToolRegistry>, Arc<AgentRegistry>);
+/// Extra extensions (custom Rust tools and profiles) passed alongside the main `AppState`.
+type ExtState = (Arc<ToolRegistry>, Arc<ProfileRegistry>);
 
 /// Starts the MCP-compatible HTTP server.
 ///
@@ -111,33 +113,33 @@ pub async fn run_server(config: &Config) -> anyhow::Result<()> {
     run_server_with_extensions(
         config,
         Arc::new(ToolRegistry::new()),
-        Arc::new(AgentRegistry::new()),
+        Arc::new(ProfileRegistry::new()),
     )
     .await
 }
 
-/// Starts the MCP server with custom Rust tool and agent extensions.
+/// Starts the MCP server with custom Rust tool and profile extensions.
 ///
-/// Like [`run_server`], but accepts a [`ToolRegistry`] and [`AgentRegistry`]
+/// Like [`run_server`], but accepts a [`ToolRegistry`] and [`ProfileRegistry`]
 /// containing custom extensions that will be served alongside built-in,
 /// TOML-defined, and Lua-scripted entries.
 ///
 /// Custom tools appear in `GET /tools/list` and can be called via
-/// `POST /tools/{name}`. Custom agents appear in `GET /agents/list` and
-/// can be resolved via `POST /agents/{name}/prompt`.
+/// `POST /tools/{name}`. Custom profiles appear in `GET /profiles/list` and
+/// can be resolved via `POST /profiles/{name}/prompt`.
 ///
 /// # Example
 ///
 /// ```rust,no_run
 /// use context_harness::server::run_server_with_extensions;
 /// use context_harness::traits::ToolRegistry;
-/// use context_harness::agents::AgentRegistry;
+/// use context_harness::profiles::ProfileRegistry;
 /// use std::sync::Arc;
 ///
 /// # async fn example(config: &context_harness::config::Config) -> anyhow::Result<()> {
 /// let tools = ToolRegistry::new();
-/// let agents = AgentRegistry::new();
-/// run_server_with_extensions(config, Arc::new(tools), Arc::new(agents)).await?;
+/// let profiles = ProfileRegistry::new();
+/// run_server_with_extensions(config, Arc::new(tools), Arc::new(profiles)).await?;
 /// # Ok(())
 /// # }
 /// ```
@@ -145,9 +147,9 @@ pub async fn run_server(config: &Config) -> anyhow::Result<()> {
 pub async fn run_server_with_extensions(
     config: &Config,
     extra_tools: Arc<ToolRegistry>,
-    extra_agents: Arc<AgentRegistry>,
+    extra_profiles: Arc<ProfileRegistry>,
 ) -> anyhow::Result<()> {
-    run_server_with_resources(config, extra_tools, extra_agents, &[]).await
+    run_server_with_resources(config, extra_tools, extra_profiles, &[]).await
 }
 
 /// Start a single-workspace server with explicitly selected standalone resources.
@@ -156,7 +158,7 @@ pub async fn run_server_with_extensions(
 pub async fn run_server_with_resources(
     config: &Config,
     extra_tools: Arc<ToolRegistry>,
-    extra_agents: Arc<AgentRegistry>,
+    extra_profiles: Arc<ProfileRegistry>,
     directories: &[crate::agent_resource::ResourceDirectory],
 ) -> anyhow::Result<()> {
     let bind_addr = config.server.bind.clone();
@@ -212,37 +214,39 @@ pub async fn run_server_with_resources(
         }
     }
 
-    // ── Agents ──
-    let mut agent_registry = AgentRegistry::from_config(&config)?;
+    // ── Profiles ──
+    let mut profile_registry = ProfileRegistry::from_config(&config)?;
 
-    // Load and register Lua agents from config
-    let lua_agents = load_agent_definitions(&config)?;
-    let configured_agent_names: Vec<String> = lua_agents.iter().map(|d| d.name.clone()).collect();
-    for def in lua_agents {
-        agent_registry.register(Box::new(LuaAgentAdapter::new(def, config.clone())));
+    // Load and register Lua profiles from config
+    let lua_profiles = load_profile_definitions(&config)?;
+    let configured_profile_names: Vec<String> =
+        lua_profiles.iter().map(|d| d.name.clone()).collect();
+    for def in lua_profiles {
+        profile_registry.register(Box::new(LuaProfileAdapter::new(def, config.clone())));
     }
 
-    // Auto-discover agents from registries (lower precedence than config)
-    for ext in reg_mgr.list_agents() {
-        if configured_agent_names.iter().any(|n| n == &ext.name) {
+    // Auto-discover legacy prompt extensions from registries (lower precedence than config)
+    for ext in reg_mgr.list_profiles() {
+        if configured_profile_names.iter().any(|n| n == &ext.name) {
             continue;
         }
         if !ext.script_path.exists() {
             continue;
         }
         if ext.script_path.extension().is_some_and(|e| e == "lua") {
-            let agent_cfg = crate::config::ScriptAgentConfig {
+            let profile_cfg = crate::config::ScriptProfileConfig {
                 path: ext.script_path.clone(),
                 timeout: 30,
                 extra: toml::Table::new(),
             };
-            match crate::agent_script::load_single_agent(&ext.name, &agent_cfg) {
+            match crate::profile_script::load_single_profile(&ext.name, &profile_cfg) {
                 Ok(def) => {
-                    agent_registry.register(Box::new(LuaAgentAdapter::new(def, config.clone())));
+                    profile_registry
+                        .register(Box::new(LuaProfileAdapter::new(def, config.clone())));
                 }
                 Err(e) => {
                     eprintln!(
-                        "Warning: failed to load registry agent '{}': {}",
+                        "Warning: failed to load registry profile '{}': {}",
                         ext.name, e
                     );
                 }
@@ -253,24 +257,24 @@ pub async fn run_server_with_resources(
     register_resource_prompts(
         config.as_ref(),
         directories,
-        &mut agent_registry,
-        &extra_agents,
+        &mut profile_registry,
+        &extra_profiles,
     )?;
 
-    let agent_count = agent_registry.len() + extra_agents.len();
-    if agent_count > 0 {
-        println!("Registered {} agents:", agent_count);
-        for a in agent_registry.agents() {
+    let profile_count = profile_registry.len() + extra_profiles.len();
+    if profile_count > 0 {
+        println!("Registered {} profiles:", profile_count);
+        for a in profile_registry.profiles() {
             println!(
-                "  POST /agents/{}/prompt — {} ({})",
+                "  POST /profiles/{}/prompt — {} ({})",
                 a.name(),
                 a.description(),
                 a.source()
             );
         }
-        for a in extra_agents.agents() {
+        for a in extra_profiles.profiles() {
             println!(
-                "  POST /agents/{}/prompt — {} ({})",
+                "  POST /profiles/{}/prompt — {} ({})",
                 a.name(),
                 a.description(),
                 a.source()
@@ -279,7 +283,7 @@ pub async fn run_server_with_resources(
     }
 
     let tools = Arc::new(tool_registry);
-    let agents = Arc::new(agent_registry);
+    let profiles = Arc::new(profile_registry);
 
     // Compatibility mode is a router with one workspace; the wire contract is
     // selected by mode, not by workspace count (SPEC-0014 R14/R15).
@@ -291,9 +295,9 @@ pub async fn run_server_with_resources(
         bind_addr,
         false,
         tools,
-        agents,
+        profiles,
         extra_tools,
-        extra_agents,
+        extra_profiles,
     )
     .await
 }
@@ -303,7 +307,7 @@ pub async fn run_server_with_resources(
 /// Routes the built-in `search` / `get` / `sources` / `workspaces` tools across
 /// the registered workspaces in `router`. Per SPEC-0014 R54, only built-in
 /// tools are exposed in multi-workspace mode in Phase 1 — workspace-local Lua
-/// and registry tools/agents are not loaded. `bind` comes from the registry's
+/// and registry tools/profiles are not loaded. `bind` comes from the registry's
 /// `[defaults].bind` (R16); `allow_remote` permits a non-loopback bind.
 pub async fn run_server_multi(
     router: Arc<WorkspaceRouter>,
@@ -311,9 +315,9 @@ pub async fn run_server_multi(
     allow_remote: bool,
 ) -> anyhow::Result<()> {
     let tools = Arc::new(ToolRegistry::with_builtins_multi());
-    let agents = Arc::new(AgentRegistry::new());
+    let profiles = Arc::new(ProfileRegistry::new());
     let extra_tools = Arc::new(ToolRegistry::new());
-    let extra_agents = Arc::new(AgentRegistry::new());
+    let extra_profiles = Arc::new(ProfileRegistry::new());
 
     println!("Multi-workspace MCP mode. Registered workspaces:");
     for rt in router.list() {
@@ -343,9 +347,9 @@ pub async fn run_server_multi(
         bind,
         allow_remote,
         tools,
-        agents,
+        profiles,
         extra_tools,
-        extra_agents,
+        extra_profiles,
     )
     .await
 }
@@ -370,9 +374,9 @@ async fn serve_router(
     bind_addr: String,
     allow_remote: bool,
     tools: Arc<ToolRegistry>,
-    agents: Arc<AgentRegistry>,
+    profiles: Arc<ProfileRegistry>,
     extra_tools: Arc<ToolRegistry>,
-    extra_agents: Arc<AgentRegistry>,
+    extra_profiles: Arc<ProfileRegistry>,
 ) -> anyhow::Result<()> {
     // Trust model (SPEC-0014 trust-model section): loopback bind is the
     // load-bearing control. A non-loopback bind is refused in multi-workspace
@@ -396,17 +400,17 @@ async fn serve_router(
         router: router.clone(),
         mode,
         tools: tools.clone(),
-        agents: agents.clone(),
+        profiles: profiles.clone(),
     };
 
     // MCP Streamable HTTP endpoint at /mcp — clone before moving into extra_state
     let mcp_tools = tools.clone();
     let mcp_extra = extra_tools.clone();
-    let mcp_agents = agents.clone();
-    let mcp_extra_agents = extra_agents.clone();
+    let mcp_profiles = profiles.clone();
+    let mcp_extra_profiles = extra_profiles.clone();
     let mcp_router = router.clone();
 
-    let extra_state = (extra_tools.clone(), extra_agents);
+    let extra_state = (extra_tools.clone(), extra_profiles);
     let mcp_service = StreamableHttpService::new(
         move || {
             Ok(McpBridge::new(
@@ -414,8 +418,8 @@ async fn serve_router(
                 mode,
                 mcp_tools.clone(),
                 mcp_extra.clone(),
-                mcp_agents.clone(),
-                mcp_extra_agents.clone(),
+                mcp_profiles.clone(),
+                mcp_extra_profiles.clone(),
             ))
         },
         Arc::new(LocalSessionManager::default()),
@@ -430,8 +434,10 @@ async fn serve_router(
     let app = Router::new()
         .route("/tools/list", get(handle_list_tools))
         .route("/tools/{name}", post(handle_tool_call))
-        .route("/agents/list", get(handle_list_agents))
-        .route("/agents/{name}/prompt", post(handle_resolve_agent))
+        .route("/profiles/list", get(handle_list_profiles))
+        .route("/profiles/{name}/prompt", post(handle_resolve_profile))
+        .route("/agents/list", get(handle_list_agents_compat))
+        .route("/agents/{name}/prompt", post(handle_resolve_profile))
         .route("/health", get(handle_health))
         .with_state((state, extra_state))
         .nest_service("/mcp", mcp_service)
@@ -598,7 +604,7 @@ struct ToolListResponse {
 /// schemas. Built-in tools have `builtin: true`; Lua and custom Rust tools
 /// have `builtin: false`.
 async fn handle_list_tools(
-    State((state, (extra_tools, _extra_agents))): State<(AppState, ExtState)>,
+    State((state, (extra_tools, _extra_profiles))): State<(AppState, ExtState)>,
 ) -> Json<ToolListResponse> {
     let mut tools: Vec<ToolInfo> = state
         .tools
@@ -636,7 +642,7 @@ async fn handle_list_tools(
 /// Returns `404` if the tool is not found, `400` for parameter validation
 /// errors, `408` for timeout, and `500` for execution errors.
 async fn handle_tool_call(
-    State((state, (extra_tools, _extra_agents))): State<(AppState, ExtState)>,
+    State((state, (extra_tools, _extra_profiles))): State<(AppState, ExtState)>,
     Path(name): Path<String>,
     Json(params): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, AppError> {
@@ -661,98 +667,93 @@ async fn handle_tool_call(
     Ok(Json(serde_json::json!({ "result": result })))
 }
 
-// ============ GET /agents/list ============
+// ============ Profile endpoints ============
 
-/// JSON response body for `GET /agents/list`.
+#[derive(Serialize)]
+struct ProfileListResponse {
+    profiles: Vec<ProfileInfo>,
+}
+
+/// Historical response shape retained by `GET /agents/list`.
 #[derive(Serialize)]
 struct AgentListResponse {
-    /// All registered agents.
-    agents: Vec<AgentInfo>,
+    agents: Vec<ProfileInfo>,
 }
 
-/// Handler for `GET /agents/list`.
-///
-/// Returns all registered agents with their metadata, tool lists, and
-/// argument schemas. Includes TOML, Lua, and custom Rust agents.
-async fn handle_list_agents(
-    State((state, (_extra_tools, extra_agents))): State<(AppState, ExtState)>,
-) -> Json<AgentListResponse> {
-    let mut agents: Vec<AgentInfo> = state
-        .agents
-        .agents()
+fn profile_info(state: &AppState, extra_profiles: &ProfileRegistry) -> Vec<ProfileInfo> {
+    state
+        .profiles
+        .profiles()
         .iter()
-        .map(|a| AgentInfo {
-            name: a.name().to_string(),
-            description: a.description().to_string(),
-            tools: a.tools(),
-            source: a.source().to_string(),
-            arguments: a.arguments(),
+        .chain(extra_profiles.profiles().iter())
+        .map(|profile| ProfileInfo {
+            name: profile.name().to_string(),
+            description: profile.description().to_string(),
+            tools: profile.tools(),
+            source: profile.source().to_string(),
+            arguments: profile.arguments(),
         })
-        .collect();
-
-    // Append extra custom Rust agents
-    for a in extra_agents.agents() {
-        agents.push(AgentInfo {
-            name: a.name().to_string(),
-            description: a.description().to_string(),
-            tools: a.tools(),
-            source: a.source().to_string(),
-            arguments: a.arguments(),
-        });
-    }
-
-    Json(AgentListResponse { agents })
+        .collect()
 }
 
-// ============ POST /agents/{name}/prompt ============
+/// Canonical profile discovery endpoint.
+async fn handle_list_profiles(
+    State((state, (_extra_tools, extra_profiles))): State<(AppState, ExtState)>,
+) -> Json<ProfileListResponse> {
+    Json(ProfileListResponse {
+        profiles: profile_info(&state, &extra_profiles),
+    })
+}
 
-/// Handler for `POST /agents/{name}/prompt`.
-///
-/// Resolves an agent's system prompt by calling its `resolve()` method.
-/// For TOML agents, this returns the static prompt. For Lua agents, this
-/// executes the script's `agent.resolve()` function with the provided
-/// arguments and access to the context bridge (search, get, sources).
-///
-/// Returns `404` if the agent is not found.
-async fn handle_resolve_agent(
-    State((state, (_extra_tools, extra_agents))): State<(AppState, ExtState)>,
+/// Deprecated prompt-agent discovery endpoint with its historical JSON key.
+async fn handle_list_agents_compat(
+    State((state, (_extra_tools, extra_profiles))): State<(AppState, ExtState)>,
+) -> Json<AgentListResponse> {
+    Json(AgentListResponse {
+        agents: profile_info(&state, &extra_profiles),
+    })
+}
+
+/// Resolve a profile via the canonical route or its legacy agent alias.
+async fn handle_resolve_profile(
+    State((state, (_extra_tools, extra_profiles))): State<(AppState, ExtState)>,
     Path(name): Path<String>,
     Json(args): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let agent = state
-        .agents
+    let profile = state
+        .profiles
         .find(&name)
-        .or_else(|| extra_agents.find(&name))
-        .ok_or_else(|| not_found(format!("no agent registered with name: {}", name)))?;
+        .or_else(|| extra_profiles.find(&name))
+        .ok_or_else(|| not_found(format!("no profile registered with name: {}", name)))?;
 
     let ctx = ToolContext::routed(state.router.clone(), state.mode);
-    let prompt = agent
+    let prompt = profile
         .resolve(args, &ctx)
         .await
-        .map_err(|e| tool_error(format!("agent '{}': {}", name, e)))?;
+        .map_err(|e| tool_error(format!("profile '{}': {}", name, e)))?;
 
     Ok(Json(serde_json::to_value(prompt).map_err(|e| {
-        tool_error(format!("failed to serialize agent prompt: {}", e))
+        tool_error(format!("failed to serialize profile prompt: {}", e))
     })?))
 }
 
 /// Register standalone prompt projections, rejecting collisions with all legacy
-/// sources (including registry Lua and caller-provided Rust agents) atomically.
+/// sources (including registry Lua and caller-provided Rust profiles) atomically.
 pub fn register_resource_prompts(
     config: &Config,
     directories: &[crate::agent_resource::ResourceDirectory],
-    agents: &mut AgentRegistry,
-    extra_agents: &AgentRegistry,
+    profiles: &mut ProfileRegistry,
+    extra_profiles: &ProfileRegistry,
 ) -> anyhow::Result<()> {
     let resources = crate::agent_resource::load_resources(directories, config)?;
     for name in resources.keys() {
         anyhow::ensure!(
-            agents.find(name).is_none() && extra_agents.find(name).is_none(),
-            "agent resource conflicts with registered agent '{name}'; rename the resource or legacy agent"
+            profiles.find(name).is_none() && extra_profiles.find(name).is_none(),
+            "agent resource conflicts with registered profile '{name}'; rename the resource or profile"
         );
     }
     for resource in resources.into_values() {
-        agents.register(Box::new(resource.definition.prompt_agent()));
+        profiles.register(Box::new(resource.definition.prompt_profile()));
     }
     Ok(())
 }

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}Context Harness — Local-First Context Engine for AI Tools{% endblock %}
-{% block description %}A structured memory layer between your systems and your AI tools. Ingest, index, and retrieve context from any source.{% endblock %}
+{% block description %}Index project knowledge locally, give existing AI clients reusable profiles, or run bounded agents with durable history.{% endblock %}
 {% block body_class %}landing{% endblock %}
 
 {% block og_title %}Context Harness — Local-First Context Engine for AI Tools{% endblock %}
@@ -28,7 +28,7 @@
       "name": "Context Harness",
       "applicationCategory": "DeveloperApplication",
       "operatingSystem": "macOS, Linux, Windows",
-      "description": "A local-first context engine for AI tools. Ingest, index, and retrieve context from any source. Expose it to Cursor, Claude, and MCP-compatible agents via hybrid keyword and semantic search.",
+      "description": "A local-first context engine for AI tools. Ingest and retrieve project knowledge, give existing AI clients reusable profiles, or run bounded local agents with durable history.",
       "url": "{{ config.base_url | safe }}",
       "downloadUrl": "https://github.com/parallax-labs/context-harness/releases/latest",
       "softwareVersion": "0.3.0",
@@ -43,6 +43,7 @@
         "Local-first SQLite storage with FTS5 and vector embeddings",
         "Hybrid search combining BM25 keyword and cosine semantic scoring",
         "MCP server for Cursor, Claude, and AI agent integration",
+        "Reusable MCP profiles with roles, tools, arguments, and startup context",
         "Durable local agents with scoped declarative tools and approvals",
         "Connector-driven ingestion from filesystem, Git, S3, and Lua scripts",
         "Lua extensibility for custom connectors and agent tools",
@@ -161,12 +162,13 @@
     <div class="container">
         <div class="hero-badge">Open Source · Local-First · Rust</div>
         <h1 class="hero-title">
-            A structured memory layer<br>
-            <span class="hero-accent">between your systems and your AI tools</span>
+            Give AI the right project context.<br>
+            <span class="hero-accent">Keep the conversation—or let local agents run it.</span>
         </h1>
         <p class="hero-sub">
-            Ingest context from any source. Index it locally. Retrieve it instantly.
-            Give your AI agents the memory they deserve.
+            Ingest knowledge from any source and index it locally. Add reusable
+            profiles to Cursor and Claude, or run bounded agents with scoped tools,
+            approvals, and durable history.
         </p>
         <div class="hero-actions">
             <div class="download-cta">
@@ -246,8 +248,8 @@
 
 <section id="features" class="features">
     <div class="container">
-        <h2 class="section-title">Everything you need to give AI tools memory</h2>
-        <p class="section-sub">One binary. Zero cloud dependencies. Works with everything.</p>
+        <h2 class="section-title">One context layer. Two ways to put it to work.</h2>
+        <p class="section-sub">Use profiles inside the AI clients you already have, or let Context Harness run governed agents itself.</p>
 
         <div class="feature-grid">
             <div class="feature-card">
@@ -266,14 +268,19 @@
                 <p>FTS5 keyword search, vector semantic search, and configurable hybrid merge with BM25 + cosine scoring. Deterministic results.</p>
             </div>
             <div class="feature-card">
-                <div class="feature-icon">🤖</div>
-                <h3>MCP Server</h3>
-                <p>Expose context to Cursor, Claude, and any MCP-compatible AI tool. Extend with custom Lua tools that agents can discover and call.</p>
+                <div class="feature-icon">🎭</div>
+                <h3>Reusable Profiles</h3>
+                <p>Give Cursor, Claude, and custom clients a consistent role, suggested tools, arguments, and optional project-aware startup context.</p>
             </div>
             <div class="feature-card">
                 <div class="feature-icon">🧭</div>
-                <h3>Local Agent Runtime</h3>
+                <h3>Executable Agents</h3>
                 <p>Run standalone project agents with scoped declarative tools, explicit approvals, durable history, checkpoints, and safe recovery.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🤖</div>
+                <h3>MCP Server</h3>
+                <p>Expose search, retrieval, custom tools, and profiles through the standard protocol used by modern AI clients.</p>
             </div>
             <div class="feature-card">
                 <div class="feature-icon">⚡</div>
@@ -333,7 +340,7 @@
             <div class="arch-step">
                 <div class="arch-node">
                     <div class="arch-label">Interfaces</div>
-                    <div class="arch-detail">CLI · Local Agents · MCP Server · Tool Bindings</div>
+                    <div class="arch-detail">CLI · Profiles · Local Agents · MCP Server · Tool Bindings</div>
                 </div>
             </div>
         </div>
@@ -392,8 +399,8 @@ include_globs = ["**/*.md"]</code></pre>
             <div class="use-case-card featured">
                 <div class="use-case-badge">Primary Use Case</div>
                 <div class="use-case-icon">🤖</div>
-                <h3>AI Agent Context via MCP</h3>
-                <p>Point Context Harness at your docs and runbooks. Start the MCP server. Now <strong>Cursor, Claude, and any MCP-compatible agent</strong> can search your project knowledge.</p>
+                <h3>Reusable AI Profiles via MCP</h3>
+                <p>Give Cursor, Claude, and custom clients named roles such as reviewer, architect, or incident responder, grounded in the same <strong>local project context</strong>.</p>
                 <div class="use-case-tags">
                     <span class="tag">Cursor</span>
                     <span class="tag">Claude</span>
@@ -403,8 +410,8 @@ include_globs = ["**/*.md"]</code></pre>
             <div class="use-case-card featured">
                 <div class="use-case-badge">Primary Use Case</div>
                 <div class="use-case-icon">🔌</div>
-                <h3>Lua-Extensible Agent Tools</h3>
-                <p>Write custom MCP tools in Lua. Agents discover and call them dynamically. RAG-enriched Jira tickets, Slack posts, deploy triggers — <strong>without recompiling Rust</strong>.</p>
+                <h3>Governed Local Agents</h3>
+                <p>Run bounded model-and-tool workflows with explicit permissions, approvals, inspectable history, and safe recovery — <strong>without surrendering project control</strong>.</p>
                 <div class="use-case-tags">
                     <span class="tag">Lua Scripts</span>
                     <span class="tag">Custom Tools</span>
@@ -441,8 +448,9 @@ include_globs = ["**/*.md"]</code></pre>
         </div>
 
         <div class="use-case-cta">
-            <a href="{{ get_url(path='@/docs/_index.md') }}" class="btn btn-primary">Read the Documentation →</a>
-            <span class="use-case-cta-note">Everything you need to set up Context Harness for your project</span>
+            <a href="{{ get_url(path='@/docs/profiles/overview.md') }}" class="btn btn-primary">Start with Profiles →</a>
+            <a href="{{ get_url(path='@/docs/agents/overview.md') }}" class="btn btn-secondary">Explore Agents →</a>
+            <span class="use-case-cta-note">Choose who should own the conversation, then build on the same local context.</span>
         </div>
     </div>
 </section>

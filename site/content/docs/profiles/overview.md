@@ -60,19 +60,19 @@ prompts can list and resolve them through their own interface. Client support an
 presentation vary, so selecting a profile may appear as a prompt picker, command,
 or integration-specific action.
 
-Context Harness also exposes compatibility REST endpoints for custom clients:
+Context Harness also exposes first-class REST endpoints for custom clients:
 
 ```sh
-curl -s http://127.0.0.1:7331/agents/list
+curl -s http://127.0.0.1:7331/profiles/list
 
 curl -s -X POST \
-  http://127.0.0.1:7331/agents/code-reviewer/prompt \
+  http://127.0.0.1:7331/profiles/code-reviewer/prompt \
   -H 'Content-Type: application/json' \
   -d '{}'
 ```
 
-The `/agents/*` route and `[agents.*]` configuration names are historical. They
-now represent what this documentation calls profiles.
+Older `/agents/*` routes and `[agents.*]` configuration tables remain accepted
+as deprecated aliases, so existing installations can migrate without a flag day.
 
 Connecting Context Harness as an MCP server makes its capabilities discoverable,
 but it does not silently apply a profile to every chat. The user or client
@@ -104,7 +104,7 @@ one reusable role with two explicit execution choices.
 Use an inline TOML profile when the role and instructions are stable:
 
 ```toml
-[agents.inline.code-reviewer]
+[profiles.inline.code-reviewer]
 description = "Reviews changes against project conventions"
 tools = ["search", "get"]
 system_prompt = """
@@ -117,9 +117,8 @@ Use a Lua profile when startup context depends on arguments or current indexed
 knowledge. For example, an incident profile can accept `service` and `severity`,
 search for relevant runbooks, and place those results into the initial prompt.
 
-Custom embedding applications can also implement the historically named Rust
-`Agent` trait to resolve an `AgentPrompt`. Despite that API name, resolving the
-prompt still does not start a model loop.
+Custom embedding applications can implement the Rust `Profile` trait to resolve
+a `ProfilePrompt`. Resolving the prompt still does not start a model loop.
 
 ### Profiles versus agents
 
@@ -139,7 +138,7 @@ See [Agents Overview](@/docs/agents/overview.md) for the executable path.
 1. Open [Define Profiles](@/docs/profiles/define-profiles.md) for inline TOML,
    Lua, Rust, CLI, MCP, and REST examples.
 2. Start the server with `ctx serve mcp`.
-3. Confirm the profile appears with `ctx agent list` or `GET /agents/list`.
+3. Confirm the profile appears with `ctx profile list` or `GET /profiles/list`.
 4. Select it from an MCP prompt-capable client or resolve it from your own
    integration.
 

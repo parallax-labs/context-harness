@@ -17,7 +17,7 @@ pub async fn run(
     let resource = resources
         .get(name)
         .cloned()
-        .context("standalone agent not found; legacy agents remain prompt-only")?;
+        .context("standalone agent not found; profiles are prompt-only")?;
     let models = catalog_models(&config, &resources, name)?;
     let mut runtime = AgentRuntime::new(config, &std::env::current_dir()?, models)
         .await?

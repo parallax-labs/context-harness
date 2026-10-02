@@ -55,15 +55,15 @@
 //!   --config /tmp/custom-harness/config/ctx.toml \
 //!   serve
 //!
-//! # 5. In another terminal, query the stats tool and agents
+//! # 5. In another terminal, query the stats tool and profiles
 //! curl -s http://localhost:7480/tools/list | jq .
 //! curl -s -X POST http://localhost:7480/tools/kb_stats \
 //!   -H 'Content-Type: application/json' \
 //!   -d '{"query": "deployment"}' | jq .
 //!
-//! # 6. List agents and resolve the runbook-expert agent
-//! curl -s http://localhost:7480/agents/list | jq .
-//! curl -s -X POST http://localhost:7480/agents/runbook-expert/prompt \
+//! # 6. List profiles and resolve the runbook-expert profile
+//! curl -s http://localhost:7480/profiles/list | jq .
+//! curl -s -X POST http://localhost:7480/profiles/runbook-expert/prompt \
 //!   -H 'Content-Type: application/json' \
 //!   -d '{"topic": "deployment"}' | jq .
 //! ```
@@ -77,11 +77,11 @@ use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use context_harness::agents::{Agent, AgentPrompt, AgentRegistry};
 use context_harness::config;
 use context_harness::ingest::run_sync_with_extensions;
 use context_harness::migrate;
 use context_harness::models::SourceItem;
+use context_harness::profiles::{Profile, ProfilePrompt, ProfileRegistry};
 use context_harness::server::run_server_with_extensions;
 use context_harness::traits::{
     Connector, ConnectorRegistry, SearchOptions, Tool, ToolContext, ToolRegistry,
@@ -259,7 +259,7 @@ impl Tool for StatsTool {
 struct RunbookAgent;
 
 #[async_trait]
-impl Agent for RunbookAgent {
+impl Profile for RunbookAgent {
     fn name(&self) -> &str {
         "runbook-expert"
     }
@@ -276,7 +276,7 @@ impl Agent for RunbookAgent {
         "rust"
     }
 
-    async fn resolve(&self, args: Value, ctx: &ToolContext) -> Result<AgentPrompt> {
+    async fn resolve(&self, args: Value, ctx: &ToolContext) -> Result<ProfilePrompt> {
         let topic = args["topic"].as_str().unwrap_or("operations");
 
         // Pre-search for relevant runbooks to inject as context
@@ -317,7 +317,7 @@ When answering:
 3. Warn about common pitfalls"#,
         );
 
-        Ok(AgentPrompt {
+        Ok(ProfilePrompt {
             system,
             tools: self.tools(),
             messages: vec![],
@@ -394,12 +394,12 @@ async fn main() -> Result<()> {
             let mut tools = ToolRegistry::new();
             tools.register(Box::new(StatsTool));
 
-            // Register our custom agent
-            let mut agents = AgentRegistry::new();
-            agents.register(Box::new(RunbookAgent));
+            // Register our custom profile
+            let mut profiles = ProfileRegistry::new();
+            profiles.register(Box::new(RunbookAgent));
 
             println!("Starting server with custom StatsTool + RunbookAgent...");
-            run_server_with_extensions(&cfg, Arc::new(tools), Arc::new(agents)).await?;
+            run_server_with_extensions(&cfg, Arc::new(tools), Arc::new(profiles)).await?;
         }
     }
 

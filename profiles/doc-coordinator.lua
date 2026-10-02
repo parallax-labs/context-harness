@@ -1,24 +1,24 @@
 --[[
-  Context Harness Agent: doc-coordinator
+  Context Harness Profile: doc-coordinator
 
   Orchestrates the documentation workflow for Context Harness.
   Routes feature work through the five-layer doc hierarchy
   (PRD → ADR → Spec → Design → Runbook), checks which docs
   exist, identifies gaps, and recommends which doc-writer
-  agents to invoke next.
+  profiles to invoke next.
 
   Configuration (add to ctx.toml):
 
-    [agents.script.doc-coordinator]
-    path = "agents/doc-coordinator.lua"
+    [profiles.script.doc-coordinator]
+    path = "profiles/doc-coordinator.lua"
     search_limit = "12"
 
   Usage:
-    ctx agent test doc-coordinator --arg feature="drag-and-drop import"
-    ctx agent test doc-coordinator --arg action="audit"
+    ctx profile test doc-coordinator --arg feature="drag-and-drop import"
+    ctx profile test doc-coordinator --arg action="audit"
 ]]
 
-agent = {
+profile = {
     name = "doc-coordinator",
     description = "Orchestrates the documentation workflow across the five-layer hierarchy (PRD, ADR, Spec, Design, Runbook)",
     tools = { "search", "get", "sources" },
@@ -36,7 +36,7 @@ agent = {
     },
 }
 
-function agent.resolve(args, config, context)
+function profile.resolve(args, config, context)
     local feature = args.feature or ""
     local action = args.action or "plan"
     local search_limit = tonumber(config.search_limit) or 12
@@ -71,7 +71,7 @@ function agent.resolve(args, config, context)
         "",
         "## Delegation",
         "",
-        "You coordinate but do not write docs yourself. Recommend which specialized agent to use:",
+        "You coordinate but do not write docs yourself. Recommend which specialized profile to use:",
         "- **prd-writer** — for Product Requirements Documents",
         "- **adr-writer** — for Architecture Decision Records",
         "- **spec-writer** — for Specifications",
@@ -96,7 +96,7 @@ function agent.resolve(args, config, context)
         "Present your analysis as:",
         "1. **Current State**: What docs exist for this feature/area.",
         "2. **Gaps**: What's missing from the doc hierarchy.",
-        "3. **Action Plan**: Ordered list of docs to create, with the agent to use and the next number in the sequence.",
+        "3. **Action Plan**: Ordered list of docs to create, with the profile to use and the next number in the sequence.",
         "4. **Cross-References**: Which existing docs should link to the new ones.",
     }
 

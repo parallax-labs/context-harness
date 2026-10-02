@@ -1,5 +1,5 @@
 --[[
-  Context Harness Agent: prd-writer
+  Context Harness Profile: prd-writer
 
   Writes Product Requirements Documents following the PRD policy
   (docs/prd/0000-prd-policy.md). Pre-loads existing PRDs and related
@@ -7,15 +7,15 @@
 
   Configuration (add to ctx.toml):
 
-    [agents.script.prd-writer]
-    path = "agents/prd-writer.lua"
+    [profiles.script.prd-writer]
+    path = "profiles/prd-writer.lua"
     search_limit = "8"
 
   Usage:
-    ctx agent test prd-writer --arg feature="multi-workspace support"
+    ctx profile test prd-writer --arg feature="multi-workspace support"
 ]]
 
-agent = {
+profile = {
     name = "prd-writer",
     description = "Writes Product Requirements Documents following the PRD policy",
     tools = { "search", "get" },
@@ -33,7 +33,7 @@ agent = {
     },
 }
 
-function agent.resolve(args, config, context)
+function profile.resolve(args, config, context)
     local feature = args.feature or "unnamed feature"
     local status = args.status or "Draft"
     local search_limit = tonumber(config.search_limit) or 8

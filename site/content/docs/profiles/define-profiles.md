@@ -13,9 +13,9 @@ Context Harness has two related but different concepts:
 | **Agent** | Context Harness | A bounded model/tool loop with permissions, approvals, durable state, inspection, and recovery | You want Context Harness to own and execute the task |
 
 A profile is not an autonomous agent and does not have a run lifecycle. It is a
-named recipe that prepares an external conversation. The existing configuration
-and API retain their historical `agents.*` and `/agents/*` names for
-compatibility, but this guide calls that feature **profiles**.
+named recipe that prepares an external conversation. New configurations use
+`profiles.*`, the CLI uses `ctx profile`, and REST integrations use
+`/profiles/*`. The historical agent spellings remain deprecated aliases.
 
 An executable agent is a standalone resource under `.ctx/agents`. See
 [Build Local Agents](@/docs/agents/build-local-agents.md) for its complete setup.
@@ -71,9 +71,9 @@ conversation created from a profile.
 | Mode | Config | Best for |
 |------|--------|----------|
 | **Standalone projection** | `.ctx/agents/<name>.toml` | Reusing one role for both managed runs and external conversations |
-| **Inline TOML** | `[agents.inline.<name>]` | Static reusable profiles |
-| **Lua script** | `[agents.script.<name>]` | Dynamic context injection, conditional logic |
-| **Rust trait** | `impl Agent for MyAgent` | Compiled extensions in custom binaries |
+| **Inline TOML** | `[profiles.inline.<name>]` | Static reusable profiles |
+| **Lua script** | `[profiles.script.<name>]` | Dynamic context injection, conditional logic |
+| **Rust trait** | `impl Profile for MyAgent` | Compiled extensions in custom binaries |
 
 ---
 
@@ -82,7 +82,7 @@ conversation created from a profile.
 The simplest way to define a profile—everything lives in `ctx.toml`:
 
 ```toml
-[agents.inline.code-reviewer]
+[profiles.inline.code-reviewer]
 description = "Reviews code changes against project conventions"
 tools = ["search", "get"]
 system_prompt = """
@@ -95,7 +95,7 @@ You are a senior code reviewer for this project. When reviewing code:
 Always ground your feedback in the project's documented standards.
 """
 
-[agents.inline.architect]
+[profiles.inline.architect]
 description = "Answers architecture questions using indexed documentation"
 tools = ["search", "get", "sources"]
 system_prompt = """
@@ -106,8 +106,8 @@ When recommending changes, explain tradeoffs clearly.
 """
 ```
 
-These profiles appear immediately in `GET /agents/list` and can be resolved via
-`POST /agents/{name}/prompt`. The endpoint names are retained for compatibility.
+These profiles appear immediately in `GET /profiles/list` and can be resolved via
+`POST /profiles/{name}/prompt`.
 
 ---
 
@@ -117,23 +117,23 @@ Use a scripted profile for **dynamic context injection**—for example, searchin
 for relevant runbooks before an external conversation starts:
 
 ```toml
-[agents.script.incident-responder]
-path = "agents/incident-responder.lua"
+[profiles.script.incident-responder]
+path = "profiles/incident-responder.lua"
 timeout = 30
 search_limit = 5
 ```
 
 ```lua
--- agents/incident-responder.lua
+-- profiles/incident-responder.lua
 
-agent = {}
+profile = {}
 
-agent.name = "incident-responder"
-agent.description = "Helps triage production incidents with relevant runbooks"
-agent.tools = { "search", "get", "create_jira_ticket" }
+profile.name = "incident-responder"
+profile.description = "Helps triage production incidents with relevant runbooks"
+profile.tools = { "search", "get", "create_jira_ticket" }
 
 -- Arguments the user can provide
-agent.arguments = {
+profile.arguments = {
     {
         name = "service",
         description = "The service experiencing the incident",
@@ -146,7 +146,7 @@ agent.arguments = {
     },
 }
 
-function agent.resolve(args, config, context)
+function profile.resolve(args, config, context)
     local service = args.service or "unknown"
     local severity = args.severity or "P2"
 
@@ -188,7 +188,7 @@ Be methodical: gather context, identify the issue, recommend actions.
     }
 end
 
-return agent
+return profile
 ```
 
 The `context` bridge provides:
@@ -198,19 +198,18 @@ The `context` bridge provides:
 | `context.search(query, opts?)` | Search the knowledge base (keyword/semantic/hybrid) |
 | `context.get(id)` | Retrieve a full document by UUID |
 | `context.sources()` | List all data sources and their status |
-| `context.config` | Tool config from `ctx.toml` (env vars expanded) |
+| `config` argument | Profile-specific values from `ctx.toml` (env vars expanded) |
 
 ---
 
 ### HTTP endpoints
 
-#### `GET /agents/list`
+#### `GET /profiles/list`
 
-Discover all registered profiles. The response field and route retain their
-historical names:
+Discover all registered profiles:
 
 ```bash
-$ curl -s localhost:7331/agents/list | jq '.agents[] | {name, description, tools}'
+$ curl -s localhost:7331/profiles/list | jq '.profiles[] | {name, description, tools}'
 ```
 
 ```json
@@ -226,12 +225,12 @@ $ curl -s localhost:7331/agents/list | jq '.agents[] | {name, description, tools
 }
 ```
 
-#### `POST /agents/{name}/prompt`
+#### `POST /profiles/{name}/prompt`
 
-Resolve a profile's prompt (for Lua profiles, this executes `agent.resolve()`):
+Resolve a profile's prompt (for Lua profiles, this executes `profile.resolve()`):
 
 ```bash
-$ curl -s localhost:7331/agents/incident-responder/prompt \
+$ curl -s localhost:7331/profiles/incident-responder/prompt \
     -H "Content-Type: application/json" \
     -d '{"service": "payments-api", "severity": "P1"}' | jq .
 ```
@@ -260,22 +259,22 @@ $ curl -s localhost:7331/agents/incident-responder/prompt \
 
 ### CLI commands
 
-The current CLI keeps profiles under `ctx agent` for backward compatibility.
-These commands list, resolve, or scaffold profiles; they do not execute a model.
-`ctx agent run`, `history`, `inspect`, and `resume` belong to executable agents.
+Profiles have their own `ctx profile` command group. These commands list,
+resolve, or scaffold profiles; they do not execute a model. `ctx agent run`,
+`history`, `inspect`, and `resume` belong to executable agents.
 
 ```bash
-# List profiles and standalone executable agents
-$ ctx agent list
+# List profiles, including projections from standalone executable agents
+$ ctx profile list
   code-reviewer        Reviews code changes against project conventions   (tools: search, get)        [toml]
   architect            Answers architecture questions using indexed docs   (tools: search, get, sources) [toml]
   incident-responder   Helps triage production incidents with runbooks     (tools: search, get, create_jira_ticket) [lua]
 
 # Resolve a Lua profile with arguments
-$ ctx agent test incident-responder --arg service=payments-api --arg severity=P1
+$ ctx profile test incident-responder --arg service=payments-api --arg severity=P1
 
-Agent: incident-responder
-Source: lua (agents/incident-responder.lua)
+Profile: incident-responder
+Source: lua (profiles/incident-responder.lua)
 Tools: search, get, create_jira_ticket
 
 System prompt (487 chars):
@@ -285,13 +284,13 @@ System prompt (487 chars):
 Messages (1):
   [assistant] I'm ready to help with the P1 payments-api incident...
 
-# Scaffold a new Lua profile using the compatibility command
-$ ctx agent init sre-helper
-Created: agents/sre-helper.lua
+# Scaffold a new Lua profile
+$ ctx profile init sre-helper
+Created profile: profiles/sre-helper.lua
 Add to config:
 
-  [agents.script.sre-helper]
-  path = "agents/sre-helper.lua"
+  [profiles.script.sre-helper]
+  path = "profiles/sre-helper.lua"
   timeout = 30
 ```
 
@@ -310,16 +309,16 @@ Registered 6 tools:
   POST /tools/search — Search indexed documents (builtin)
   POST /tools/get — Get document by ID (builtin)
   POST /tools/sources — List data sources (builtin)
-Registered 3 agents:
-  POST /agents/code-reviewer/prompt — Reviews code changes (toml)
-  POST /agents/architect/prompt — Answers architecture questions (toml)
-  POST /agents/incident-responder/prompt — Helps triage incidents (lua)
+Registered 3 profiles:
+  POST /profiles/code-reviewer/prompt — Reviews code changes (toml)
+  POST /profiles/architect/prompt — Answers architecture questions (toml)
+  POST /profiles/incident-responder/prompt — Helps triage incidents (lua)
 MCP server listening on http://127.0.0.1:7331
 ```
 
 **Step 2:** Resolve a profile's prompt and use it:
 
-Call `POST /agents/{name}/prompt` to get the system prompt, then use it in the
+Call `POST /profiles/{name}/prompt` to get the system prompt, then use it in the
 external LLM conversation. The profile's `tools` array tells the client which
 Context Harness tools are relevant; the client remains responsible for making
 them available and enforcing its own policy.
@@ -341,41 +340,41 @@ conversations:
 # config/ctx.toml
 
 # ── Development ──────────────────────────────────
-[agents.inline.code-reviewer]
+[profiles.inline.code-reviewer]
 description = "Reviews code against project conventions and patterns"
 tools = ["search", "get"]
 system_prompt = """..."""
 
-[agents.inline.architect]
+[profiles.inline.architect]
 description = "Answers architecture questions using indexed ADRs and design docs"
 tools = ["search", "get", "sources"]
 system_prompt = """..."""
 
 # ── Operations ───────────────────────────────────
-[agents.inline.sre-responder]
+[profiles.inline.sre-responder]
 description = "Helps triage production incidents with runbooks and context"
 tools = ["search", "get", "sources"]
 system_prompt = """..."""
 
-[agents.inline.release-manager]
+[profiles.inline.release-manager]
 description = "Helps with release planning, changelogs, and deployment"
 tools = ["search", "get", "sources"]
 system_prompt = """..."""
 
 # ── Knowledge ────────────────────────────────────
-[agents.inline.onboarding]
+[profiles.inline.onboarding]
 description = "Guides new engineers through the codebase"
 tools = ["search", "get", "sources"]
 system_prompt = """..."""
 
-[agents.inline.tech-writer]
+[profiles.inline.tech-writer]
 description = "Writes documentation matching project style"
 tools = ["search", "get"]
 system_prompt = """..."""
 
 # ── Domain Experts (Lua, dynamic) ────────────────
-[agents.script.domain-expert]
-path = "agents/domain-expert.lua"
+[profiles.script.domain-expert]
+path = "profiles/domain-expert.lua"
 timeout = 30
 search_limit = 10
 ```
@@ -384,12 +383,11 @@ search_limit = 10
 
 ### Custom Rust profiles
 
-For compiled profiles in custom harness binaries, implement the historically
-named `Agent` trait. The trait resolves an `AgentPrompt`; it does not execute a
-model loop:
+For compiled profiles in custom harness binaries, implement the `Profile` trait.
+The trait resolves a `ProfilePrompt`; it does not execute a model loop:
 
 ```rust
-use context_harness::{Agent, AgentPrompt, AgentArgument};
+use context_harness::{Profile, ProfilePrompt, ProfileArgument};
 use context_harness::traits::ToolContext;
 use async_trait::async_trait;
 use serde_json::Value;
@@ -398,20 +396,20 @@ use anyhow::Result;
 pub struct DatabaseExpert;
 
 #[async_trait]
-impl Agent for DatabaseExpert {
+impl Profile for DatabaseExpert {
     fn name(&self) -> &str { "db-expert" }
     fn description(&self) -> &str { "Database design and query optimization" }
     fn tools(&self) -> Vec<String> { vec!["search".into(), "get".into()] }
 
-    fn arguments(&self) -> Vec<AgentArgument> {
-        vec![AgentArgument {
+    fn arguments(&self) -> Vec<ProfileArgument> {
+        vec![ProfileArgument {
             name: "database".into(),
             description: "Target database name".into(),
             required: false,
         }]
     }
 
-    async fn resolve(&self, args: Value, ctx: &ToolContext) -> Result<AgentPrompt> {
+    async fn resolve(&self, args: Value, ctx: &ToolContext) -> Result<ProfilePrompt> {
         let db = args["database"].as_str().unwrap_or("main");
 
         // Pre-search for schema documentation
@@ -420,7 +418,7 @@ impl Agent for DatabaseExpert {
             .map(|r| format!("- {}", r.title.as_deref().unwrap_or("?")))
             .collect::<Vec<_>>().join("\n");
 
-        Ok(AgentPrompt {
+        Ok(ProfilePrompt {
             system: format!(
                 "You are a database expert for '{}'.\nRelevant docs:\n{}",
                 db, context
@@ -435,9 +433,9 @@ impl Agent for DatabaseExpert {
 Register it in your custom binary:
 
 ```rust
-let mut agents = AgentRegistry::new();
-agents.register(Box::new(DatabaseExpert));
-run_server_with_extensions(config, tools, Arc::new(agents)).await?;
+let mut profiles = ProfileRegistry::new();
+profiles.register(Box::new(DatabaseExpert));
+run_server_with_extensions(config, tools, Arc::new(profiles)).await?;
 ```
 
 See the [full example](https://github.com/parallax-labs/context-harness/blob/main/examples/custom_harness.rs).

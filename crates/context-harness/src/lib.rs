@@ -81,8 +81,9 @@
 //! | [`lua_runtime`] | Shared Lua 5.4 VM runtime: sandboxing, host APIs, value conversions |
 //! | [`tool_script`] | Lua MCP tool extensions: load, validate, execute Lua tool scripts |
 //! | [`traits`] | Extension traits: `Connector`, `Tool`, `ToolContext`, registries |
-//! | [`agents`] | Agent system: `Agent` trait, `AgentPrompt`, `AgentRegistry`, `TomlAgent` |
-//! | [`agent_script`] | Lua scripted agents: load, resolve, scaffold, test |
+//! | [`profiles`] | Reusable prompt profiles: `Profile`, `ProfilePrompt`, `ProfileRegistry`, `TomlProfile` |
+//! | [`profile_script`] | Lua scripted profiles: load, resolve, scaffold, test |
+//! | [`agents`] | Deprecated compatibility aliases for the former prompt-agent API |
 //! | [`chunk`] | Paragraph-boundary text chunker |
 //! | [`embedding`] | Embedding provider trait, OpenAI implementation, vector utilities |
 //! | [`embed_cmd`] | Embedding CLI commands: `pending` and `rebuild` |
@@ -128,6 +129,8 @@ pub mod lua_tool_binding;
 pub mod mcp;
 pub mod migrate;
 pub mod models;
+pub mod profile_script;
+pub mod profiles;
 pub mod progress;
 pub mod redact;
 pub mod registry;
@@ -142,6 +145,9 @@ pub mod traits;
 pub mod vector_index;
 pub mod workspace;
 
+pub use profiles::{Profile, ProfilePrompt, ProfileRegistry, TomlProfile};
+
+#[allow(deprecated)]
 pub use agents::{Agent, AgentPrompt, AgentRegistry, TomlAgent};
 pub use context_harness_core::store;
 pub use models::SourceItem;

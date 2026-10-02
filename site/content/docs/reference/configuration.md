@@ -112,9 +112,9 @@ jira_url = "https://mycompany.atlassian.net"
 jira_project = "ENG"
 jira_token = "${JIRA_API_TOKEN}"
 
-# ── Inline agents (static prompts) ──────────────
+# ── Inline profiles (static prompts) ────────────
 
-[agents.inline.code-reviewer]
+[profiles.inline.code-reviewer]
 description = "Reviews code changes against project conventions"
 tools = ["search", "get"]
 system_prompt = """
@@ -122,7 +122,7 @@ You are a senior code reviewer. Use search to find coding conventions.
 Be specific — cite which convention a suggestion relates to.
 """
 
-[agents.inline.architect]
+[profiles.inline.architect]
 description = "Answers architecture questions using indexed docs"
 tools = ["search", "get", "sources"]
 system_prompt = """
@@ -132,8 +132,8 @@ When recommending changes, explain tradeoffs and cite sources.
 
 # ── Lua scripted profiles (dynamic prompts) ──────
 
-[agents.script.incident-responder]
-path = "agents/incident-responder.lua"
+[profiles.script.incident-responder]
+path = "profiles/incident-responder.lua"
 timeout = 30
 search_limit = 5
 
@@ -199,8 +199,11 @@ workspace = "acme"                      # Plain string, no expansion
 | `[connectors.s3.*]` | Named S3 connector instances |
 | `[connectors.script.*]` | Named Lua scripted connector instances |
 | `[tools.script.*]` | Lua scripted tool configs |
-| `[agents.inline.*]` | MCP profiles with static prompts (historical config name) |
-| `[agents.script.*]` | MCP profiles with Lua-resolved dynamic prompts (historical config name) |
+| `[profiles.inline.*]` | MCP profiles with static prompts |
+| `[profiles.script.*]` | MCP profiles with Lua-resolved dynamic prompts |
 | sibling `agents/*.toml` | Standalone local agent resources |
 | sibling `tools/*.toml` | Declarative local tool bindings |
 | `[registries.*]` | Named extension registry instances |
+
+The deprecated `[agents.inline.*]` and `[agents.script.*]` spellings are still
+accepted as aliases for existing configurations.

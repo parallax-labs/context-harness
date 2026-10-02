@@ -1,8 +1,8 @@
 use context_harness::{
     agent_resource::{ResourceDirectory, ResourceScope},
-    agents::{AgentRegistry, TomlAgent},
     config::Config,
     mcp::McpBridge,
+    profiles::{ProfileRegistry, TomlProfile},
     server::register_resource_prompts,
     traits::ToolRegistry,
     workspace::{ServerMode, WorkspaceRouter},
@@ -54,29 +54,29 @@ system='Use project context before answering.'
     }];
     (root, config, dirs)
 }
-fn legacy(name: &str) -> Box<TomlAgent> {
-    Box::new(TomlAgent::new(
+fn profile(name: &str) -> Box<TomlProfile> {
+    Box::new(TomlProfile::new(
         name.into(),
-        "Legacy prompt".into(),
+        "Registered profile".into(),
         vec![],
-        "Legacy system".into(),
+        "Registered system".into(),
     ))
 }
 
 #[tokio::test]
-async fn mcp_projects_resources_without_execution_and_preserves_legacy_prompts() {
+async fn mcp_projects_resources_without_execution_and_preserves_registered_profiles() {
     let (_root, config, dirs) = fixture();
-    let mut agents = AgentRegistry::new();
-    agents.register(legacy("legacy"));
-    let mut extra = AgentRegistry::new();
-    extra.register(legacy("extension"));
-    register_resource_prompts(&config, &dirs, &mut agents, &extra).unwrap();
+    let mut profiles = ProfileRegistry::new();
+    profiles.register(profile("registered"));
+    let mut extra = ProfileRegistry::new();
+    extra.register(profile("extension"));
+    register_resource_prompts(&config, &dirs, &mut profiles, &extra).unwrap();
     let bridge = McpBridge::new(
         Arc::new(WorkspaceRouter::single(Arc::new(config.clone()))),
         ServerMode::Compat,
         Arc::new(ToolRegistry::with_builtins()),
         Arc::new(ToolRegistry::new()),
-        Arc::new(agents),
+        Arc::new(profiles),
         Arc::new(extra),
     );
     let (server_io, client_io) = tokio::io::duplex(65536);
@@ -94,8 +94,8 @@ async fn mcp_projects_resources_without_execution_and_preserves_legacy_prompts()
     assert!(resource.arguments.is_none());
     for (name, text) in [
         ("researcher", "Use project context before answering."),
-        ("legacy", "Legacy system"),
-        ("extension", "Legacy system"),
+        ("registered", "Registered system"),
+        ("extension", "Registered system"),
     ] {
         let result = client
             .get_prompt(GetPromptRequestParams {
@@ -132,18 +132,18 @@ fn resource_collisions_fail_before_partial_registration() {
     )
     .unwrap();
     for extra_collision in [false, true] {
-        let mut agents = AgentRegistry::new();
-        let mut extra = AgentRegistry::new();
+        let mut profiles = ProfileRegistry::new();
+        let mut extra = ProfileRegistry::new();
         if extra_collision {
-            extra.register(legacy("researcher"));
+            extra.register(profile("researcher"));
         } else {
-            agents.register(legacy("researcher"));
+            profiles.register(profile("researcher"));
         }
-        let before = agents.len();
-        let error = register_resource_prompts(&config, &dirs, &mut agents, &extra).unwrap_err();
+        let before = profiles.len();
+        let error = register_resource_prompts(&config, &dirs, &mut profiles, &extra).unwrap_err();
         assert!(error
             .to_string()
-            .contains("conflicts with registered agent 'researcher'"));
-        assert_eq!(agents.len(), before);
+            .contains("conflicts with registered profile 'researcher'"));
+        assert_eq!(profiles.len(), before);
     }
 }
