@@ -127,9 +127,10 @@ happened instead of treating every non-successful outcome as the same failure.
 
 This work depends on the existing local runtime, model boundary, tool registry,
 checkpoint/recovery mechanism and durable SQLite history defined by SPEC-0015
-through SPEC-0022. Declarative tool bindings in PRD-0013 may affect how effective
-tool identity and recovery compatibility are represented, but the working-state
-and lifecycle design should not depend on application-specific tools.
+through SPEC-0022. The declarative tool bindings delivered by PRD-0013 and
+SPEC-0023 determine how effective tool identity and recovery compatibility are
+represented, but the working-state and lifecycle design should not depend on
+application-specific tools.
 
 Context compaction can omit evidence the model still needs, while full replay can
 exhaust provider context and increase cost. Structured state can become a second,
@@ -172,7 +173,10 @@ No implementation phase begins while this PRD remains Draft.
 
 - [DESIGN-0014](../design/0014-structured-agent-run-state.md): exploratory
   architecture, alternatives, staging and unresolved decisions.
-- [PRD-0013](0013-declarative-tool-bindings.md): reusable runtime tool composition.
+- [PRD-0013](0013-declarative-tool-bindings.md): delivered reusable runtime tool
+  composition.
+- [SPEC-0023](../spec/0023-declarative-tool-bindings.md): authoritative tool-binding
+  contract.
 - [ADR-0024](../adr/0024-local-agent-runtime.md): accepted optional local-execution
   boundary.
 - [DESIGN-0010](../design/0010-local-agent-runtime.md): original runtime vision.

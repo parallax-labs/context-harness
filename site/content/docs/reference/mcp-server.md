@@ -252,19 +252,19 @@ $ curl -s -X POST localhost:7331/tools/create_jira_ticket \
 | `408` | Lua script timed out |
 | `500` | Script execution error |
 
-#### `GET /agents/list`
+#### `GET /profiles/list`
 
-Discover all registered agents with their metadata, tool lists, and argument schemas:
+Discover all registered profiles with their metadata, tool lists, and argument schemas:
 
 ```bash
-$ curl -s localhost:7331/agents/list | jq '.agents[] | {name, description, tools, source}'
+$ curl -s localhost:7331/profiles/list | jq '.profiles[] | {name, description, tools, source}'
 ```
 
 **Response:**
 
 ```json
 {
-  "agents": [
+  "profiles": [
     {
       "name": "code-reviewer",
       "description": "Reviews code changes against project conventions",
@@ -286,12 +286,12 @@ $ curl -s localhost:7331/agents/list | jq '.agents[] | {name, description, tools
 }
 ```
 
-#### `POST /agents/{name}/prompt`
+#### `POST /profiles/{name}/prompt`
 
-Resolve an agent's system prompt. For Lua agents, this executes the script's `agent.resolve()` function with access to the context bridge.
+Resolve a profile's system prompt. For Lua profiles, this executes the script's `profile.resolve()` function with access to the context bridge.
 
 ```bash
-$ curl -s localhost:7331/agents/incident-responder/prompt \
+$ curl -s localhost:7331/profiles/incident-responder/prompt \
     -H "Content-Type: application/json" \
     -d '{"service": "payments-api", "severity": "P1"}' | jq .
 ```
@@ -313,7 +313,7 @@ $ curl -s localhost:7331/agents/incident-responder/prompt \
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| (body) | object | Agent-specific arguments as key-value pairs |
+| (body) | object | Profile-specific arguments as key-value pairs |
 
 | Status | Meaning |
 |--------|---------|
@@ -331,11 +331,11 @@ $ curl -s localhost:7331/health
 {"status":"ok"}
 ```
 
-### Connecting to AI agents
+### Connecting external AI clients
 
 All MCP clients connect to `http://127.0.0.1:7331/mcp` (the Streamable HTTP endpoint). The REST endpoints above are available for custom integrations that don't speak MCP.
 
-See the [Agent Integration](@/docs/guides/agent-integration.md) guide for step-by-step setup with:
+See [Connect External AI Clients](@/docs/guides/agent-integration.md) for step-by-step setup with:
 
 - **Cursor** — workspace-level or global MCP config → `http://127.0.0.1:7331/mcp`
 - **Claude Desktop** — MCP server URL → `http://127.0.0.1:7331/mcp`

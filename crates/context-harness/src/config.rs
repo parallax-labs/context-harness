@@ -94,9 +94,11 @@ pub struct Config {
     /// Tool script configurations (all optional).
     #[serde(default)]
     pub tools: ToolsConfig,
-    /// Agent configurations (all optional).
-    #[serde(default)]
-    pub agents: AgentsConfig,
+    /// Reusable MCP profile configurations (all optional).
+    ///
+    /// The historical `[agents.*]` table remains accepted as an alias.
+    #[serde(default, alias = "agents")]
+    pub profiles: ProfilesConfig,
     /// Model aliases for standalone executable-agent resources.
     #[serde(default)]
     pub models: std::collections::BTreeMap<String, crate::agent_resource::ModelDefinition>,
@@ -136,7 +138,7 @@ impl Config {
             },
             connectors: ConnectorsConfig::default(),
             tools: ToolsConfig::default(),
-            agents: AgentsConfig::default(),
+            profiles: ProfilesConfig::default(),
             models: std::collections::BTreeMap::new(),
             mcp_servers: std::collections::BTreeMap::new(),
             registries: HashMap::new(),
@@ -506,7 +508,7 @@ fn default_script_timeout() -> u64 {
 
 /// Container for all tool script configurations.
 ///
-/// Tool scripts are Lua files that define MCP tools agents can discover
+/// Tool scripts are Lua files that define MCP tools profiles can discover
 /// and call via the HTTP server. See `docs/LUA_TOOLS.md` for the full
 /// specification.
 #[derive(Debug, Deserialize, Clone, Default)]
@@ -551,46 +553,45 @@ fn default_tool_timeout() -> u64 {
     30
 }
 
-/// Container for all agent configurations.
+/// Container for all reusable profile configurations.
 ///
-/// Agents are named personas that combine a system prompt, scoped tools,
+/// Profiles are named personas that combine a system prompt, scoped tools,
 /// and optional dynamic context injection. They can be defined inline
 /// in TOML or via Lua scripts.
 ///
 /// # Example
 ///
 /// ```toml
-/// [agents.inline.code-reviewer]
+/// [profiles.inline.code-reviewer]
 /// description = "Reviews code against project conventions"
 /// tools = ["search", "get"]
 /// system_prompt = "You are a senior code reviewer..."
 ///
-/// [agents.script.incident-responder]
-/// path = "agents/incident-responder.lua"
+/// [profiles.script.incident-responder]
+/// path = "profiles/incident-responder.lua"
 /// timeout = 30
 /// ```
 #[derive(Debug, Deserialize, Clone, Default)]
-pub struct AgentsConfig {
-    /// Inline TOML agents with static system prompts.
-    /// Each key is the agent name, each value contains the prompt and tool list.
+pub struct ProfilesConfig {
+    /// Inline TOML profiles with static system prompts.
+    /// Each key is the profile name, each value contains the prompt and tool list.
     #[serde(default)]
-    pub inline: HashMap<String, InlineAgentConfig>,
-    /// Lua script agents with dynamic prompt resolution.
-    /// Each key is the agent name, each value contains the script path
-    /// and arbitrary config keys passed to `agent.resolve()`.
+    pub inline: HashMap<String, InlineProfileConfig>,
+    /// Lua script profiles with dynamic prompt resolution.
+    /// Each key is the profile name, each value contains the script path
+    /// and arbitrary config keys passed to `profile.resolve()`.
     #[serde(default)]
-    pub script: HashMap<String, ScriptAgentConfig>,
+    pub script: HashMap<String, ScriptProfileConfig>,
 }
 
-/// Inline (TOML) agent configuration.
+/// Inline TOML profile configuration.
 ///
-/// Defines an agent with a static system prompt and fixed tool list.
-/// The simplest way to create an agent — no Lua or Rust code needed.
+/// Defines a profile with a static system prompt and fixed tool list.
 ///
 /// # Example
 ///
 /// ```toml
-/// [agents.inline.architect]
+/// [profiles.inline.architect]
 /// description = "Answers architecture questions"
 /// tools = ["search", "get", "sources"]
 /// system_prompt = """
@@ -599,52 +600,62 @@ pub struct AgentsConfig {
 /// """
 /// ```
 #[derive(Debug, Deserialize, Clone)]
-pub struct InlineAgentConfig {
-    /// One-line description for agent discovery.
+pub struct InlineProfileConfig {
+    /// One-line description for profile discovery.
     pub description: String,
-    /// List of tool names this agent should expose.
+    /// List of tool names this profile suggests.
     pub tools: Vec<String>,
     /// The system prompt text.
     pub system_prompt: String,
 }
 
-/// Lua script agent configuration.
+/// Lua script profile configuration.
 ///
-/// Points to a `.lua` file implementing the agent interface. All fields
+/// Points to a `.lua` file implementing the profile interface. All fields
 /// except `path` and `timeout` are passed as config to the script's
-/// `agent.resolve(args, config, context)` function.
+/// `profile.resolve(args, config, context)` function.
 ///
 /// Values containing `${VAR_NAME}` are expanded from the process environment.
 ///
 /// # Example
 ///
 /// ```toml
-/// [agents.script.incident-responder]
-/// path = "agents/incident-responder.lua"
+/// [profiles.script.incident-responder]
+/// path = "profiles/incident-responder.lua"
 /// timeout = 30
 /// search_limit = 5
 /// priority_sources = ["runbooks"]
 /// ```
 #[derive(Debug, Deserialize, Clone)]
-pub struct ScriptAgentConfig {
-    /// Path to the `.lua` agent script.
+pub struct ScriptProfileConfig {
+    /// Path to the `.lua` profile script.
     pub path: PathBuf,
     /// Maximum execution time in seconds. Default: `30`.
-    #[serde(default = "default_agent_timeout")]
+    #[serde(default = "default_profile_timeout")]
     pub timeout: u64,
-    /// All other config keys — passed to the Lua `agent.resolve()` function.
+    /// All other config keys — passed to the Lua `profile.resolve()` function.
     #[serde(flatten)]
     pub extra: toml::Table,
 }
 
-fn default_agent_timeout() -> u64 {
+fn default_profile_timeout() -> u64 {
     30
 }
+
+#[deprecated(note = "use ProfilesConfig")]
+#[allow(dead_code)]
+pub type AgentsConfig = ProfilesConfig;
+#[deprecated(note = "use InlineProfileConfig")]
+#[allow(dead_code)]
+pub type InlineAgentConfig = InlineProfileConfig;
+#[deprecated(note = "use ScriptProfileConfig")]
+#[allow(dead_code)]
+pub type ScriptAgentConfig = ScriptProfileConfig;
 
 /// Extension registry configuration.
 ///
 /// Points to a local directory (optionally backed by a Git repository)
-/// containing Lua connector, tool, and agent scripts described by a
+/// containing Lua connector, tool, and profile scripts described by a
 /// `registry.toml` manifest.
 ///
 /// # Example

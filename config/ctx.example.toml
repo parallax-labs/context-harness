@@ -102,12 +102,12 @@ follow_symlinks = false
 # exclude_globs = []
 # endpoint_url = "http://localhost:9000"           # optional, for MinIO/LocalStack
 
-# ── Agents ──────────────────────────────────────────────────
-# Agents are MCP personas that combine a system prompt with
+# ── Profiles ────────────────────────────────────────────────
+# Profiles are MCP personas that combine a system prompt with
 # scoped tools and optional dynamic context injection.
 
-# Inline agent (static system prompt):
-# [agents.inline.code-reviewer]
+# Inline profile (static system prompt):
+# [profiles.inline.code-reviewer]
 # description = "Reviews code against project conventions"
 # tools = ["search", "get"]
 # system_prompt = """
@@ -115,14 +115,14 @@ follow_symlinks = false
 # Use `search` to find conventions and `get` to read docs.
 # """
 
-# Script agent (dynamic, Lua-powered):
-# [agents.script.doc-coordinator]
-# path = "agents/doc-coordinator.lua"
+# Script profile (dynamic, Lua-powered):
+# [profiles.script.doc-coordinator]
+# path = "profiles/doc-coordinator.lua"
 # search_limit = "12"
 
 # ── Registries ──────────────────────────────────────────────
 # Git-backed extension registries for community connectors,
-# tools, and agents.
+# tools, and profiles.
 
 # [registries.community]
 # url = "https://github.com/parallax-labs/ctx-registry.git"

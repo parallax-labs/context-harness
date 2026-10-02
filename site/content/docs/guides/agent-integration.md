@@ -1,10 +1,13 @@
 +++
-title = "Agent Integration"
-description = "Step-by-step setup for Cursor, Claude Desktop, Continue.dev, OpenClaw, and custom agents."
+title = "Connect External AI Clients"
+description = "Connect Cursor, Claude Desktop, Continue.dev, and custom applications to Context Harness tools."
 weight = 1
 +++
 
-Context Harness exposes an MCP-compatible HTTP server that any AI agent can consume. This guide walks through connecting it to the most popular tools.
+Context Harness exposes an MCP-compatible HTTP server that external AI clients
+can use for project retrieval and tools. This guide connects the server to common
+clients. To give those clients a reusable role and starting context as well, see
+[Profiles Overview](@/docs/profiles/overview.md).
 
 ### Prerequisites
 
@@ -272,4 +275,3 @@ if response.choices[0].message.tool_calls:
         json=json.loads(call.function.arguments),
     ).json()
 ```
-

@@ -325,28 +325,141 @@ Lua tools:
                 Parameters: title (string, required), priority (enum, optional)
 ```
 
+### `ctx tool bindings list|show|validate`
+
+Inspect standalone declarative bindings without executing implementations or
+reading secrets:
+
+```bash
+# Inspect the effective catalog
+ctx tool bindings list
+ctx tool bindings list --json
+
+# Show public schema, fixed arguments, restrictions, identity, and provenance
+ctx tool bindings show project.search --json
+
+# Validate all resources, or one selected binding
+ctx tool bindings validate
+ctx tool bindings validate project.search --json
+```
+
+These commands are static. They do not create a database, evaluate Lua, spawn an
+MCP server, access the network, call a model, or resolve credential values. MCP
+aliases report `remote_metadata: "unresolved"` until separately authorized
+runtime preparation discovers their schemas.
+
 ---
 
 ### `ctx agent list`
 
-List all configured agents with descriptions and tool lists.
+List executable standalone agents. Prompt-only profiles are listed separately
+with `ctx profile list`. Use `--json` for full resource metadata.
 
 ```bash
 $ ctx agent list
-  code-reviewer        Reviews code changes against project conventions   (tools: search, get)        [toml]
-  architect            Answers architecture questions using indexed docs   (tools: search, get, sources) [toml]
-  incident-responder   Helps triage production incidents with runbooks     (tools: search, get, create_jira_ticket) [lua]
+AGENT                    DESCRIPTION                                  MODEL
+project-researcher       Researches the project with citations        openai
 ```
 
-### `ctx agent test <name> [--arg key=value]`
+### `ctx agent show <name> [--json]`
 
-Resolve an agent's prompt with arguments and print the result. Useful for debugging Lua agents.
+Show the effective agent definition, model alias, permissions, execution limits,
+prompt, resource version, source path, and scope:
 
 ```bash
-$ ctx agent test incident-responder --arg service=payments-api --arg severity=P1
+ctx agent show project-researcher --json
+```
 
-Agent: incident-responder
-Source: lua (agents/incident-responder.lua)
+### `ctx agent validate`
+
+Validate the complete agent catalog and every model declaration without reading
+credentials, opening the context database, or calling a provider:
+
+```bash
+ctx agent validate
+```
+
+### `ctx agent run <name> <input>`
+
+Execute a standalone agent with the local bounded runtime:
+
+```bash
+ctx agent run project-researcher \
+  "Explain the architecture and cite the files you used."
+
+# Machine-readable terminal record
+ctx agent run project-researcher "Summarize the release plan" --json
+
+# Deny every call that would require an interactive approval
+ctx agent run project-researcher "Inspect the project" --non-interactive
+```
+
+The run is bound to the canonical current workspace. Selected tools pass through
+schema validation, runtime policy, approvals, cancellation, output limits, and
+durable history.
+
+### `ctx agent history [--limit <n>] [--json]`
+
+List durable runs for the current workspace:
+
+```bash
+ctx agent history --limit 20
+ctx agent history --json
+```
+
+### `ctx agent inspect <run-id>`
+
+Read a run and an ordered page of events:
+
+```bash
+ctx agent inspect <run-id>
+ctx agent inspect <run-id> --after-sequence 200 --limit 200 --json
+```
+
+JSON pagination uses `next_after_sequence` when another event page is available.
+
+### `ctx agent resume <run-id>`
+
+Resume an interrupted run from its latest safe checkpoint:
+
+```bash
+ctx agent resume <run-id>
+ctx agent resume <run-id> --json --non-interactive
+```
+
+Resume rejects completed runs, unsafe or uncertain tool state, changed agent or
+binding identities, exhausted budgets, and non-resumable MCP sessions.
+
+### `ctx profile list [--json]`
+
+List inline, Lua, Rust, and executable-agent-projected profiles:
+
+```bash
+ctx profile list
+```
+
+### `ctx profile show <name> [--json]`
+
+Show a profile's role, suggested tools, arguments, prompt, and provenance.
+
+### `ctx profile validate`
+
+Validate all profile definitions and executable-agent prompt projections.
+
+### `ctx profile test <profile> [--arg key=value]`
+
+Resolve an MCP profile's prompt with arguments and print the result. This does
+not call a model or create an agent run; it is useful for debugging scripted
+profiles.
+
+Standalone resources can also be previewed, but they reject `--arg` because
+their prompts are static. Use `ctx agent run` to test the local runtime.
+
+```bash
+$ ctx profile test incident-responder --arg service=payments-api --arg severity=P1
+
+Profile: incident-responder
+Source: lua (profiles/incident-responder.lua)
 Tools: search, get, create_jira_ticket
 
 System prompt (487 chars):
@@ -356,10 +469,10 @@ System prompt (487 chars):
 Messages (1):
   [assistant] I'm ready to help with the P1 payments-api incident...
 
-# Test a TOML agent (no dynamic resolution)
-$ ctx agent test code-reviewer
+# Test an inline TOML profile (no dynamic resolution)
+$ ctx profile test code-reviewer
 
-Agent: code-reviewer
+Profile: code-reviewer
 Source: toml
 Tools: search, get
 
@@ -367,17 +480,17 @@ System prompt (245 chars):
   You are a senior code reviewer for this project...
 ```
 
-### `ctx agent init <name>`
+### `ctx profile init <name>`
 
-Scaffold a new Lua agent script from a template.
+Scaffold a new Lua profile script from a template.
 
 ```bash
-$ ctx agent init sre-helper
-Created: agents/sre-helper.lua
+$ ctx profile init sre-helper
+Created profile: profiles/sre-helper.lua
 Add to config:
 
-  [agents.script.sre-helper]
-  path = "agents/sre-helper.lua"
+  [profiles.script.sre-helper]
+  path = "profiles/sre-helper.lua"
   timeout = 30
 ```
 
@@ -385,7 +498,7 @@ Add to config:
 
 ### `ctx registry <command>`
 
-Manage extension registries — community connectors, tools, and agents from Git-backed repositories.
+Manage extension registries — community connectors, tools, and profiles from Git-backed repositories.
 
 ```bash
 $ ctx registry --help

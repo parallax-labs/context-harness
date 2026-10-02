@@ -1,5 +1,5 @@
 --[[
-  Context Harness Agent: adr-writer
+  Context Harness Profile: adr-writer
 
   Writes Architecture Decision Records following the ADR policy
   (docs/adr/0000-adr-policy.md). Pre-loads existing ADRs and related
@@ -7,15 +7,15 @@
 
   Configuration (add to ctx.toml):
 
-    [agents.script.adr-writer]
-    path = "agents/adr-writer.lua"
+    [profiles.script.adr-writer]
+    path = "profiles/adr-writer.lua"
     search_limit = "8"
 
   Usage:
-    ctx agent test adr-writer --arg decision="use SQLite for vector storage"
+    ctx profile test adr-writer --arg decision="use SQLite for vector storage"
 ]]
 
-agent = {
+profile = {
     name = "adr-writer",
     description = "Writes Architecture Decision Records following the ADR policy",
     tools = { "search", "get" },
@@ -33,7 +33,7 @@ agent = {
     },
 }
 
-function agent.resolve(args, config, context)
+function profile.resolve(args, config, context)
     local decision = args.decision or "unnamed decision"
     local status = args.status or "Proposed"
     local search_limit = tonumber(config.search_limit) or 8

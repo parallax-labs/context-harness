@@ -353,8 +353,9 @@ as the compatibility baseline until its replacement has acceptance coverage.
   terminal or that only four status strings exist.
 - Usage accounting may be missing or delayed for some providers.
 - Returning tool errors to the model can create retry loops or duplicate effects.
-- Combining this work with declarative tool bindings could make either change too
-  broad; interfaces should align, but delivery should remain separable.
+- Extending the delivered declarative tool-binding contract in the same change
+  could make this work too broad; interfaces should align, but delivery should
+  remain separable.
 
 ## Open Questions
 
@@ -375,8 +376,8 @@ as the compatibility baseline until its replacement has acceptance coverage.
 10. Does user input resume the same run, create a linked run, or require a future
     Session abstraction?
 11. Which parts belong in revisions to SPEC-0017/0019 versus a new focused spec?
-12. How should this design coordinate with PRD/DESIGN-0013 tool-binding identity
-    without coupling their implementation schedules?
+12. Does the delivered SPEC-0023 tool-binding identity contain every compatibility
+    input that context projection and checkpoint recovery require?
 
 ## Documentation Graduation
 

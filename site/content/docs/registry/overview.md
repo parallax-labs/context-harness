@@ -1,10 +1,10 @@
 +++
 title = "Registry Overview"
-description = "How extension registries work — Git-backed repos of community connectors, tools, and agents."
+description = "How extension registries work — Git-backed repos of community connectors, tools, and profiles."
 weight = 1
 +++
 
-Extension registries are Git-backed directories that contain ready-to-use connectors, tools, and agents. Install one with a single command and immediately gain access to dozens of integrations — Jira, Confluence, Slack, RSS, Stack Overflow, and more.
+Extension registries are Git-backed directories that contain ready-to-use connectors, tools, and profiles. Install one with a single command and immediately gain access to dozens of integrations — Jira, Confluence, Slack, RSS, Stack Overflow, and more.
 
 The design follows the same model as [cheat/cheat](https://github.com/cheat/cheat): multiple registry paths with precedence ordering, a read-only community repository, and transparent overrides for local customization.
 
@@ -21,9 +21,9 @@ connectors/
 tools/
   web-fetch/tool.lua             # Fetch and extract web content
   create-jira-ticket/tool.lua    # Create Jira tickets
-agents/
-  researcher/agent.lua           # KB research agent
-  incident-responder/agent.lua   # Incident response agent
+profiles/
+  researcher/profile.lua           # KB research profile
+  incident-responder/profile.lua   # Incident response profile
 ```
 
 The `registry.toml` manifest describes each extension with metadata, tags, required configuration, and host API usage:
@@ -55,7 +55,7 @@ This mirrors how `cheat/cheat` handles cheatpaths: community content provides se
 
 ### Auto-discovery
 
-**Tools and agents** from registries are automatically available via the MCP server — no config needed. They appear alongside built-in tools when you run `ctx serve mcp`.
+**Tools and profiles** from registries are automatically available via the MCP server — no config needed. They appear alongside built-in tools when you run `ctx serve mcp`.
 
 **Connectors** require explicit activation because they need credentials. Use `ctx registry add connectors/<name>` to scaffold the config entry, then fill in your credentials.
 
@@ -67,7 +67,7 @@ The official community registry lives at [parallax-labs/ctx-registry](https://gi
 |------|-------|----------|
 | **Connectors** | 10 | RSS, Stack Overflow, Dev.to, Hacker News, GitHub Discussions, Jira, Confluence, Notion, Slack, Linear |
 | **Tools** | 4 | web-fetch, create-jira-ticket, send-slack-message, create-github-issue |
-| **Agents** | 2 | researcher, incident-responder |
+| **Profiles** | 2 | researcher, incident-responder |
 
 Install it with a single command:
 

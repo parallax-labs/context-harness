@@ -1,0 +1,4 @@
+interface:
+  display_name: "Context Harness Agents"
+  short_description: "Configure and build scoped local agents"
+  default_prompt: "Use $context-harness-agents to set up a scoped local agent for this project."

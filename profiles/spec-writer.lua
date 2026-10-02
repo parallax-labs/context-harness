@@ -1,5 +1,5 @@
 --[[
-  Context Harness Agent: spec-writer
+  Context Harness Profile: spec-writer
 
   Writes authoritative specifications following the Spec policy
   (docs/spec/0000-spec-policy.md). Specs use normative language
@@ -8,15 +8,15 @@
 
   Configuration (add to ctx.toml):
 
-    [agents.script.spec-writer]
-    path = "agents/spec-writer.lua"
+    [profiles.script.spec-writer]
+    path = "profiles/spec-writer.lua"
     search_limit = "10"
 
   Usage:
-    ctx agent test spec-writer --arg feature="hybrid search API"
+    ctx profile test spec-writer --arg feature="hybrid search API"
 ]]
 
-agent = {
+profile = {
     name = "spec-writer",
     description = "Writes authoritative specifications using normative language (SHALL, MUST, MAY)",
     tools = { "search", "get" },
@@ -34,7 +34,7 @@ agent = {
     },
 }
 
-function agent.resolve(args, config, context)
+function profile.resolve(args, config, context)
     local feature = args.feature or "unnamed feature"
     local status = args.status or "Draft"
     local search_limit = tonumber(config.search_limit) or 10

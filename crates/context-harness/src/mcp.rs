@@ -1,11 +1,11 @@
 //! MCP JSON-RPC protocol bridge.
 //!
-//! Adapts the existing [`ToolRegistry`] / [`AgentRegistry`] and REST API
+//! Adapts the existing [`ToolRegistry`] / [`ProfileRegistry`] and REST API
 //! into a proper MCP Streamable HTTP endpoint that Cursor and other MCP
 //! clients can connect to using the standard JSON-RPC protocol.
 //!
 //! * **Tools** are exposed as MCP tools via `list_tools` / `call_tool`.
-//! * **Agents** are exposed as MCP prompts via `list_prompts` / `get_prompt`.
+//! * **Profiles** are exposed as MCP prompts via `list_prompts` / `get_prompt`.
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -13,14 +13,14 @@ use std::sync::Arc;
 use rmcp::model::*;
 use rmcp::{ErrorData as McpError, ServerHandler};
 
-use crate::agents::AgentRegistry;
+use crate::profiles::ProfileRegistry;
 use crate::traits::{ToolContext, ToolRegistry};
 use crate::workspace::{ServerMode, WorkspaceRouter};
 
 /// Bridges the existing registries to the MCP JSON-RPC protocol.
 ///
 /// Each MCP session receives a clone of this struct (everything is
-/// behind `Arc`), so all sessions share the same tool set and agents.
+/// behind `Arc`), so all sessions share the same tool set and profiles.
 /// The `router` is a one-workspace router in compatibility mode and a
 /// multi-workspace router under `--workspaces`.
 #[derive(Clone)]
@@ -29,8 +29,8 @@ pub struct McpBridge {
     mode: ServerMode,
     tools: Arc<ToolRegistry>,
     extra_tools: Arc<ToolRegistry>,
-    agents: Arc<AgentRegistry>,
-    extra_agents: Arc<AgentRegistry>,
+    profiles: Arc<ProfileRegistry>,
+    extra_profiles: Arc<ProfileRegistry>,
 }
 
 impl McpBridge {
@@ -39,16 +39,16 @@ impl McpBridge {
         mode: ServerMode,
         tools: Arc<ToolRegistry>,
         extra_tools: Arc<ToolRegistry>,
-        agents: Arc<AgentRegistry>,
-        extra_agents: Arc<AgentRegistry>,
+        profiles: Arc<ProfileRegistry>,
+        extra_profiles: Arc<ProfileRegistry>,
     ) -> Self {
         Self {
             router,
             mode,
             tools,
             extra_tools,
-            agents,
-            extra_agents,
+            profiles,
+            extra_profiles,
         }
     }
 
@@ -58,10 +58,10 @@ impl McpBridge {
             .or_else(|| self.extra_tools.find(name))
     }
 
-    fn find_agent(&self, name: &str) -> Option<&dyn crate::agents::Agent> {
-        self.agents
+    fn find_profile(&self, name: &str) -> Option<&dyn crate::profiles::Profile> {
+        self.profiles
             .find(name)
-            .or_else(|| self.extra_agents.find(name))
+            .or_else(|| self.extra_profiles.find(name))
     }
 
     /// Convert a context-harness tool into an rmcp `Tool` descriptor.
@@ -85,10 +85,10 @@ impl McpBridge {
         }
     }
 
-    /// Convert a context-harness agent into an rmcp `Prompt` descriptor.
-    fn to_mcp_prompt(agent: &dyn crate::agents::Agent) -> Prompt {
+    /// Convert a context-harness profile into an rmcp `Prompt` descriptor.
+    fn to_mcp_prompt(profile: &dyn crate::profiles::Profile) -> Prompt {
         let arguments: Option<Vec<PromptArgument>> = {
-            let args = agent.arguments();
+            let args = profile.arguments();
             if args.is_empty() {
                 None
             } else {
@@ -106,9 +106,9 @@ impl McpBridge {
         };
 
         Prompt {
-            name: agent.name().to_string(),
+            name: profile.name().to_string(),
             title: None,
-            description: Some(agent.description().to_string()),
+            description: Some(profile.description().to_string()),
             arguments,
             icons: None,
             meta: None,
@@ -136,7 +136,7 @@ impl ServerHandler for McpBridge {
                 "Context Harness — local-first context ingestion and retrieval for AI tools. \
                  Use the search tool to find relevant documents, get to retrieve a specific \
                  document by ID, and sources to list connector status. \
-                 Agents are available as prompts — use list_prompts to discover them."
+                 Profiles are available as prompts — use list_prompts to discover them."
                     .to_string(),
             ),
         }
@@ -193,7 +193,7 @@ impl ServerHandler for McpBridge {
         }
     }
 
-    // ── Prompts (agents) ─────────────────────────────────────────────────
+    // ── Prompts (profiles) ─────────────────────────────────────────────────
 
     fn list_prompts(
         &self,
@@ -201,12 +201,12 @@ impl ServerHandler for McpBridge {
         _context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> impl std::future::Future<Output = Result<ListPromptsResult, McpError>> + Send + '_ {
         let mut prompts: Vec<Prompt> = self
-            .agents
-            .agents()
+            .profiles
+            .profiles()
             .iter()
             .map(|a| Self::to_mcp_prompt(a.as_ref()))
             .collect();
-        for a in self.extra_agents.agents() {
+        for a in self.extra_profiles.profiles() {
             prompts.push(Self::to_mcp_prompt(a.as_ref()));
         }
         std::future::ready(Ok(ListPromptsResult::with_all_items(prompts)))
@@ -217,10 +217,10 @@ impl ServerHandler for McpBridge {
         request: GetPromptRequestParams,
         _context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> Result<GetPromptResult, McpError> {
-        let agent = self.find_agent(&request.name).ok_or_else(|| {
+        let profile = self.find_profile(&request.name).ok_or_else(|| {
             McpError::new(
                 ErrorCode::METHOD_NOT_FOUND,
-                format!("no agent registered with name: {}", request.name),
+                format!("no profile registered with name: {}", request.name),
                 None,
             )
         })?;
@@ -231,10 +231,10 @@ impl ServerHandler for McpBridge {
             .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
 
         let ctx = ToolContext::routed(self.router.clone(), self.mode);
-        let resolved = agent.resolve(args, &ctx).await.map_err(|e| {
+        let resolved = profile.resolve(args, &ctx).await.map_err(|e| {
             McpError::new(
                 ErrorCode::INTERNAL_ERROR,
-                format!("agent '{}': {}", request.name, e),
+                format!("profile '{}': {}", request.name, e),
                 None,
             )
         })?;
@@ -259,7 +259,7 @@ impl ServerHandler for McpBridge {
         }
 
         Ok(GetPromptResult {
-            description: Some(agent.description().to_string()),
+            description: Some(profile.description().to_string()),
             messages,
         })
     }

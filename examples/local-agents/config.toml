@@ -1,0 +1,32 @@
+[db]
+path = ".ctx/data/ctx.sqlite"
+
+[chunking]
+max_tokens = 700
+overlap_tokens = 80
+
+[embedding]
+provider = "disabled"
+
+[retrieval]
+final_limit = 12
+hybrid_alpha = 0.6
+candidate_k_keyword = 80
+candidate_k_vector = 80
+group_by = "document"
+doc_agg = "max"
+max_chunks_per_doc = 3
+
+[server]
+bind = "127.0.0.1:7331"
+
+[models.default]
+provider = "openai"
+model = "gpt-5-mini"
+api_key_env = "OPENAI_API_KEY"
+
+[connectors.filesystem.project]
+root = "."
+include_globs = ["**/*.md", "**/*.txt", "**/*.rs", "**/*.py", "**/*.ts", "**/*.tsx"]
+exclude_globs = ["**/.git/**", "**/.ctx/**", "**/target/**", "**/node_modules/**"]
+follow_symlinks = false

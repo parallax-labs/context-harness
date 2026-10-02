@@ -1,10 +1,10 @@
 +++
 title = "Recipe: Chat With Your Blog"
-description = "Combine a WordPress connector with a custom agent to create a conversational persona grounded in your own published writing."
+description = "Combine a WordPress connector with a custom profile to create a conversational persona grounded in your own published writing."
 date = 2026-02-22
 
 [taxonomies]
-tags = ["recipe", "agents"]
+tags = ["recipe", "profiles"]
 +++
 
 Your friend Dave has a decade of blog posts on WordPress. He wants to ask his AI assistant questions like *"What did I write about microservices?"* and get answers sourced from his actual posts — not the internet, not hallucinations, just Dave's own words.
@@ -14,8 +14,8 @@ Here's how to set that up in five minutes.
 ### The idea
 
 1. A Lua connector parses Dave's WordPress XML export into individual posts (see [Recipe: Index Your WordPress Blog](@/blog/index-your-wordpress-blog.md))
-2. An inline agent defines a persona that answers *as Dave* using only his writing
-3. Cursor (or Claude Desktop, or any MCP client) connects to the agent and Dave can chat with his own blog
+2. An inline profile defines a persona that answers *as Dave* using only his writing
+3. Cursor (or Claude Desktop, or any MCP client) connects to the profile and Dave can chat with his own blog
 
 ### The config
 
@@ -41,8 +41,8 @@ bind = "127.0.0.1:7331"
 path = "connectors/wordpress.lua"
 file = "wordpress-export.xml"
 
-# ── Agent: chat with Dave ────────────────────────────────────
-[agents.inline.dave]
+# ── Profile: chat with Dave ────────────────────────────────────
+[profiles.inline.dave]
 description = "Chat with Dave — answers based on his published blog posts"
 tools = ["search", "get"]
 system_prompt = """
@@ -89,7 +89,7 @@ ctx serve mcp
 }
 ```
 
-Open Cursor and select the *dave* agent. Now you can ask:
+Open Cursor and select the *dave* profile. Now you can ask:
 
 - *"What's your take on microservices?"*
 - *"Did you ever write about database migrations?"*
@@ -98,25 +98,25 @@ Open Cursor and select the *dave* agent. Now you can ask:
 
 Every answer is grounded in Dave's actual posts, with citations.
 
-### Make it smarter with a Lua agent
+### Make it smarter with a Lua profile
 
-The inline TOML agent above is static — it always uses the same system prompt. If you want the agent to *pre-fetch* relevant posts before the conversation starts (RAG priming), use a Lua agent instead:
+The inline TOML profile above is static — it always uses the same system prompt. If you want the profile to *pre-fetch* relevant posts before the conversation starts (RAG priming), use a Lua profile instead:
 
 ```toml
-[agents.script.dave]
-path = "agents/dave.lua"
+[profiles.script.dave]
+path = "profiles/dave.lua"
 timeout = 30
 search_limit = 5
 ```
 
 ```lua
--- agents/dave.lua
-agent = {}
-agent.name = "dave"
-agent.description = "Chat with Dave — grounded in his published blog posts"
-agent.tools = { "search", "get" }
+-- profiles/dave.lua
+profile = {}
+profile.name = "dave"
+profile.description = "Chat with Dave — grounded in his published blog posts"
+profile.tools = { "search", "get" }
 
-agent.arguments = {
+profile.arguments = {
     {
         name = "topic",
         description = "Optional topic to pre-load relevant posts",
@@ -124,7 +124,7 @@ agent.arguments = {
     },
 }
 
-function agent.resolve(args, config, context)
+function profile.resolve(args, config, context)
     local topic = args.topic or "recent writing"
 
     -- Pre-search for relevant posts
@@ -165,16 +165,16 @@ Quote your own writing. Cite post titles. Be yourself.
     }
 end
 
-return agent
+return profile
 ```
 
-Now when someone selects the *dave* agent with `topic=kubernetes`, the agent pre-searches for Kubernetes posts and injects them into the system prompt before the conversation even starts.
+Now when someone selects the *dave* profile with `topic=kubernetes`, the profile pre-searches for Kubernetes posts and injects them into the system prompt before the conversation even starts.
 
 ### Beyond WordPress
 
 This pattern works for any personal writing:
 
-| Source | Connector | Agent persona |
+| Source | Connector | Profile persona |
 |--------|-----------|---------------|
 | WordPress XML export | `wordpress.lua` | "Chat with Dave" |
 | Ghost blog JSON export | `ghost.lua` | "Chat with the author" |
@@ -182,4 +182,4 @@ This pattern works for any personal writing:
 | Substack email archive | `substack.lua` | "Chat with the newsletter" |
 | Notion export | `notion.lua` | "Chat with my notes" |
 
-The connector parses the source format. The agent defines the persona. Context Harness handles everything in between.
+The connector parses the source format. The profile defines the persona. Context Harness handles everything in between.

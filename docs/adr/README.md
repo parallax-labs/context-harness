@@ -33,7 +33,7 @@ including the context, alternatives considered, and consequences of each decisio
 | [0022](0022-xdg-base-directory-compliance.md) | XDG Base Directory Compliance | Proposed |
 | [0023](0023-request-origin-binding.md) | Request Origin via HTTP Header | Proposed |
 | [0024](0024-local-agent-runtime.md) | Optional Local Agent Execution | Accepted |
-| [0025](0025-declarative-tool-bindings.md) | Declarative Bindings over the Existing Tool Registry | Proposed |
+| [0025](0025-declarative-tool-bindings.md) | Declarative Bindings over the Existing Tool Registry | Accepted |
 
 ## Creating a New ADR
 

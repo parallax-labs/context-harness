@@ -1,6 +1,6 @@
 # ADR-0025: Declarative Bindings over the Existing Tool Registry
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-09-30
 
 ## Context
@@ -24,8 +24,9 @@ unrestricted implementation. Unsupported restrictions cause binding rejection.
 Domain-specific behavior lives in extensions/resources; general execution and
 policy machinery lives in Context Harness.
 
-This record remains Proposed pending DESIGN-0013 review. It does not authorize
-implementation or assert that the binding layer exists. ADR-0024 remains unchanged.
+The concrete contract is [SPEC-0023](../spec/0023-declarative-tool-bindings.md).
+Acceptance authorizes implementation against that specification; it does not assert
+that the binding layer already exists. ADR-0024 remains unchanged.
 
 ## Alternatives Considered
 
@@ -51,3 +52,4 @@ implementation or assert that the binding layer exists. ADR-0024 remains unchang
 
 - [DESIGN-0013](../design/0013-declarative-tool-bindings.md)
 - [ADR-0024](0024-local-agent-runtime.md)
+- [SPEC-0023](../spec/0023-declarative-tool-bindings.md)

@@ -1,6 +1,6 @@
 +++
 title = "Available Extensions"
-description = "Complete catalog of connectors, tools, and agents in the community registry."
+description = "Complete catalog of connectors, tools, and profiles in the community registry."
 weight = 3
 +++
 
@@ -179,7 +179,7 @@ Fetch any URL and return clean extracted text. Strips HTML tags, scripts, and st
 
 ```bash
 # Auto-discovered — no config needed
-# Agents can call it directly via MCP
+# AI clients can call it directly via MCP
 ```
 
 #### create-jira-ticket
@@ -222,18 +222,18 @@ token = "${GITHUB_TOKEN}"
 
 ---
 
-## Agents
+## Profiles
 
-Agents are personas with system prompts and tool access. They auto-discover from registries.
+Profiles are personas with system prompts and tool access. They auto-discover from registries.
 
 #### researcher
 
-A research agent that searches the knowledge base with multiple query strategies and synthesizes cited answers. Pre-loads relevant context based on the user's topic.
+A research profile that searches the knowledge base with multiple query strategies and synthesizes cited answers. Pre-loads relevant context based on the user's topic.
 
 **Arguments:** `topic`, `depth` (quick/standard/deep)
 
 #### incident-responder
 
-An incident response agent that surfaces relevant runbooks, past incidents, and architecture documentation. Categorizes search results into runbooks, past incidents, and architecture docs.
+An incident response profile that surfaces relevant runbooks, past incidents, and architecture documentation. Categorizes search results into runbooks, past incidents, and architecture docs.
 
 **Arguments:** `incident` (required), `severity` (sev1-sev4), `service`

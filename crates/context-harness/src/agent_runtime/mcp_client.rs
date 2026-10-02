@@ -3,6 +3,7 @@
 use crate::{
     agent_resource::Capability,
     config::McpServerConfig,
+    tool_binding::{self, LoadedToolResource, ResolvedToolBinding},
     traits::{Tool, ToolContext, ToolRegistry},
 };
 use anyhow::{anyhow, ensure, Result};
@@ -18,6 +19,7 @@ use rmcp::{
     ErrorData, Peer, RoleClient, Service, ServiceExt,
 };
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::{collections::HashSet, path::Path, process::Stdio, sync::Arc, time::Duration};
 use tokio::{
     process::{Child, ChildStdin, ChildStdout, Command},
@@ -141,6 +143,37 @@ impl Session {
             .await;
         let _ = tokio::time::timeout(Duration::from_secs(1), self.child.wait()).await;
     }
+
+    pub(super) fn register_alias(
+        &self,
+        resource: &LoadedToolResource,
+        server: &McpServerConfig,
+        registry: &mut ToolRegistry,
+    ) -> Result<()> {
+        let (_, remote_name) =
+            tool_binding::mcp_reference(&resource.definition.tool.implementation)
+                .ok_or_else(|| anyhow!("invalid MCP alias implementation"))?;
+        let remote = self
+            .tools
+            .iter()
+            .find(|tool| tool.remote == remote_name)
+            .ok_or_else(|| anyhow!("MCP alias remote tool was not discovered"))?;
+        let binding = tool_binding::resolve_mcp_binding(
+            &resource.definition,
+            &remote.schema,
+            &remote.description,
+            &serde_json::to_value(server)?,
+        )?;
+        ensure!(
+            registry.find(&binding.name).is_none(),
+            "duplicate MCP alias"
+        );
+        registry.register(Box::new(RemoteAlias {
+            remote: remote.clone(),
+            binding,
+        }));
+        Ok(())
+    }
 }
 
 pub(super) async fn connect(name: &str, config: &McpServerConfig, root: &Path) -> Result<Session> {
@@ -222,14 +255,35 @@ pub(super) async fn connect(name: &str, config: &McpServerConfig, root: &Path) -
                     != Some(TaskSupport::Required),
                 "MCP task-only tools are unsupported"
             );
+            let public_name = format!("mcp.{name}.{}", tool.name);
+            let remote_name = tool.name.into_owned();
+            let schema = Value::Object((*tool.input_schema).clone());
+            let capabilities = vec![Capability::ProcessExecute, Capability::ExternalSideEffect];
+            let implementation_version = format!(
+                "sha256:{:x}",
+                Sha256::digest(serde_json::to_vec(&serde_json::json!({
+                    "server": config,
+                    "remote": remote_name,
+                    "schema": schema,
+                }))?)
+            );
+            let metadata = tool_binding::compatibility_binding_metadata_versioned(
+                &public_name,
+                &public_name,
+                &implementation_version,
+                schema.clone(),
+                capabilities,
+                crate::tool_binding::ToolTrustClass::McpExternal,
+            );
             session.tools.push(RemoteTool {
-                name: format!("mcp.{name}.{}", tool.name),
-                remote: tool.name.into_owned(),
+                name: public_name,
+                remote: remote_name,
                 description: tool
                     .description
                     .map(|description| description.into_owned())
                     .unwrap_or_default(),
-                schema: Value::Object((*tool.input_schema).clone()),
+                schema,
+                metadata,
                 peer: session.service.peer().clone(),
                 timeout,
             });
@@ -261,8 +315,83 @@ struct RemoteTool {
     remote: String,
     description: String,
     schema: Value,
+    metadata: Value,
     peer: Peer<RoleClient>,
     timeout: Duration,
+}
+
+#[derive(Clone)]
+struct RemoteAlias {
+    remote: RemoteTool,
+    binding: ResolvedToolBinding,
+}
+
+impl RemoteAlias {
+    fn effective_arguments(&self, arguments: Value) -> Result<Value> {
+        tool_binding::validate_binding_arguments(&self.binding.public_schema, &arguments)?;
+        let mut arguments = arguments
+            .as_object()
+            .ok_or_else(|| anyhow!("MCP arguments must be an object"))?
+            .clone();
+        for (name, value) in self
+            .binding
+            .fixed
+            .as_object()
+            .ok_or_else(|| anyhow!("fixed arguments must be an object"))?
+        {
+            ensure!(
+                !arguments.contains_key(name),
+                "fixed argument cannot be overridden"
+            );
+            arguments.insert(name.clone(), value.clone());
+        }
+        let arguments = Value::Object(arguments);
+        tool_binding::validate_binding_arguments(&self.remote.schema, &arguments)?;
+        Ok(arguments)
+    }
+}
+
+#[async_trait]
+impl Tool for RemoteAlias {
+    fn name(&self) -> &str {
+        &self.binding.name
+    }
+    fn description(&self) -> &str {
+        &self.binding.description
+    }
+    fn parameters_schema(&self) -> Value {
+        self.binding.public_schema.clone()
+    }
+    fn capabilities(&self) -> Option<Vec<Capability>> {
+        Some(self.binding.capabilities.clone())
+    }
+    fn binding_metadata(&self) -> Option<Value> {
+        let mut metadata = tool_binding::binding_metadata(&self.binding);
+        metadata["remote_metadata"] = serde_json::json!(self.binding.remote_metadata);
+        Some(metadata)
+    }
+    fn validate_arguments(&self, arguments: &Value) -> Result<()> {
+        tool_binding::validate_binding_arguments(&self.binding.public_schema, arguments)
+    }
+    fn approval_arguments(&self, arguments: &Value) -> Result<Value> {
+        self.effective_arguments(arguments.clone())
+    }
+    async fn execute(&self, arguments: Value, context: &ToolContext) -> Result<Value> {
+        let result = self
+            .remote
+            .execute(self.effective_arguments(arguments)?, context)
+            .await?;
+        let limit = self
+            .binding
+            .restrictions
+            .max_output_bytes
+            .unwrap_or(MAX_FRAME as u64);
+        ensure!(
+            serde_json::to_vec(&result)?.len() as u64 <= limit,
+            "MCP alias result exceeds output limit"
+        );
+        Ok(result)
+    }
 }
 #[async_trait]
 impl Tool for RemoteTool {
@@ -280,6 +409,12 @@ impl Tool for RemoteTool {
             Capability::ProcessExecute,
             Capability::ExternalSideEffect,
         ])
+    }
+    fn binding_metadata(&self) -> Option<Value> {
+        Some(self.metadata.clone())
+    }
+    fn validate_arguments(&self, arguments: &Value) -> Result<()> {
+        validate_arguments(arguments)
     }
     async fn execute(&self, arguments: Value, _: &ToolContext) -> Result<Value> {
         validate_arguments(&arguments)?;

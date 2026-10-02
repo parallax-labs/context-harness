@@ -149,6 +149,18 @@ async fn executes_search_get_and_final_answer_with_durable_tool_history() {
             .count(),
         2
     );
+    let resolved = events
+        .iter()
+        .find(|event| event.event_type == "context.resolved")
+        .unwrap();
+    assert_eq!(
+        resolved.payload["tool_bindings"]["search"]["implementation_id"],
+        "builtin.compat.search"
+    );
+    assert_eq!(
+        resolved.payload["tool_bindings"]["get"]["compatibility"],
+        true
+    );
     assert_eq!(events.last().unwrap().event_type, "run.completed");
     let app = SqliteAppStore::connect(&cfg).await.unwrap();
     let stored = app.agent_runs(&run.workspace_id).unwrap();
