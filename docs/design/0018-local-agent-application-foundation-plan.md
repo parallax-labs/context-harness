@@ -169,6 +169,12 @@ focused targeted-refresh spec.
 **Gate I:** Internal extraction may begin with equivalence tests; the public targeted
 API waits for this contract.
 
+**Gate status (2026-10-03): Resolved.** [ADR-0027](../adr/0027-targeted-refresh-authority-and-atomicity.md)
+and [SPEC-0024](../spec/0024-targeted-document-refresh.md) define the trusted
+enrolled-source authority, `SourceItem` input, bounded preflight, per-document
+canonical transaction, derived-work outcomes, checkpoint isolation and initial
+library-only scope. Phase 2B may expose the public targeted API against that contract.
+
 ### Phase 1: Introduce compatibility seams
 
 These slices should change structure without changing observable behavior.

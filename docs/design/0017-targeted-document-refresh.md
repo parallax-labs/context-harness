@@ -3,7 +3,7 @@
 **Status:** Draft
 **Date:** 2026-10-02
 **Author:** Context Harness contributors
-**Related:** [PRD-0017](../prd/0017-targeted-document-refresh.md), [SPEC-0002](../spec/0002-workspace-refactor.md), [SPEC-0004](../spec/0004-file-support.md), [SPEC-0005](../spec/0005-usage-contract.md)
+**Related:** [PRD-0017](../prd/0017-targeted-document-refresh.md), [ADR-0027](../adr/0027-targeted-refresh-authority-and-atomicity.md), [SPEC-0024](../spec/0024-targeted-document-refresh.md), [SPEC-0002](../spec/0002-workspace-refactor.md), [SPEC-0004](../spec/0004-file-support.md), [SPEC-0005](../spec/0005-usage-contract.md)
 
 ## Context
 
@@ -126,11 +126,14 @@ no provider or store mutation.
 - Mismatched source identity and over-limit batches fail before writes.
 - Structured outcomes support safe retry after optional derived-index failure.
 
-## Open Questions
+## Contract Resolution
 
-1. `SourceItem` input, connector item-ID resolution, or both in version one?
-2. Exact enrolled source-handle type and lifetime?
-3. Per-document transaction boundary with optional embeddings/vector sidecars?
-4. Exact partial-success outcome taxonomy?
-5. Library-only first release or a targeted-refresh CLI?
-6. Separate PRD/design for explicit targeted deletion?
+[ADR-0027](../adr/0027-targeted-refresh-authority-and-atomicity.md) records the
+authority and atomicity decisions, and
+[SPEC-0024](../spec/0024-targeted-document-refresh.md) is the authoritative contract.
+Version one accepts explicit `SourceItem` values under an opaque, canonical
+workspace-bound enrolled-source handle. It preflights at most 100 items and
+50,000,000 aggregate payload bytes, then uses one canonical SQLite transaction per
+item. Embedding and sidecar states are reported independently after canonical commit.
+The public surface is library-only. Connector item lookup, deletion, dry-run and CLI
+exposure are deferred rather than implied by this design.

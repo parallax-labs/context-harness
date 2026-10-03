@@ -42,6 +42,7 @@ See [SPEC-0000](0000-spec-policy.md) for the full policy.
 | [0021](0021-agent-delegation.md) | Controlled Agent Delegation | Authoritative |
 | [0022](0022-resource-prompt-projection.md) | Resource Prompt Projection | Authoritative |
 | [0023](0023-declarative-tool-bindings.md) | Declarative Tool Bindings | Authoritative |
+| [0024](0024-targeted-document-refresh.md) | Targeted Document Refresh | Authoritative |
 
 ## Creating a New Spec
 

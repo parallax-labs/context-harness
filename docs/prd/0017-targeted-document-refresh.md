@@ -83,15 +83,15 @@ or desynchronize SQLite and derived vector indexes. Caller-supplied source label
 cannot be treated as authority. Deletion requires a separate exact-item contract and
 is excluded initially.
 
-## Open Questions
+## Contract Status
 
-1. Does the API accept trusted `SourceItem` values, connector item IDs resolved by the
-   connector, or both?
-2. What host-issued enrolled source handle prevents source-label forgery?
-3. What structured outcome represents canonical success with optional embedding or
-   sidecar work pending?
-4. Is an initial CLI command useful, or should version one remain a library API?
-5. When and how should exact targeted deletion be added?
+The initial contract is resolved by
+[ADR-0027](../adr/0027-targeted-refresh-authority-and-atomicity.md) and
+[SPEC-0024](../spec/0024-targeted-document-refresh.md). It uses trusted
+host-provided `SourceItem` values under an opaque enrolled-source handle, bounded
+whole-batch preflight, per-document canonical transactions, independent derived-work
+states, and a library-only create/update API. Connector item-ID resolution, CLI
+exposure and exact deletion remain deferred follow-on work.
 
 ## Related Documents
 
@@ -100,6 +100,9 @@ is excluded initially.
 - [SPEC-0002](../spec/0002-workspace-refactor.md): workspace/storage foundations.
 - [SPEC-0004](../spec/0004-file-support.md): file extraction behavior.
 - [SPEC-0005](../spec/0005-usage-contract.md): existing sync/configuration contract.
+- [ADR-0027](../adr/0027-targeted-refresh-authority-and-atomicity.md): authority,
+  atomicity, and initial exposure decision.
+- [SPEC-0024](../spec/0024-targeted-document-refresh.md): authoritative targeted
+  refresh behavior.
 - [PRD-0016](0016-durable-background-agent-tasks.md): independent background tasks
   whose applications may request refresh after their own writes.
-- Future spec updates are deferred until design questions are resolved.
