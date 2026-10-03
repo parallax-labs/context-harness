@@ -69,6 +69,7 @@ mod connector_s3;
 mod connector_script;
 mod ctx_dirs;
 mod db;
+mod document_ingestor;
 mod embed_cmd;
 mod embedding;
 mod export;

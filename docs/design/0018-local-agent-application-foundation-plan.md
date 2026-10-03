@@ -217,6 +217,15 @@ from full sync initially.
 **Acceptance:** before/after full-sync fixtures produce equivalent canonical rows,
 chunks, checkpoints, progress totals and search results across embedding modes.
 
+**Slice status (2026-10-02): Implemented.** Full connector sync now delegates each
+filtered item to one crate-private document ingestor for extraction, canonical upsert,
+chunk replacement, inline embedding and configured vector-index synchronization.
+Connector discovery, filters, dry-run behavior, progress, console summaries and
+checkpoint advancement remain in the full-sync orchestrator. Characterization and
+existing integration coverage preserve replacement, checkpoint, extraction, search,
+custom-connector and embedding behavior. No targeted-refresh API, public outcome
+taxonomy or new checkpoint semantics are introduced.
+
 #### 1D. Public agent-host assembly
 
 Consolidate the supported construction path for resolved config, canonical workspace,
