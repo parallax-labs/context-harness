@@ -46,36 +46,15 @@
 //! When syncing a type (e.g. `ctx sync git`), all instances of that type
 //! are scanned in parallel.
 
-use anyhow::{bail, Result};
-use chrono::NaiveDate;
-use context_harness_core::store::Store;
-
 use crate::app_store::{AppStore, SqliteAppStore};
 use crate::chunk::chunk_text;
 use crate::config::Config;
-use crate::embed_cmd;
-use crate::extract;
+use crate::document_ingestor::{DocumentIngestOutcome, DocumentIngestor};
 use crate::models::SourceItem;
 use crate::progress::{SyncProgressEvent, SyncProgressReporter};
 use crate::traits::{Connector, ConnectorRegistry};
-
-/// Default max extract size when connector is not filesystem or name not found (spec §4.1).
-const DEFAULT_MAX_EXTRACT_BYTES: u64 = 50_000_000;
-
-/// Resolve max_extract_bytes for a source from config. Parses "filesystem:name" and looks up
-/// the connector config; non-filesystem or unknown name uses DEFAULT_MAX_EXTRACT_BYTES.
-fn max_extract_bytes_for_source(config: &Config, source_label: &str) -> u64 {
-    if let Some(name) = source_label.strip_prefix("filesystem:") {
-        config
-            .connectors
-            .filesystem
-            .get(name)
-            .map(|c| c.max_extract_bytes)
-            .unwrap_or(DEFAULT_MAX_EXTRACT_BYTES)
-    } else {
-        DEFAULT_MAX_EXTRACT_BYTES
-    }
-}
+use anyhow::{bail, Result};
+use chrono::NaiveDate;
 
 /// Resolve a connector argument into a filtered list of connectors to scan.
 ///
@@ -373,7 +352,7 @@ async fn run_connectors(
         let mut embeddings_pending = 0u64;
         let mut extraction_skipped = 0u64;
         let mut max_updated: i64 = checkpoint.unwrap_or(0);
-        let max_extract_bytes = max_extract_bytes_for_source(config, &source_label);
+        let ingestor = DocumentIngestor::new(config, &store, &source_label);
         let total_items = items.len() as u64;
 
         if let Some(p) = progress {
@@ -387,43 +366,18 @@ async fn run_connectors(
         }
 
         for item in items.iter_mut() {
-            if let Some(ref bytes) = item.raw_bytes {
-                if bytes.len() as u64 > max_extract_bytes {
+            match ingestor.ingest(item).await? {
+                DocumentIngestOutcome::ExtractionSkipped => {
                     extraction_skipped += 1;
-                    eprintln!(
-                        "Warning: skipping {} (size {} > max_extract_bytes {})",
-                        item.source_id,
-                        bytes.len(),
-                        max_extract_bytes
-                    );
                     continue;
                 }
-                match extract::extract_text(bytes, &item.content_type) {
-                    Ok(text) => {
-                        item.body = text;
-                        item.raw_bytes = None;
-                    }
-                    Err(e) => {
-                        extraction_skipped += 1;
-                        eprintln!("Warning: extraction failed for {}: {}", item.source_id, e);
-                        continue;
-                    }
+                DocumentIngestOutcome::Ingested(result) => {
+                    docs_upserted += 1;
+                    chunks_written += result.chunks_written;
+                    embeddings_written += result.embeddings_written;
+                    embeddings_pending += result.embeddings_pending;
                 }
             }
-
-            let doc_id = store.upsert_source_item(item).await?;
-            let chunks = chunk_text(&doc_id, &item.body, config.chunking.max_tokens);
-            let chunk_count = chunks.len() as u64;
-            store.replace_chunks(&doc_id, &chunks, None).await?;
-
-            // Inline embedding (non-fatal)
-            let (emb_ok, emb_pending) =
-                embed_cmd::embed_chunks_inline(config, &store, &chunks).await;
-            embeddings_written += emb_ok;
-            embeddings_pending += emb_pending;
-
-            docs_upserted += 1;
-            chunks_written += chunk_count;
 
             if let Some(p) = progress {
                 let n = docs_upserted;

@@ -119,6 +119,7 @@ pub mod connector_s3;
 pub mod connector_script;
 pub mod ctx_dirs;
 pub mod db;
+mod document_ingestor;
 pub mod embed_cmd;
 pub mod embedding;
 pub mod export;
