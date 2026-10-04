@@ -152,6 +152,9 @@ async fn crash_after_completed_turn_restores_conversation_without_replaying_tool
     let resumed = competing.resume(&id, &res, rx).await.unwrap();
     assert_eq!(resumed.status, "completed");
     assert_eq!(resumed.output.as_deref(), Some("recovered"));
+    assert_eq!(resumed.usage.model_turns, 3);
+    assert_eq!(resumed.usage.responses_without_usage, 2);
+    assert_eq!(resumed.usage.tool_calls, 1);
     assert_eq!(
         competing.store().tool_invocations(&id).await.unwrap().len(),
         1

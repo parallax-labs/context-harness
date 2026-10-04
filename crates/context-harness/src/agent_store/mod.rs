@@ -12,6 +12,60 @@ use serde_json::{json, Value};
 use sqlx::{FromRow, Sqlite, SqlitePool, Transaction};
 use uuid::Uuid;
 
+#[derive(Debug)]
+pub struct AccountingOverflow;
+
+impl std::fmt::Display for AccountingOverflow {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("run accounting overflow")
+    }
+}
+
+impl std::error::Error for AccountingOverflow {}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct RunBudgets {
+    pub max_turns: Option<u64>,
+    pub timeout_seconds: Option<u64>,
+    pub max_total_tokens: Option<u64>,
+    pub max_tool_calls: Option<u64>,
+}
+
+impl RunBudgets {
+    fn validate(&self) -> Result<()> {
+        ensure!(
+            self.max_turns != Some(0)
+                && self.timeout_seconds != Some(0)
+                && self.max_total_tokens != Some(0)
+                && self.max_tool_calls != Some(0),
+            "run budgets must be positive when configured"
+        );
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TokenAccounting {
+    Complete,
+    Partial,
+    #[default]
+    Unavailable,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RunUsage {
+    pub model_turns: u64,
+    pub input_tokens: Option<u64>,
+    pub output_tokens: Option<u64>,
+    pub total_tokens: Option<u64>,
+    pub responses_with_usage: u64,
+    pub responses_without_usage: u64,
+    pub tool_calls: u64,
+    pub token_accounting: TokenAccounting,
+}
+
 /// Materialized state of an execution. Inputs and outputs are plain text.
 #[derive(Debug, Serialize, FromRow)]
 pub struct AgentRun {
@@ -32,6 +86,9 @@ pub struct AgentRun {
     pub output: Option<String>,
     pub error: Option<String>,
     pub last_sequence: i64,
+    pub budgets: sqlx::types::Json<RunBudgets>,
+    pub usage: sqlx::types::Json<RunUsage>,
+    pub elapsed_ms: i64,
 }
 
 /// Immutable ancestry of a run. Legacy runs without a row are treated as roots.
@@ -130,6 +187,19 @@ pub enum LimitReason {
     ToolCallsPerTurn,
     CheckpointSize,
     OutputSize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BudgetDecision {
+    Allowed,
+    Exceeded(LimitReason),
+}
+
+#[derive(FromRow)]
+struct BudgetRow {
+    id: String,
+    budgets: sqlx::types::Json<RunBudgets>,
+    usage: sqlx::types::Json<RunUsage>,
 }
 
 /// A stopped transition; callers cannot create arbitrary lifecycle strings.
@@ -335,6 +405,25 @@ impl AgentRunStore {
         model: &str,
         input: &str,
     ) -> Result<AgentRun> {
+        self.create_run_with_budgets(
+            agent_name,
+            agent_version,
+            model,
+            input,
+            RunBudgets::default(),
+        )
+        .await
+    }
+
+    pub async fn create_run_with_budgets(
+        &self,
+        agent_name: &str,
+        agent_version: &str,
+        model: &str,
+        input: &str,
+        budgets: RunBudgets,
+    ) -> Result<AgentRun> {
+        budgets.validate()?;
         ensure!(!agent_name.trim().is_empty(), "agent name is required");
         ensure!(
             !agent_version.trim().is_empty(),
@@ -344,8 +433,8 @@ impl AgentRunStore {
         let id = Uuid::new_v4().to_string();
         let now = Utc::now().timestamp_millis();
         let mut tx = self.pool.begin().await?;
-        sqlx::query("INSERT INTO agent_runs (id, workspace_id, agent_name, agent_version, model, status, created_at, updated_at, input) VALUES (?, ?, ?, ?, ?, 'running', ?, ?, ?)")
-            .bind(&id).bind(&self.workspace_id).bind(agent_name).bind(agent_version).bind(model).bind(now).bind(now).bind(input)
+        sqlx::query("INSERT INTO agent_runs (id, workspace_id, agent_name, agent_version, model, status, created_at, updated_at, input, budgets) VALUES (?, ?, ?, ?, ?, 'running', ?, ?, ?, ?)")
+            .bind(&id).bind(&self.workspace_id).bind(agent_name).bind(agent_version).bind(model).bind(now).bind(now).bind(input).bind(sqlx::types::Json(&budgets))
             .execute(&mut *tx).await?;
         sqlx::query("INSERT INTO agent_run_lineage (run_id, root_run_id, depth) VALUES (?, ?, 0)")
             .bind(&id)
@@ -356,7 +445,7 @@ impl AgentRunStore {
             &mut tx,
             &id,
             "run.started",
-            &json!({"agent": agent_name, "model": model, "workspace_id": self.workspace_id}),
+            &json!({"agent": agent_name, "model": model, "workspace_id": self.workspace_id, "budgets": budgets}),
         )
         .await?;
         tx.commit().await?;
@@ -406,6 +495,30 @@ impl AgentRunStore {
         model: &str,
         input: &str,
     ) -> Result<AgentRun> {
+        self.create_child_run_with_budgets(
+            parent_id,
+            call_id,
+            agent_name,
+            agent_version,
+            model,
+            input,
+            RunBudgets::default(),
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_child_run_with_budgets(
+        &self,
+        parent_id: &str,
+        call_id: &str,
+        agent_name: &str,
+        agent_version: &str,
+        model: &str,
+        input: &str,
+        budgets: RunBudgets,
+    ) -> Result<AgentRun> {
+        budgets.validate()?;
         ensure!(
             !agent_name.trim().is_empty()
                 && !agent_version.trim().is_empty()
@@ -433,8 +546,8 @@ impl AgentRunStore {
         ensure!(depth <= 4, "maximum delegation depth exceeded");
         let id = Uuid::new_v4().to_string();
         let now = Utc::now().timestamp_millis();
-        sqlx::query("INSERT INTO agent_runs (id, workspace_id, agent_name, agent_version, model, status, created_at, updated_at, input) VALUES (?, ?, ?, ?, ?, 'running', ?, ?, ?)")
-            .bind(&id).bind(&self.workspace_id).bind(agent_name).bind(agent_version).bind(model).bind(now).bind(now).bind(input).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO agent_runs (id, workspace_id, agent_name, agent_version, model, status, created_at, updated_at, input, budgets) VALUES (?, ?, ?, ?, ?, 'running', ?, ?, ?, ?)")
+            .bind(&id).bind(&self.workspace_id).bind(agent_name).bind(agent_version).bind(model).bind(now).bind(now).bind(input).bind(sqlx::types::Json(&budgets)).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO agent_run_lineage (run_id, parent_run_id, root_run_id, depth, parent_call_id) VALUES (?, ?, ?, ?, ?)")
             .bind(&id).bind(parent_id).bind(&root).bind(depth).bind(call_id).execute(&mut *tx).await?;
         self.append_in(
@@ -444,14 +557,14 @@ impl AgentRunStore {
             &json!({"call_id": call_id, "child_run_id": id}),
         )
         .await?;
-        self.append_in(&mut tx, &id, "run.created", &json!({"agent": agent_name, "model": model, "workspace_id": self.workspace_id, "parent_run_id": parent_id, "root_run_id": root, "depth": depth})).await?;
+        self.append_in(&mut tx, &id, "run.created", &json!({"agent": agent_name, "model": model, "workspace_id": self.workspace_id, "parent_run_id": parent_id, "root_run_id": root, "depth": depth, "budgets": budgets})).await?;
         tx.commit().await?;
         self.get_run(&id).await?.context("created child missing")
     }
 
     pub async fn get_run(&self, id: &str) -> Result<Option<AgentRun>> {
         Ok(
-            sqlx::query_as("SELECT * FROM agent_runs WHERE id = ? AND workspace_id = ?")
+            sqlx::query_as("SELECT *, MAX(0, COALESCE(completed_at, CAST(unixepoch('subsec') * 1000 AS INTEGER)) - created_at) AS elapsed_ms FROM agent_runs WHERE id = ? AND workspace_id = ?")
                 .bind(id)
                 .bind(&self.workspace_id)
                 .fetch_optional(&self.pool)
@@ -462,12 +575,198 @@ impl AgentRunStore {
     /// Most recent runs first, with a bounded result count.
     pub async fn history(&self, limit: u32) -> Result<Vec<AgentRun>> {
         Ok(sqlx::query_as(
-            "SELECT * FROM agent_runs WHERE workspace_id = ? ORDER BY created_at DESC, id LIMIT ?",
+            "SELECT *, MAX(0, COALESCE(completed_at, CAST(unixepoch('subsec') * 1000 AS INTEGER)) - created_at) AS elapsed_ms FROM agent_runs WHERE workspace_id = ? ORDER BY created_at DESC, id LIMIT ?",
         )
         .bind(&self.workspace_id)
         .bind(limit)
         .fetch_all(&self.pool)
         .await?)
+    }
+
+    async fn active_budget_chain(
+        tx: &mut Transaction<'_, Sqlite>,
+        id: &str,
+        workspace_id: &str,
+    ) -> Result<Vec<BudgetRow>> {
+        let rows = sqlx::query_as(
+            "WITH RECURSIVE chain(id) AS (SELECT ? UNION ALL SELECT l.parent_run_id FROM agent_run_lineage l JOIN chain c ON l.run_id = c.id WHERE l.parent_run_id IS NOT NULL) SELECT r.id, r.budgets, r.usage FROM chain c JOIN agent_runs r ON r.id = c.id WHERE r.workspace_id = ? AND r.status = 'running'",
+        )
+        .bind(id)
+        .bind(workspace_id)
+        .fetch_all(&mut **tx)
+        .await?;
+        ensure!(
+            !rows.is_empty(),
+            "run not found in workspace or already terminal"
+        );
+        Ok(rows)
+    }
+
+    async fn save_usage(
+        tx: &mut Transaction<'_, Sqlite>,
+        row: &BudgetRow,
+        usage: &RunUsage,
+    ) -> Result<()> {
+        sqlx::query("UPDATE agent_runs SET usage = ? WHERE id = ?")
+            .bind(sqlx::types::Json(usage))
+            .bind(&row.id)
+            .execute(&mut **tx)
+            .await?;
+        Ok(())
+    }
+
+    /// Atomically reserve one model attempt for this run and its active ancestors.
+    pub async fn record_model_requested(
+        &self,
+        id: &str,
+        payload: &Value,
+    ) -> Result<BudgetDecision> {
+        let mut tx = self.pool.begin().await?;
+        let rows = Self::active_budget_chain(&mut tx, id, &self.workspace_id).await?;
+        if rows.iter().any(|row| {
+            row.budgets.max_total_tokens.is_some() && row.usage.responses_without_usage > 0
+        }) {
+            return Ok(BudgetDecision::Exceeded(LimitReason::TokenUsageUnavailable));
+        }
+        if rows.iter().any(|row| {
+            row.budgets
+                .max_total_tokens
+                .is_some_and(|limit| row.usage.total_tokens.is_some_and(|total| total >= limit))
+        }) {
+            return Ok(BudgetDecision::Exceeded(LimitReason::TotalTokens));
+        }
+        if rows.iter().any(|row| {
+            row.budgets
+                .max_turns
+                .is_some_and(|limit| row.usage.model_turns >= limit)
+        }) {
+            return Ok(BudgetDecision::Exceeded(LimitReason::ModelTurns));
+        }
+        for row in &rows {
+            let mut usage = row.usage.0.clone();
+            usage.model_turns = usage.model_turns.checked_add(1).ok_or(AccountingOverflow)?;
+            Self::save_usage(&mut tx, row, &usage).await?;
+        }
+        self.append_in(&mut tx, id, "model.requested", payload)
+            .await?;
+        tx.commit().await?;
+        Ok(BudgetDecision::Allowed)
+    }
+
+    /// Record provider usage and debit the complete active ancestry atomically.
+    pub async fn record_model_responded(
+        &self,
+        id: &str,
+        payload: &Value,
+        usage: Option<(u64, u64, u64)>,
+    ) -> Result<BudgetDecision> {
+        let mut tx = self.pool.begin().await?;
+        let rows = Self::active_budget_chain(&mut tx, id, &self.workspace_id).await?;
+        let mut decision = BudgetDecision::Allowed;
+        for row in &rows {
+            let mut next = row.usage.0.clone();
+            match usage {
+                Some((input, output, total)) => {
+                    next.input_tokens = Some(
+                        next.input_tokens
+                            .unwrap_or(0)
+                            .checked_add(input)
+                            .ok_or(AccountingOverflow)?,
+                    );
+                    next.output_tokens = Some(
+                        next.output_tokens
+                            .unwrap_or(0)
+                            .checked_add(output)
+                            .ok_or(AccountingOverflow)?,
+                    );
+                    next.total_tokens = Some(
+                        next.total_tokens
+                            .unwrap_or(0)
+                            .checked_add(total)
+                            .ok_or(AccountingOverflow)?,
+                    );
+                    next.responses_with_usage = next
+                        .responses_with_usage
+                        .checked_add(1)
+                        .ok_or(AccountingOverflow)?;
+                }
+                None => {
+                    next.responses_without_usage = next
+                        .responses_without_usage
+                        .checked_add(1)
+                        .ok_or(AccountingOverflow)?;
+                }
+            }
+            next.token_accounting = match (
+                next.responses_with_usage > 0,
+                next.responses_without_usage > 0,
+            ) {
+                (true, false) => TokenAccounting::Complete,
+                (true, true) => TokenAccounting::Partial,
+                _ => TokenAccounting::Unavailable,
+            };
+            if row.budgets.max_total_tokens.is_some() && usage.is_none() {
+                decision = BudgetDecision::Exceeded(LimitReason::TokenUsageUnavailable);
+            } else if row
+                .budgets
+                .max_total_tokens
+                .is_some_and(|limit| next.total_tokens.is_some_and(|total| total > limit))
+            {
+                decision = BudgetDecision::Exceeded(LimitReason::TotalTokens);
+            }
+            Self::save_usage(&mut tx, row, &next).await?;
+        }
+        self.append_in(&mut tx, id, "model.responded", payload)
+            .await?;
+        tx.commit().await?;
+        Ok(decision)
+    }
+
+    /// Check an entire response batch before any ordinary call is persisted.
+    pub async fn check_tool_call_budget(&self, id: &str, calls: usize) -> Result<BudgetDecision> {
+        let calls = u64::try_from(calls).context("tool-call count overflow")?;
+        let mut tx = self.pool.begin().await?;
+        let rows = Self::active_budget_chain(&mut tx, id, &self.workspace_id).await?;
+        let exceeded = rows.iter().any(|row| {
+            row.budgets.max_tool_calls.is_some_and(|limit| {
+                row.usage
+                    .tool_calls
+                    .checked_add(calls)
+                    .is_none_or(|total| total > limit)
+            })
+        });
+        tx.rollback().await?;
+        Ok(if exceeded {
+            BudgetDecision::Exceeded(LimitReason::ToolCalls)
+        } else {
+            BudgetDecision::Allowed
+        })
+    }
+
+    pub async fn check_model_turn_budget(&self, id: &str) -> Result<BudgetDecision> {
+        let mut tx = self.pool.begin().await?;
+        let rows = Self::active_budget_chain(&mut tx, id, &self.workspace_id).await?;
+        let decision = if rows.iter().any(|row| {
+            row.budgets.max_total_tokens.is_some() && row.usage.responses_without_usage > 0
+        }) {
+            BudgetDecision::Exceeded(LimitReason::TokenUsageUnavailable)
+        } else if rows.iter().any(|row| {
+            row.budgets
+                .max_total_tokens
+                .is_some_and(|limit| row.usage.total_tokens.is_some_and(|total| total >= limit))
+        }) {
+            BudgetDecision::Exceeded(LimitReason::TotalTokens)
+        } else if rows.iter().any(|row| {
+            row.budgets
+                .max_turns
+                .is_some_and(|limit| row.usage.model_turns >= limit)
+        }) {
+            BudgetDecision::Exceeded(LimitReason::ModelTurns)
+        } else {
+            BudgetDecision::Allowed
+        };
+        tx.rollback().await?;
+        Ok(decision)
     }
 
     /// Append a runtime event. Run, tool lifecycle and checkpoint events use the
@@ -570,7 +869,7 @@ impl AgentRunStore {
             &json!({"previous_status": previous, "previous_sequence": expected_sequence}),
         )
         .await?;
-        let run = sqlx::query_as("SELECT * FROM agent_runs WHERE id = ? AND workspace_id = ?")
+        let run = sqlx::query_as("SELECT *, MAX(0, CAST(unixepoch('subsec') * 1000 AS INTEGER) - created_at) AS elapsed_ms FROM agent_runs WHERE id = ? AND workspace_id = ?")
             .bind(id)
             .bind(&self.workspace_id)
             .fetch_one(&mut *tx)
@@ -699,6 +998,11 @@ impl AgentRunStore {
         id: &str,
         stopped: &StoppedRun,
     ) -> Result<()> {
+        let state: (sqlx::types::Json<RunBudgets>, sqlx::types::Json<RunUsage>) =
+            sqlx::query_as("SELECT budgets, usage FROM agent_runs WHERE id = ?")
+                .bind(id)
+                .fetch_one(&mut **tx)
+                .await?;
         let unfinished: Vec<String> = sqlx::query_scalar("SELECT call_id FROM tool_invocations WHERE run_id = ? AND status IN ('requested', 'started') ORDER BY requested_sequence")
             .bind(id).fetch_all(&mut **tx).await?;
         ensure!(
@@ -722,7 +1026,7 @@ impl AgentRunStore {
             tx,
             id,
             &format!("run.{}", reason_code_for_event(stopped.outcome)),
-            &json!({"lifecycle": stopped.lifecycle, "outcome": stopped.outcome, "reason_code": stopped.reason_code, "reason_detail": stopped.reason_detail, "output": stopped.output, "error": stopped.error}),
+            &json!({"lifecycle": stopped.lifecycle, "outcome": stopped.outcome, "reason_code": stopped.reason_code, "reason_detail": stopped.reason_detail, "usage": state.1, "budgets": state.0, "output": stopped.output, "error": stopped.error}),
         )
         .await?;
         sqlx::query("UPDATE agent_runs SET status = ?, lifecycle = ?, outcome = ?, reason_code = ?, reason_detail = ?, output = ?, error = ?, completed_at = updated_at WHERE id = ? AND workspace_id = ?")
@@ -860,8 +1164,14 @@ impl AgentRunStore {
 
     pub async fn start_tool(&self, id: &str, call_id: &str) -> Result<()> {
         let mut tx = self.pool.begin().await?;
-        self.append_in(&mut tx, id, "tool.started", &json!({"call_id": call_id}))
-            .await?;
+        let rows = Self::active_budget_chain(&mut tx, id, &self.workspace_id).await?;
+        ensure!(
+            !rows.iter().any(|row| row
+                .budgets
+                .max_tool_calls
+                .is_some_and(|limit| row.usage.tool_calls >= limit)),
+            "tool-call budget exhausted"
+        );
         let approval = Self::approval_state(&mut tx, id, call_id).await?;
         ensure!(
             approval.is_none() || approval.as_deref() == Some("approval.granted"),
@@ -870,6 +1180,13 @@ impl AgentRunStore {
         let changed = sqlx::query("UPDATE tool_invocations SET status = 'started', started_at = ? WHERE run_id = ? AND call_id = ? AND status = 'requested'")
             .bind(Utc::now().timestamp_millis()).bind(id).bind(call_id).execute(&mut *tx).await?.rows_affected();
         ensure!(changed == 1, "tool invocation is not pending");
+        for row in &rows {
+            let mut usage = row.usage.0.clone();
+            usage.tool_calls = usage.tool_calls.checked_add(1).ok_or(AccountingOverflow)?;
+            Self::save_usage(&mut tx, row, &usage).await?;
+        }
+        self.append_in(&mut tx, id, "tool.started", &json!({"call_id": call_id}))
+            .await?;
         tx.commit().await?;
         Ok(())
     }

@@ -42,12 +42,15 @@ fn print_run(run: AgentRun, json_output: bool) -> Result<()> {
         println!("{}", serde_json::to_string_pretty(&run)?);
     } else {
         println!(
-            "Run: {}\nStatus: {}\nLifecycle: {:?}\nOutcome: {:?}\nReason: {}",
+            "Run: {}\nStatus: {}\nLifecycle: {:?}\nOutcome: {:?}\nReason: {}\nElapsed: {}ms\nBudgets: {}\nUsage: {}",
             run.id,
             run.status,
             run.lifecycle,
             run.outcome,
-            run.reason_code.as_deref().unwrap_or("-")
+            run.reason_code.as_deref().unwrap_or("-"),
+            run.elapsed_ms,
+            serde_json::to_string(&run.budgets.0)?,
+            serde_json::to_string(&run.usage.0)?,
         );
         if let Some(output) = &run.output {
             println!("\n{output}");
@@ -216,9 +219,11 @@ pub async fn inspect(
         );
     } else {
         println!(
-            "Run: {}\nAgent: {}\nModel: {}\nWorkspace: {}\nStatus: {}\nLifecycle: {:?}\nOutcome: {:?}\nReason: {}",
+            "Run: {}\nAgent: {}\nModel: {}\nWorkspace: {}\nStatus: {}\nLifecycle: {:?}\nOutcome: {:?}\nReason: {}\nElapsed: {}ms\nBudgets: {}\nUsage: {}",
             run.id, run.agent_name, run.model, run.workspace_id, run.status,
-            run.lifecycle, run.outcome, run.reason_code.as_deref().unwrap_or("-")
+            run.lifecycle, run.outcome, run.reason_code.as_deref().unwrap_or("-"),
+            run.elapsed_ms, serde_json::to_string(&run.budgets.0)?,
+            serde_json::to_string(&run.usage.0)?
         );
         println!(
             "Root: {}\nParent: {:?}\nDepth: {}",

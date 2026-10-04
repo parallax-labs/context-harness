@@ -8,26 +8,12 @@ use crate::{
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::Value;
-use std::{
-    collections::BTreeMap,
-    sync::atomic::{AtomicU32, Ordering},
-};
+use std::collections::BTreeMap;
 
 #[derive(Clone)]
 pub(super) struct ExecutionContext {
-    pub remaining: Arc<AtomicU32>,
     pub deadline: i64,
     pub ancestry: Vec<String>,
-}
-impl ExecutionContext {
-    pub fn consume(&self) -> Result<()> {
-        self.remaining
-            .try_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
-                left.checked_sub(1)
-            })
-            .map_err(|_| anyhow::anyhow!("shared model turn budget exhausted"))?;
-        Ok(())
-    }
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -177,19 +163,16 @@ impl AgentRuntime {
             !context.ancestry.contains(&args.agent),
             "delegation cycle rejected"
         );
-        ensure!(
-            context.remaining.load(Ordering::SeqCst) > 0,
-            "shared model turn budget exhausted"
-        );
         let child = self
             .store
-            .create_child_run(
+            .create_child_run_with_budgets(
                 id,
                 call_id,
                 &resource.definition.agent.name,
                 &resource.version,
                 &resource.definition.agent.model,
                 &args.input,
+                run_budgets(resource),
             )
             .await?;
         let mut runtime = self.clone();

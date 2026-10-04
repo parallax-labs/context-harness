@@ -16,7 +16,10 @@ use policy::{ApprovalHandler, ApprovalRequest, Authorization, DenyApprovals, Run
 use crate::{
     agent_model::{FinishReason, ModelMessage, ModelRegistry, ModelRequest, ModelTool},
     agent_resource::{Capability, LoadedAgentResource, ResourceDirectory},
-    agent_store::{AgentRun, AgentRunStore, FailureReason, LimitReason, RunOutcome, ToolOutcome},
+    agent_store::{
+        AccountingOverflow, AgentRun, AgentRunStore, BudgetDecision, FailureReason, LimitReason,
+        RunBudgets, RunOutcome, ToolOutcome,
+    },
     app_store::SqliteAppStore,
     config::Config,
     tool_binding::{self, HostToolAuthority},
@@ -33,6 +36,16 @@ use std::{
 use tokio::sync::watch;
 
 const MAX_TOOL_RESULT_BYTES: usize = 1024 * 1024;
+
+fn run_budgets(resource: &LoadedAgentResource) -> RunBudgets {
+    let limits = &resource.definition.agent.execution;
+    RunBudgets {
+        max_turns: Some(u64::from(limits.max_turns)),
+        timeout_seconds: Some(limits.timeout_seconds),
+        max_total_tokens: limits.max_total_tokens,
+        max_tool_calls: limits.max_tool_calls,
+    }
+}
 const MAX_TOOL_CALLS_PER_TURN: usize = 32;
 
 /// Workspace binding for the existing cwd-scoped CLI. Registry-based workspace
@@ -212,7 +225,13 @@ impl AgentRuntime {
         let agent = &resource.definition.agent;
         let run = self
             .store
-            .create_run(&agent.name, &resource.version, &agent.model, input)
+            .create_run_with_budgets(
+                &agent.name,
+                &resource.version,
+                &agent.model,
+                input,
+                run_budgets(resource),
+            )
             .await?;
         let files = match files::acquire(&self.root, &run.id) {
             Ok(files) => files,
@@ -235,7 +254,6 @@ impl AgentRuntime {
         };
         let mut runtime = self.clone();
         runtime.execution = Some(delegation::ExecutionContext {
-            remaining: Arc::new(std::sync::atomic::AtomicU32::new(agent.execution.max_turns)),
             deadline: run.created_at.saturating_add(
                 i64::try_from(agent.execution.timeout_seconds)
                     .unwrap_or(i64::MAX)
@@ -281,7 +299,11 @@ impl AgentRuntime {
                 match result {
                     Ok(Ok(outcome)) => outcome,
                     Ok(Err(error)) => RunOutcome::FailedWithReason {
-                        code: FailureReason::ToolError,
+                        code: if error.downcast_ref::<AccountingOverflow>().is_some() {
+                            FailureReason::AccountingError
+                        } else {
+                            FailureReason::ToolError
+                        },
                         error: error.to_string(),
                     },
                     Err(_) => RunOutcome::LimitExceeded { code: LimitReason::Duration },
@@ -416,20 +438,31 @@ impl AgentRuntime {
             });
             for turn in start_turn..agent.execution.max_turns {
                 self.checkpoint(id, resource, &request, turn).await?;
-                if let Some(context) = &self.execution { context.consume()?; }
-                let response = match self
+                let recorded = match self
                     .models
-                    .generate_recorded(&self.store, id, &agent.model, &request)
+                    .generate_recorded_with_budget(&self.store, id, &agent.model, &request)
                     .await
                 {
                     Ok(response) => response,
-                    Err(_) => {
+                    Err(error) => {
                         return Ok(RunOutcome::FailedWithReason {
-                            code: FailureReason::ModelError,
-                            error: "model request failed".into(),
+                            code: if error.downcast_ref::<AccountingOverflow>().is_some() {
+                                FailureReason::AccountingError
+                            } else {
+                                FailureReason::ModelError
+                            },
+                            error: if error.downcast_ref::<AccountingOverflow>().is_some() {
+                                "run accounting overflow".into()
+                            } else {
+                                "model request failed".into()
+                            },
                         });
                     }
                 };
+                if let Some(code) = recorded.limit {
+                    return Ok(RunOutcome::LimitExceeded { code });
+                }
+                let response = recorded.response;
                 match response.finish_reason {
                     FinishReason::Completed => {
                         if response.text.len() <= 64 * 1024 {
@@ -491,33 +524,41 @@ impl AgentRuntime {
                         },
                     ));
                 }
-                if let Some(context) = &self.execution {
-                    if context
-                        .remaining
-                        .load(std::sync::atomic::Ordering::SeqCst)
-                        == 0
-                    {
-                        return Ok(RunOutcome::LimitExceeded {
-                            code: LimitReason::ModelTurns,
-                        });
-                    }
-                }
                 // Do not execute tools if the run cannot consume their results.
                 if turn + 1 >= agent.execution.max_turns {
                     return Ok(RunOutcome::LimitExceeded {
                         code: LimitReason::ModelTurns,
                     });
                 }
+                if let BudgetDecision::Exceeded(code) =
+                    self.store.check_model_turn_budget(id).await?
+                {
+                    return Ok(RunOutcome::LimitExceeded { code });
+                }
                 if response.tool_calls.len() > MAX_TOOL_CALLS_PER_TURN {
                     return Ok(RunOutcome::LimitExceeded {
                         code: LimitReason::ToolCallsPerTurn,
                     });
                 }
+                if matches!(
+                    self.store
+                        .check_tool_call_budget(id, response.tool_calls.len())
+                        .await?,
+                    BudgetDecision::Exceeded(_)
+                ) {
+                    return Ok(RunOutcome::LimitExceeded {
+                        code: LimitReason::ToolCalls,
+                    });
+                }
                 request.messages.push(response.message());
                 for call in response.tool_calls {
-                    if let Some(context) = &self.execution {
-                        ensure!(context.remaining.load(std::sync::atomic::Ordering::SeqCst) > 0, "shared model turn budget exhausted");
-                    }
+                    ensure!(
+                        matches!(
+                            self.store.check_model_turn_budget(id).await?,
+                            BudgetDecision::Allowed
+                        ),
+                        "shared model turn budget exhausted"
+                    );
                     self.store
                         .request_tool(id, &call.id, &call.name, &call.arguments)
                         .await?;

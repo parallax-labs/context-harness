@@ -17,7 +17,9 @@ CREATE TABLE IF NOT EXISTS agent_runs (
     input TEXT NOT NULL,
     output TEXT,
     error TEXT,
-    last_sequence INTEGER NOT NULL DEFAULT 0 CHECK (last_sequence >= 0)
+    last_sequence INTEGER NOT NULL DEFAULT 0 CHECK (last_sequence >= 0),
+    budgets TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(budgets)),
+    usage TEXT NOT NULL DEFAULT '{"model_turns":0,"input_tokens":null,"output_tokens":null,"total_tokens":null,"responses_with_usage":0,"responses_without_usage":0,"tool_calls":0,"token_accounting":"unavailable"}' CHECK (json_valid(usage))
 );
 CREATE INDEX IF NOT EXISTS idx_agent_runs_workspace
     ON agent_runs(workspace_id, created_at DESC, id);

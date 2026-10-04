@@ -74,6 +74,8 @@ fn resource_defaults_hashes_and_explicit_permissions() {
     let resource = AgentResource::parse(RESOURCE).unwrap();
     assert_eq!(resource.agent.execution.max_turns, 12);
     assert_eq!(resource.agent.execution.timeout_seconds, 300);
+    assert_eq!(resource.agent.execution.max_total_tokens, None);
+    assert_eq!(resource.agent.execution.max_tool_calls, None);
     assert_eq!(
         resource.agent.permissions.allowed(),
         vec![Capability::ReadOnly]
@@ -106,6 +108,8 @@ fn invalid_or_unknown_fields_fail_instead_of_silently_weakening_policy() {
         format!("{RESOURCE}\n[agent.execution]\nmax_turns = 0"),
         format!("{RESOURCE}\n[agent.execution]\ntimeout_seconds = -1"),
         format!("{RESOURCE}\n[agent.execution]\ntimeout_seconds = 0"),
+        format!("{RESOURCE}\n[agent.execution]\nmax_total_tokens = 0"),
+        format!("{RESOURCE}\n[agent.execution]\nmax_tool_calls = 0"),
         format!("{RESOURCE}\n[agent.execution]\ntimeout = 12"),
         RESOURCE.replace("[\"search\", \"get\"]", "[\"search\", \"search\"]"),
         RESOURCE.replace("researcher", "bad/name"),
@@ -282,9 +286,12 @@ fn runtime_control_resources_validate_offline_without_credentials_or_database() 
     write(&root.join(".ctx/config.toml"), CONFIG);
     write(
         &root.join(".ctx/agents/researcher.toml"),
-        &RESOURCE.replace(
-            "tools = [\"search\", \"get\"]",
-            "tools = [\"run.blocked\", \"run.request_user_input\"]",
+        &format!(
+            "{}\n[agent.execution]\nmax_total_tokens = 4096\nmax_tool_calls = 8",
+            RESOURCE.replace(
+                "tools = [\"search\", \"get\"]",
+                "tools = [\"run.blocked\", \"run.request_user_input\"]",
+            )
         ),
     );
 

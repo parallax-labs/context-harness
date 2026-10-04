@@ -340,14 +340,25 @@ Opt-in `run.blocked` and `run.request_user_input` controls are runtime-owned,
 capability-free, collision-protected and validated without database, provider,
 network or process access. Runtime and migration fixtures cover completion,
 suspension, malformed/mixed controls, failure, turn/duration limits, cancellation,
-legacy rows and existing recovery/delegation behavior. Phase 3B cumulative budgets
-and Phase 3C checkpoint/recovery evolution remain pending.
+legacy rows and existing recovery/delegation behavior. Phase 3C checkpoint/recovery
+evolution remains pending.
 
 #### 3B. Cumulative budgets
 
 Persist and enforce approved model-turn, duration, token and tool-call budgets across
 new and resumed execution. Preserve “unknown” when a provider does not report usage;
 apply the specified fallback rather than treating missing usage as zero.
+
+**Slice status (2026-10-04): Implemented.** Agent resources retain their compatible
+turn and duration defaults and now accept optional positive cumulative token and
+tool-call limits. Run rows expose configured budgets, elapsed time and typed usage;
+model attempts, reported or missing token usage and started ordinary tool calls are
+recorded atomically with their source events. Runtime preflight prevents partial tool
+batches, token-budgeted runs fail closed on missing usage, and delegation debits each
+active ancestor without resetting child or root limits. Existing resource versions
+remain stable when the new optional limits are omitted, legacy rows preserve unknown
+token accounting, and resume continues from the persisted counters. Phase 3C still
+owns checkpoint-schema and recovery-disposition evolution.
 
 #### 3C. Recovery and checkpoint evolution
 

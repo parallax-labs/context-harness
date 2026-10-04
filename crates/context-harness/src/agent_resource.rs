@@ -125,6 +125,10 @@ pub struct PromptSettings {
 pub struct ExecutionLimits {
     pub max_turns: u32,
     pub timeout_seconds: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_total_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tool_calls: Option<u64>,
 }
 
 impl Default for ExecutionLimits {
@@ -132,6 +136,8 @@ impl Default for ExecutionLimits {
         Self {
             max_turns: 12,
             timeout_seconds: 300,
+            max_total_tokens: None,
+            max_tool_calls: None,
         }
     }
 }
@@ -218,6 +224,14 @@ impl AgentResource {
         ensure!(
             resource.agent.execution.timeout_seconds > 0,
             "timeout_seconds must be greater than zero"
+        );
+        ensure!(
+            resource.agent.execution.max_total_tokens != Some(0),
+            "max_total_tokens must be greater than zero"
+        );
+        ensure!(
+            resource.agent.execution.max_tool_calls != Some(0),
+            "max_tool_calls must be greater than zero"
         );
         let tools = &resource.agent.tools;
         ensure!(tools.iter().all(|t| identifier(t)), "invalid tool name");
