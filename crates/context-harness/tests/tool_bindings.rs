@@ -96,6 +96,36 @@ fn write(path: &Path, contents: &str) {
     fs::write(path, contents).unwrap();
 }
 
+#[tokio::test]
+async fn runtime_control_names_cannot_be_overridden_by_tool_resources() {
+    let temp = TempDir::new().unwrap();
+    let tools = temp.path().join("tools");
+    write(
+        &tools.join("blocked.toml"),
+        &RESOURCE.replace("release.read", "run.blocked"),
+    );
+    let mut cfg = config();
+    cfg.db.path = temp.path().join("ctx.sqlite");
+    let runtime = AgentRuntime::new(
+        cfg,
+        temp.path(),
+        context_harness::agent_model::ModelRegistry::default(),
+    )
+    .await
+    .unwrap();
+    let error = runtime
+        .with_tool_bindings(&[ResourceDirectory {
+            path: tools,
+            scope: ResourceScope::Workspace,
+        }])
+        .await
+        .err()
+        .expect("reserved control binding must be rejected");
+    assert!(error
+        .to_string()
+        .contains("runtime control tool name is reserved"));
+}
+
 fn config() -> Config {
     toml::from_str(CONFIG).unwrap()
 }

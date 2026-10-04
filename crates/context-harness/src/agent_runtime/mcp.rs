@@ -42,6 +42,9 @@ impl AgentRuntime {
                     .tools
                     .find(name)
                     .context("unsupported runtime tool declaration")?;
+                if matches!(tool.runtime_dispatch(), ToolRuntimeDispatch::RunControl(_)) {
+                    continue;
+                }
                 let capabilities = tool
                     .capabilities()
                     .context("tool capability metadata is unavailable")?;

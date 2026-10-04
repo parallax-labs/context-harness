@@ -21,6 +21,10 @@ pub struct AgentRun {
     pub agent_version: String,
     pub model: String,
     pub status: String,
+    pub lifecycle: RunLifecycle,
+    pub outcome: Option<RunOutcomeKind>,
+    pub reason_code: Option<String>,
+    pub reason_detail: Option<sqlx::types::Json<Value>>,
     pub created_at: i64,
     pub updated_at: i64,
     pub completed_at: Option<i64>,
@@ -62,11 +66,218 @@ pub struct AgentCheckpoint {
     pub state: sqlx::types::Json<Value>,
 }
 
-/// A terminal transition; callers cannot create arbitrary status strings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[serde(rename_all = "snake_case")]
+#[sqlx(type_name = "TEXT", rename_all = "snake_case")]
+pub enum RunLifecycle {
+    Active,
+    Suspended,
+    Terminal,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[serde(rename_all = "snake_case")]
+#[sqlx(type_name = "TEXT", rename_all = "snake_case")]
+pub enum RunOutcomeKind {
+    Completed,
+    Blocked,
+    NeedsUserInput,
+    Failed,
+    LimitExceeded,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BlockedReason {
+    ExternalDependency,
+    EnvironmentUnavailable,
+    PolicyRestriction,
+    ResourceUnavailable,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NeedsUserInputReason {
+    DecisionRequired,
+    InformationRequired,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FailureReason {
+    ModelError,
+    ModelRefusal,
+    ModelOutputTruncated,
+    ContentFiltered,
+    InvalidModelResponse,
+    ToolError,
+    PermissionDenied,
+    StorageError,
+    AccountingError,
+    RecoveryRejected,
+    LegacyFailure,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LimitReason {
+    ModelTurns,
+    Duration,
+    TotalTokens,
+    TokenUsageUnavailable,
+    ToolCalls,
+    ToolCallsPerTurn,
+    CheckpointSize,
+    OutputSize,
+}
+
+/// A stopped transition; callers cannot create arbitrary lifecycle strings.
 pub enum RunOutcome {
     Completed(String),
     Failed(String),
     Cancelled,
+    Blocked {
+        code: BlockedReason,
+        message: String,
+    },
+    NeedsUserInput {
+        code: NeedsUserInputReason,
+        question: String,
+    },
+    FailedWithReason {
+        code: FailureReason,
+        error: String,
+    },
+    LimitExceeded {
+        code: LimitReason,
+    },
+}
+
+struct StoppedRun {
+    lifecycle: RunLifecycle,
+    outcome: RunOutcomeKind,
+    reason_code: String,
+    reason_detail: Value,
+    status: &'static str,
+    output: Option<String>,
+    error: Option<String>,
+}
+
+fn reason_code<T: Serialize>(code: T) -> String {
+    serde_json::to_value(code)
+        .expect("reason codes serialize")
+        .as_str()
+        .expect("reason codes are strings")
+        .to_owned()
+}
+
+fn stopped(outcome: RunOutcome) -> Result<StoppedRun> {
+    let stopped = match outcome {
+        RunOutcome::Completed(output) => StoppedRun {
+            lifecycle: RunLifecycle::Terminal,
+            outcome: RunOutcomeKind::Completed,
+            reason_code: "final_response".into(),
+            reason_detail: json!({}),
+            status: "completed",
+            output: Some(output),
+            error: None,
+        },
+        RunOutcome::Failed(error) => StoppedRun {
+            lifecycle: RunLifecycle::Terminal,
+            outcome: RunOutcomeKind::Failed,
+            reason_code: "legacy_failure".into(),
+            reason_detail: json!({}),
+            status: "failed",
+            output: None,
+            error: Some(error),
+        },
+        RunOutcome::Cancelled => StoppedRun {
+            lifecycle: RunLifecycle::Terminal,
+            outcome: RunOutcomeKind::Cancelled,
+            reason_code: "cancellation_requested".into(),
+            reason_detail: json!({}),
+            status: "cancelled",
+            output: None,
+            error: None,
+        },
+        RunOutcome::Blocked { code, message } => {
+            ensure!(
+                !message.trim().is_empty() && message.len() <= 8192,
+                "invalid blocked message"
+            );
+            StoppedRun {
+                lifecycle: RunLifecycle::Suspended,
+                outcome: RunOutcomeKind::Blocked,
+                reason_code: reason_code(code),
+                reason_detail: json!({"message": message}),
+                status: "failed",
+                output: None,
+                error: None,
+            }
+        }
+        RunOutcome::NeedsUserInput { code, question } => {
+            ensure!(
+                !question.trim().is_empty() && question.len() <= 8192,
+                "invalid user-input question"
+            );
+            StoppedRun {
+                lifecycle: RunLifecycle::Suspended,
+                outcome: RunOutcomeKind::NeedsUserInput,
+                reason_code: reason_code(code),
+                reason_detail: json!({"question": question}),
+                status: "failed",
+                output: None,
+                error: None,
+            }
+        }
+        RunOutcome::FailedWithReason { code, error } => StoppedRun {
+            lifecycle: RunLifecycle::Terminal,
+            outcome: RunOutcomeKind::Failed,
+            reason_code: reason_code(code),
+            reason_detail: json!({}),
+            status: "failed",
+            output: None,
+            error: Some(error),
+        },
+        RunOutcome::LimitExceeded { code } => StoppedRun {
+            lifecycle: RunLifecycle::Terminal,
+            outcome: RunOutcomeKind::LimitExceeded,
+            reason_code: reason_code(code),
+            reason_detail: json!({}),
+            status: "failed",
+            output: None,
+            error: Some(
+                match code {
+                    LimitReason::ModelTurns => "maximum model turns reached",
+                    LimitReason::Duration => "execution timeout",
+                    LimitReason::TotalTokens => "total token budget exceeded",
+                    LimitReason::TokenUsageUnavailable => "token usage unavailable",
+                    LimitReason::ToolCalls => "tool call budget exceeded",
+                    LimitReason::ToolCallsPerTurn => "too many tool calls in one turn",
+                    LimitReason::CheckpointSize => "checkpoint size limit exceeded",
+                    LimitReason::OutputSize => "output size limit exceeded",
+                }
+                .into(),
+            ),
+        },
+    };
+    ensure!(
+        serde_json::to_vec(&stopped.reason_detail)?.len() <= 8192,
+        "run reason detail exceeds 8 KiB"
+    );
+    Ok(stopped)
+}
+
+fn reason_code_for_event(outcome: RunOutcomeKind) -> &'static str {
+    match outcome {
+        RunOutcomeKind::Completed => "completed",
+        RunOutcomeKind::Blocked => "blocked",
+        RunOutcomeKind::NeedsUserInput => "needs_user_input",
+        RunOutcomeKind::Failed => "failed",
+        RunOutcomeKind::LimitExceeded => "limit_exceeded",
+        RunOutcomeKind::Cancelled => "cancelled",
+    }
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -334,7 +545,7 @@ impl AgentRunStore {
     pub async fn reopen_run(&self, id: &str, expected_sequence: i64) -> Result<AgentRun> {
         ensure!(expected_sequence > 0, "invalid expected run sequence");
         let mut tx = self.pool.begin().await?;
-        let previous: Option<String> = sqlx::query_scalar("UPDATE agent_runs SET updated_at = updated_at WHERE id = ? AND workspace_id = ? AND last_sequence = ? AND status IN ('running', 'failed', 'cancelled') RETURNING status")
+        let previous: Option<String> = sqlx::query_scalar("UPDATE agent_runs SET updated_at = updated_at WHERE id = ? AND workspace_id = ? AND last_sequence = ? AND status IN ('running', 'failed', 'cancelled') AND lifecycle != 'suspended' AND outcome IS NOT 'limit_exceeded' RETURNING status")
             .bind(id).bind(&self.workspace_id).bind(expected_sequence).fetch_optional(&mut *tx).await?;
         let previous = previous
             .context("run not found in workspace, completed, or changed since validation")?;
@@ -350,7 +561,7 @@ impl AgentRunStore {
             !unsafe_tools,
             "cannot resume run with incomplete, failed, or denied tool invocations"
         );
-        sqlx::query("UPDATE agent_runs SET status = 'running', output = NULL, error = NULL, completed_at = NULL WHERE id = ? AND workspace_id = ?")
+        sqlx::query("UPDATE agent_runs SET status = 'running', lifecycle = 'active', outcome = NULL, reason_code = NULL, reason_detail = NULL, output = NULL, error = NULL, completed_at = NULL WHERE id = ? AND workspace_id = ?")
             .bind(id).bind(&self.workspace_id).execute(&mut *tx).await?;
         self.append_in(
             &mut tx,
@@ -437,11 +648,7 @@ impl AgentRunStore {
 
     /// Terminal runs reject ordinary writes; recovery requires `reopen_run`.
     pub async fn finish_run(&self, id: &str, outcome: RunOutcome) -> Result<()> {
-        let (status, output, error) = match outcome {
-            RunOutcome::Completed(output) => ("completed", Some(output), None),
-            RunOutcome::Failed(error) => ("failed", None, Some(error)),
-            RunOutcome::Cancelled => ("cancelled", None, None),
-        };
+        let stopped = stopped(outcome)?;
         let mut tx = self.pool.begin().await?;
         // Acquire the write lock before reading invocation state. Terminal state
         // and cleanup of interrupted calls commit in the same transaction.
@@ -454,25 +661,34 @@ impl AgentRunStore {
         let descendants: Vec<String> = sqlx::query_scalar("WITH RECURSIVE descendants(id) AS (SELECT run_id FROM agent_run_lineage WHERE parent_run_id = ? UNION ALL SELECT l.run_id FROM agent_run_lineage l JOIN descendants d ON l.parent_run_id = d.id) SELECT r.id FROM descendants d JOIN agent_runs r ON r.id = d.id WHERE r.workspace_id = ? AND r.status = 'running'")
             .bind(id).bind(&self.workspace_id).fetch_all(&mut *tx).await?;
         ensure!(
-            status != "completed" || descendants.is_empty(),
+            stopped.outcome != RunOutcomeKind::Completed || descendants.is_empty(),
             "cannot complete run with active descendants"
         );
         for child in descendants {
-            self.finish_in(
-                &mut tx,
-                &child,
-                status,
-                None,
-                if status == "failed" {
-                    Some("ancestor run interrupted")
-                } else {
-                    None
-                },
-            )
-            .await?;
+            let child_outcome = if stopped.outcome == RunOutcomeKind::Cancelled {
+                StoppedRun {
+                    lifecycle: RunLifecycle::Terminal,
+                    outcome: RunOutcomeKind::Cancelled,
+                    reason_code: "ancestor_cancelled".into(),
+                    reason_detail: json!({}),
+                    status: "cancelled",
+                    output: None,
+                    error: None,
+                }
+            } else {
+                StoppedRun {
+                    lifecycle: RunLifecycle::Terminal,
+                    outcome: RunOutcomeKind::Failed,
+                    reason_code: "tool_error".into(),
+                    reason_detail: json!({}),
+                    status: "failed",
+                    output: None,
+                    error: Some("ancestor run interrupted".into()),
+                }
+            };
+            self.finish_in(&mut tx, &child, &child_outcome).await?;
         }
-        self.finish_in(&mut tx, id, status, output.as_deref(), error.as_deref())
-            .await?;
+        self.finish_in(&mut tx, id, &stopped).await?;
         tx.commit().await?;
         Ok(())
     }
@@ -481,14 +697,12 @@ impl AgentRunStore {
         &self,
         tx: &mut Transaction<'_, Sqlite>,
         id: &str,
-        status: &str,
-        output: Option<&str>,
-        error: Option<&str>,
+        stopped: &StoppedRun,
     ) -> Result<()> {
         let unfinished: Vec<String> = sqlx::query_scalar("SELECT call_id FROM tool_invocations WHERE run_id = ? AND status IN ('requested', 'started') ORDER BY requested_sequence")
             .bind(id).fetch_all(&mut **tx).await?;
         ensure!(
-            status != "completed" || unfinished.is_empty(),
+            stopped.status != "completed" || unfinished.is_empty(),
             "cannot complete run with unfinished tools"
         );
         for call_id in unfinished {
@@ -507,12 +721,12 @@ impl AgentRunStore {
         self.append_in(
             tx,
             id,
-            &format!("run.{status}"),
-            &json!({"output": output, "error": error}),
+            &format!("run.{}", reason_code_for_event(stopped.outcome)),
+            &json!({"lifecycle": stopped.lifecycle, "outcome": stopped.outcome, "reason_code": stopped.reason_code, "reason_detail": stopped.reason_detail, "output": stopped.output, "error": stopped.error}),
         )
         .await?;
-        sqlx::query("UPDATE agent_runs SET status = ?, output = ?, error = ?, completed_at = updated_at WHERE id = ? AND workspace_id = ?")
-            .bind(status).bind(output).bind(error).bind(id).bind(&self.workspace_id).execute(&mut **tx).await?;
+        sqlx::query("UPDATE agent_runs SET status = ?, lifecycle = ?, outcome = ?, reason_code = ?, reason_detail = ?, output = ?, error = ?, completed_at = updated_at WHERE id = ? AND workspace_id = ?")
+            .bind(stopped.status).bind(stopped.lifecycle).bind(stopped.outcome).bind(&stopped.reason_code).bind(sqlx::types::Json(&stopped.reason_detail)).bind(&stopped.output).bind(&stopped.error).bind(id).bind(&self.workspace_id).execute(&mut **tx).await?;
         Ok(())
     }
 

@@ -275,6 +275,25 @@ fn cli_lists_shows_validates_and_previews_without_credentials_or_database() {
 }
 
 #[test]
+fn runtime_control_resources_validate_offline_without_credentials_or_database() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path().join("project");
+    let global = tmp.path().join("global");
+    write(&root.join(".ctx/config.toml"), CONFIG);
+    write(
+        &root.join(".ctx/agents/researcher.toml"),
+        &RESOURCE.replace(
+            "tools = [\"search\", \"get\"]",
+            "tools = [\"run.blocked\", \"run.request_user_input\"]",
+        ),
+    );
+
+    assert!(success(run(&root, &global, &["agent", "validate"]))
+        .contains("Validated 1 executable agents"));
+    assert!(!root.join(".ctx/data").exists());
+}
+
+#[test]
 fn cli_explicit_config_and_env_config_isolate_resources_and_models() {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path().join("project");
