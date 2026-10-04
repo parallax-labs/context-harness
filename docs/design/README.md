@@ -33,7 +33,7 @@ See [DESIGN-0000](0000-design-policy.md) for the full policy.
 | [0010](0010-local-agent-runtime.md) | Context Harness Local Agent Runtime | Proposed |
 | [0011](0011-local-agent-runtime-execution-plan.md) | Local Agent Runtime Execution Plan | Reference |
 | [0013](0013-declarative-tool-bindings.md) | Declarative Tool Bindings and Runtime Extensions | Delivered |
-| [0014](0014-structured-agent-run-state.md) | Structured Agent Run State and Context Projection | Draft |
+| [0014](0014-structured-agent-run-state.md) | Structured Agent Run State and Context Projection | Planning |
 | [0015](0015-local-generation-providers.md) | Local Generation Providers | Planning |
 | [0016](0016-durable-background-agent-tasks.md) | Durable Background Agent Tasks | Draft |
 | [0017](0017-targeted-document-refresh.md) | Targeted Document Refresh | Draft |

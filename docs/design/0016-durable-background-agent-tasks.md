@@ -3,7 +3,7 @@
 **Status:** Draft
 **Date:** 2026-10-02
 **Author:** Context Harness contributors
-**Related:** [PRD-0016](../prd/0016-durable-background-agent-tasks.md), [PRD-0014](../prd/0014-durable-agent-runs.md), [DESIGN-0014](0014-structured-agent-run-state.md), [DESIGN-0010](0010-local-agent-runtime.md), [SPEC-0017](../spec/0017-local-agent-execution.md), [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md), [SPEC-0023](../spec/0023-declarative-tool-bindings.md)
+**Related:** [PRD-0016](../prd/0016-durable-background-agent-tasks.md), [PRD-0014](../prd/0014-durable-agent-runs.md), [DESIGN-0014](0014-structured-agent-run-state.md), [DESIGN-0010](0010-local-agent-runtime.md), [SPEC-0017](../spec/0017-local-agent-execution.md), [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md), [SPEC-0023](../spec/0023-declarative-tool-bindings.md), [SPEC-0025](../spec/0025-durable-run-lifecycle-and-budgets.md)
 
 ## Context
 
@@ -18,10 +18,10 @@ application's domain events and publication lifecycle.
 
 PRD/DESIGN-0014 separately propose typed run outcomes, cumulative budgets, structured
 working state and context projection. This design consumes the resulting run-lifecycle
-and recovery contract; it does not redefine those execution semantics. The task layer
-can be designed while 0014 remains Draft, but implementation of outcome projection
-and recovery reconciliation waits for the shared lifecycle behavior to become an
-authoritative spec. Local generation and targeted refresh do not share that dependency.
+and recovery contract; it does not redefine those execution semantics. SPEC-0025 now
+defines that authoritative lifecycle vocabulary and recovery disposition, satisfying
+Gate L. Task persistence and worker behavior still wait for the separate Gate Q task
+contract. Local generation and targeted refresh do not share that dependency.
 
 ## Proposal
 

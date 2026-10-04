@@ -1,6 +1,6 @@
 # PRD-0014: Durable Long-Running Agent Runs
 
-**Status:** Draft
+**Status:** Planned
 **Date:** 2026-10-01
 **Author:** Context Harness contributors
 
@@ -150,29 +150,31 @@ migration and CLI compatibility decisions.
 5. Extend resume and CLI workflows for suspended runs after their safety semantics
    are settled.
 
-No implementation phase begins while this PRD remains Draft.
+The minimum lifecycle and cumulative-budget implementation may begin under
+[ADR-0028](../adr/0028-typed-run-outcomes-and-compatibility.md) and
+[SPEC-0025](../spec/0025-durable-run-lifecycle-and-budgets.md). Later working-state,
+context-compaction, recoverable-error, and suspended-continuation behavior requires
+its named Phase 5 contract before implementation.
 
-## Open Questions
+## Resolved and Deferred Decisions
 
-- Which outcomes are terminal, and which are suspended states eligible for resume?
-- Should completion be represented by structured model output, runtime control
-  tools, or a backward-compatible combination?
-- Which working-state fields are runtime-owned, model-authored or derived from
-  events?
-- What evidence must context projection retain verbatim, and what may be summarized
-  or retrieved again?
-- Are token budgets sufficient initially, or is stable provider-aware cost
-  accounting required before promotion to Planned?
-- Which tool errors are safe to return to the model, and how are identical or
-  repeated calls detected?
-- How should older persisted runs map to new lifecycle and budget fields?
-- Does any concrete workflow require a Session above Run, or do root/child run
-  lineage and resumable runs remain sufficient?
+- ADR-0028 and SPEC-0025 define terminal and suspended outcomes, recovery
+  dispositions, opt-in runtime control tools, and the legacy-row/CLI mapping.
+- Initial cumulative controls are turns, duration, reported tokens, and tool calls.
+  Monetary budgets remain a non-goal until pricing can be versioned reliably.
+- Working-state ownership and context evidence/compaction remain deferred to Phase 5;
+  the compatibility context builder continues complete valid transcript projection.
+- Recoverable tool observations and loop detection remain fail-closed until the Phase
+  5 contract classifies safe errors and repetition identity.
+- Suspended continuation remains deferred; the first lifecycle slice records and
+  exposes suspension but does not synthesize user input into provider conversation.
+- No Session is introduced. Root/child lineage and resumable runs remain the product
+  boundary until a separately reviewed cross-run use case requires another concept.
 
 ## Related Documents
 
-- [DESIGN-0014](../design/0014-structured-agent-run-state.md): exploratory
-  architecture, alternatives, staging and unresolved decisions.
+- [DESIGN-0014](../design/0014-structured-agent-run-state.md): planning architecture,
+  staging, and deferred Phase 5 decisions.
 - [PRD-0013](0013-declarative-tool-bindings.md): delivered reusable runtime tool
   composition.
 - [SPEC-0023](../spec/0023-declarative-tool-bindings.md): authoritative tool-binding
@@ -185,6 +187,9 @@ No implementation phase begins while this PRD remains Draft.
 - [SPEC-0017](../spec/0017-local-agent-execution.md): current execution contract.
 - [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md): current recovery
   and artifact contract.
-- Future ADR: create only after the working-state/context boundary is chosen.
-- Future spec changes: draft after lifecycle, budgets and projection behavior are
-  resolved; do not treat this PRD or its design as authoritative runtime behavior.
+- [ADR-0028](../adr/0028-typed-run-outcomes-and-compatibility.md): lifecycle,
+  compatibility, control-call, and accounting architecture.
+- [SPEC-0025](../spec/0025-durable-run-lifecycle-and-budgets.md): authoritative
+  lifecycle, budget, inspection, and recovery contract.
+- A future ADR/spec is still required before working-state ownership, compaction,
+  recoverable tool observations, or suspended continuation changes runtime behavior.

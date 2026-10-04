@@ -1,6 +1,6 @@
 # DESIGN-0014: Structured Agent Run State and Context Projection
 
-**Status:** Draft
+**Status:** Planning
 **Date:** 2026-10-01
 **Author:** Context Harness contributors
 **Related:** [PRD-0014](../prd/0014-durable-agent-runs.md), [ADR-0024](../adr/0024-local-agent-runtime.md), [SPEC-0017](../spec/0017-local-agent-execution.md), [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md)
@@ -23,9 +23,10 @@ cumulative budget. Tool implementation errors are fatal rather than classified
 observations. A model can describe itself as blocked in prose, but the durable run
 will still be completed if the provider reports a normal final response.
 
-This document keeps the architecture deliberately exploratory. It identifies a
-small extension seam and the decisions that must be reviewed before an ADR or
-authoritative spec is written.
+This document keeps later working-state and context-quality architecture exploratory.
+The minimum lifecycle and cumulative-budget boundary has graduated to ADR-0028 and
+SPEC-0025; those documents are authoritative where this design's earlier alternatives
+or tentative vocabulary differ.
 
 ## Design Principles
 
@@ -152,13 +153,13 @@ state and remain traceable to source events.
 
 ### 4. Introduce typed lifecycle and termination reasons
 
-A tentative lifecycle separates actively executing, suspended and terminal states:
+ADR-0028 and SPEC-0025 resolve the minimum lifecycle as:
 
 ```text
 active:
   running
 
-suspended candidates:
+suspended:
   blocked
   needs_user_input
 
@@ -169,20 +170,11 @@ terminal:
   cancelled
 ```
 
-Whether `blocked` is always suspended is an open question; some blockers may be
-terminal for a particular invocation. Status should therefore be paired with a
-typed reason and structured detail rather than encoding every distinction in the
-status string.
-
-The model needs an explicit way to select completed, blocked or needs-user-input.
-Three options remain under consideration:
-
-- structured final output interpreted by the runtime;
-- runtime-owned control tools such as `run.finish` and `run.request_user_input`;
-- a hybrid that accepts ordinary final responses as backward-compatible completion
-  while structured controls express non-completion outcomes.
-
-No option is selected in this draft.
+Lifecycle is paired with a typed outcome, reason, and independently derived recovery
+disposition. The existing four-value status remains a compatibility projection. A
+normal final response remains completion; opt-in runtime-owned `run.blocked` and
+`run.request_user_input` controls express suspension. Suspended continuation remains
+deferred rather than implied by those controls.
 
 ### 5. Make cumulative budgets first-class run state
 
@@ -306,10 +298,22 @@ This gives users an intuitive budget but requires current provider pricing,
 provider-specific billing rules and versioned accounting. Token and call budgets
 provide stable first controls; cost can be layered on later.
 
+## Contract Resolution
+
+[ADR-0028](../adr/0028-typed-run-outcomes-and-compatibility.md) selects separate
+lifecycle, outcome, reason, and recovery concepts while preserving the legacy status
+projection. [SPEC-0025](../spec/0025-durable-run-lifecycle-and-budgets.md) defines the
+allowed states, opt-in control tools, cumulative turn/duration/token/tool budgets,
+unknown-usage fallback, inspection fields, legacy migration, and recovery categories.
+That contract unblocks the minimum Phase 3 lifecycle implementation.
+
+Structured working-state ownership, selective context projection, recoverable tool
+observations, and suspended continuation remain unresolved Phase 5 work. They SHALL
+NOT be inferred from the minimum lifecycle contract.
+
 ## Implementation Plan
 
-No implementation begins from this Draft. After review, the smallest staged path
-would be:
+With the minimum lifecycle contract accepted, the smallest staged path is:
 
 1. **Contract inventory:** map current status, event, checkpoint, CLI JSON and
    migration compatibility surfaces; decide which existing specs require revision.
@@ -325,8 +329,8 @@ would be:
    thresholds without replaying uncertain effects.
 7. **Suspension/resume:** support blocked and needs-user-input continuation only
    after lifecycle and checkpoint safety are specified.
-8. **Graduation:** record selected architectural boundaries in an ADR, update or
-   add authoritative specs, then move the PRD to Planned/In Progress.
+8. **Graduation:** add later ADR/spec boundaries for working state, context selection,
+   recoverable observations, and suspended continuation before those behaviors ship.
 
 Each stage should be independently reviewable and keep existing runtime behavior
 as the compatibility baseline until its replacement has acceptance coverage.
@@ -357,36 +361,28 @@ as the compatibility baseline until its replacement has acceptance coverage.
   could make this work too broad; interfaces should align, but delivery should
   remain separable.
 
-## Open Questions
+## Remaining Open Questions
 
 1. Is working state a single versioned snapshot, normalized records, or a projection
    derived from typed events plus a small materialized summary?
 2. Which actor may update plan and summary fields: runtime, model control calls,
    tools, or a constrained combination?
-3. Which lifecycle states are terminal, and how does CLI exit status map to
-   suspended states?
-4. Should explicit completion use structured output, control tools or a hybrid?
-5. What context-compaction algorithm ships first, and how is loss measured?
-6. How should OpenAI encrypted reasoning continuation items behave when older
+3. What context-compaction algorithm ships first, and how is loss measured?
+4. How should OpenAI encrypted reasoning continuation items behave when older
    conversation is summarized or omitted?
-7. What token-accounting fallback applies when a provider supplies no usage?
-8. Which tool errors are safe observations, and what exact repetition key prevents
+5. Which tool errors are safe observations, and what exact repetition key prevents
    loops without blocking legitimate retries?
-9. How are legacy runs and checkpoints inspected after schema evolution?
-10. Does user input resume the same run, create a linked run, or require a future
-    Session abstraction?
-11. Which parts belong in revisions to SPEC-0017/0019 versus a new focused spec?
-12. Does the delivered SPEC-0023 tool-binding identity contain every compatibility
-    input that context projection and checkpoint recovery require?
+6. Does user input resume the same run or create a linked run under the existing
+   run-lineage model?
+7. Does a concrete future workflow require a Session abstraction, or can the
+   existing run-lineage model remain sufficient?
+8. Does the delivered SPEC-0023 tool-binding identity contain every compatibility
+   input that later context projection requires?
 
 ## Documentation Graduation
 
-This design remains non-authoritative while the questions above are open. Once a
-coherent boundary is chosen:
-
-1. create a Proposed ADR recording the structured-state/context-projection choice;
-2. draft authoritative behavior in revisions to existing runtime/recovery specs or
-   a new focused spec;
-3. update PRD-0014 from Draft only after product questions and success measures are
-   accepted;
-4. keep this document as Planning during implementation and Reference afterward.
+ADR-0028 and SPEC-0025 graduate the minimum lifecycle/budget boundary, and PRD-0014
+is Planned. This design remains non-authoritative for the remaining questions above.
+Create later ADR/spec contracts before implementing those behaviors, then keep this
+document as Planning during implementation and Reference after all planned slices are
+delivered.

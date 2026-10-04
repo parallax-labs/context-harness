@@ -36,6 +36,7 @@ including the context, alternatives considered, and consequences of each decisio
 | [0025](0025-declarative-tool-bindings.md) | Declarative Bindings over the Existing Tool Registry | Accepted |
 | [0026](0026-native-ollama-local-generation.md) | Native Ollama API for Local Generation | Accepted |
 | [0027](0027-targeted-refresh-authority-and-atomicity.md) | Targeted Refresh Authority and Atomicity | Accepted |
+| [0028](0028-typed-run-outcomes-and-compatibility.md) | Typed Run Outcomes with a Legacy Status Projection | Accepted |
 
 ## Creating a New ADR
 
