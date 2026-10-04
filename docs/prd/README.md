@@ -31,7 +31,7 @@ it. A spec references both for traceability from product intent to implementatio
 | [0010](0010-distribution-and-packaging.md) | Distribution and Packaging | Planned |
 | [0011](0011-multi-workspace-mcp-router.md) | Multi-Workspace MCP Router | Draft |
 | [0013](0013-declarative-tool-bindings.md) | Declarative Tool Bindings and Runtime Extensions | Delivered |
-| [0014](0014-durable-agent-runs.md) | Durable Long-Running Agent Runs | Draft |
+| [0014](0014-durable-agent-runs.md) | Durable Long-Running Agent Runs | Planned |
 | [0015](0015-local-generation-providers.md) | Local Generation Providers | Planned |
 | [0016](0016-durable-background-agent-tasks.md) | Durable Background Agent Tasks | Draft |
 | [0017](0017-targeted-document-refresh.md) | Targeted Document Refresh | Draft |

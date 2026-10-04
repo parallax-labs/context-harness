@@ -4,6 +4,11 @@
 **Date:** 2026-09-30  
 **Related:** [execution](0017-local-agent-execution.md), [developer tools](0018-developer-tools-and-approvals.md)
 
+Canonical lifecycle, cumulative budgets, compatibility mapping, recovery
+dispositions, and the Phase 3 checkpoint evolution are defined by
+[SPEC-0025](0025-durable-run-lifecycle-and-budgets.md). This specification continues
+to define ownership, effect-safety, artifact, and existing checkpoint invariants.
+
 MCP-backed runs are excluded from checkpoint/resume as specified in
 [SPEC-0020](0020-mcp-client-tools.md); external session recovery is not implemented. Delegating resources and child
 runs are also excluded as specified in [SPEC-0021](0021-agent-delegation.md).
@@ -30,8 +35,9 @@ tool calls, be at most 16 MiB serialized, and reference the original input and
 prompt. Resume SHALL compare stored tool calls/results with durable completed
 invocations. A checkpoint and its `checkpoint.created` event SHALL commit in one
 transaction. The checkpoint bound limits stored size; serialization still uses
-memory before checking it. Exceeding the bound after a tool turn fails the run;
-that turn cannot be safely replayed from the previous snapshot.
+memory before checking it. Exceeding the bound after a tool turn stops the run with
+`limit_exceeded/checkpoint_size` under SPEC-0025; that turn cannot be safely replayed
+from the previous snapshot.
 
 Snapshots contain local project text, model output and opaque provider
 continuation data. They are not redacted transcripts or encryption. Credential
@@ -62,8 +68,11 @@ existing directory permissions are not changed.
 
 Resume SHALL acquire ownership, validate the run and latest checkpoint, then
 reopen it transactionally using its expected last event sequence. Concurrent
-state changes SHALL reject that transition. Eligible states are running (after
-an interrupted owner), failed or cancelled. Completed runs SHALL never reopen.
+state changes SHALL reject that transition. Eligibility SHALL follow SPEC-0025's
+recovery disposition. The compatibility path retains running-after-interruption,
+failed, and cancelled eligibility when all safety checks in this specification pass.
+Completed, limit-exceeded, and suspended runs SHALL not reopen through the initial
+Phase 3 resume command.
 Previous terminal/resume events remain in append-only history; reopening clears
 materialized error/output/completion time and appends `run.resumed`.
 
@@ -103,8 +112,9 @@ be allowed to do so if recovery guarantees are required.
 Final model responses up to 64 KiB SHALL remain inline in the run record. Larger
 responses up to 16 MiB SHALL be written to
 `.ctx/runs/<run-id>/artifacts/<uuid>-output.txt`. The run's output SHALL become a
-short relative-path, size and SHA-256 reference. Responses exceeding 16 MiB SHALL
-fail rather than silently truncate. This slice externalizes large final responses;
+short relative-path, size and SHA-256 reference. Responses exceeding 16 MiB SHALL stop
+with `limit_exceeded/output_size` rather than silently truncate. This slice
+externalizes large final responses;
 conversation and successful tool payloads remain in the existing SQLite records
 and snapshots required for recovery.
 

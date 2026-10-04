@@ -15,7 +15,9 @@ Developer tools, capability metadata and interactive approvals are defined by
 [SPEC-0018](0018-developer-tools-and-approvals.md). External stdio MCP tools are
 defined by [SPEC-0020](0020-mcp-client-tools.md). Controlled delegation is defined by [SPEC-0021](0021-agent-delegation.md). Streaming
 remains a later extension. Recovery is defined by
-[SPEC-0019](0019-checkpoints-recovery-and-artifacts.md).
+[SPEC-0019](0019-checkpoints-recovery-and-artifacts.md). Canonical lifecycle,
+outcomes, reasons, cumulative budgets, and their compatibility projection are defined
+by [SPEC-0025](0025-durable-run-lifecycle-and-budgets.md).
 
 ## Execution
 
@@ -29,12 +31,12 @@ Each response SHALL either complete the run or request tools. Tool results SHALL
 be appended to the conversation and supplied to the next model turn. Calls within
 one response SHALL execute sequentially in provider order.
 
-Completed model responses SHALL produce `run.completed` and persist their text as
-run output. Model failures, output truncation, refusal/filtering, invalid tool
-arguments, unavailable permissions, fatal tool failures, and execution limits
-SHALL produce a failed run. The runtime SHALL NOT silently retry model or tool
-calls. Tool exception text SHALL be replaced with a fixed error category rather
-than copied into history.
+Completed model responses SHALL produce the completed outcome and persist their text
+as run output. Failures, execution limits, cancellation, and explicit runtime control
+calls SHALL map to the canonical outcomes and reasons in SPEC-0025 while retaining its
+legacy status projection. The runtime SHALL NOT silently retry model or tool calls.
+Tool exception text SHALL be replaced with a fixed error category rather than copied
+into history.
 
 `max_turns` SHALL count model invocations. The runtime SHALL NOT execute tool calls
 from the final allowed turn, because no turn remains to consume their results.
@@ -142,8 +144,9 @@ ctx agent inspect <run-id> [--after-sequence N] [--limit N] [--json]
 ```
 
 `run` SHALL print its durable record as JSON when requested; human output includes
-run ID, status, final output or failure. It SHALL exit nonzero for failed/cancelled
-runs, while preserving the JSON run record on stdout when creation succeeded.
+run ID, status, final output or failure. It SHALL exit zero only for the canonical
+completed outcome and nonzero for every other stopped outcome, while preserving the
+JSON run record on stdout when creation succeeded.
 Interactive approval follows SPEC-0018; `--non-interactive` SHALL deny
 approval-required calls and never silently approve anything. Setup failures before creation need not have a run ID.
 
