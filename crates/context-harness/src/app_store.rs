@@ -135,6 +135,115 @@ impl SqliteAppStore {
     fn core_store(&self) -> SqliteStore {
         SqliteStore::new(self.pool.clone())
     }
+
+    /// Atomically replace one canonical document and all of its searchable chunks.
+    #[allow(dead_code)] // The binary target compiles this module without the public library API.
+    pub(crate) async fn replace_source_item_atomic(
+        &self,
+        item: &SourceItem,
+        max_tokens: usize,
+    ) -> Result<CanonicalDocumentWrite> {
+        let mut tx = self.pool.begin().await?;
+        let existing_id: Option<String> =
+            sqlx::query_scalar("SELECT id FROM documents WHERE source = ? AND source_id = ?")
+                .bind(&item.source)
+                .bind(&item.source_id)
+                .fetch_optional(&mut *tx)
+                .await?;
+        let document = document_from_source_item(
+            existing_id.unwrap_or_else(|| Uuid::new_v4().to_string()),
+            item,
+        );
+        let chunks = crate::chunk::chunk_text(&document.id, &document.body, max_tokens);
+
+        sqlx::query(
+            r#"
+            INSERT INTO documents (id, source, source_id, source_url, title, author,
+                                   created_at, updated_at, content_type, body,
+                                   metadata_json, raw_json, dedup_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(source, source_id) DO UPDATE SET
+                source_url = excluded.source_url,
+                title = excluded.title,
+                author = excluded.author,
+                updated_at = excluded.updated_at,
+                content_type = excluded.content_type,
+                body = excluded.body,
+                metadata_json = excluded.metadata_json,
+                raw_json = excluded.raw_json,
+                dedup_hash = excluded.dedup_hash
+            "#,
+        )
+        .bind(&document.id)
+        .bind(&document.source)
+        .bind(&document.source_id)
+        .bind(&document.source_url)
+        .bind(&document.title)
+        .bind(&document.author)
+        .bind(document.created_at)
+        .bind(document.updated_at)
+        .bind(&document.content_type)
+        .bind(&document.body)
+        .bind(&document.metadata_json)
+        .bind(&document.raw_json)
+        .bind(&document.dedup_hash)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            "DELETE FROM chunk_vectors WHERE chunk_id IN (SELECT id FROM chunks WHERE document_id = ?)",
+        )
+        .bind(&document.id)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "DELETE FROM embeddings WHERE chunk_id IN (SELECT id FROM chunks WHERE document_id = ?)",
+        )
+        .bind(&document.id)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("DELETE FROM chunks_fts WHERE document_id = ?")
+            .bind(&document.id)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM chunks WHERE document_id = ?")
+            .bind(&document.id)
+            .execute(&mut *tx)
+            .await?;
+        for chunk in &chunks {
+            sqlx::query(
+                "INSERT INTO chunks (id, document_id, chunk_index, text, hash) VALUES (?, ?, ?, ?, ?)",
+            )
+            .bind(&chunk.id)
+            .bind(&chunk.document_id)
+            .bind(chunk.chunk_index)
+            .bind(&chunk.text)
+            .bind(&chunk.hash)
+            .execute(&mut *tx)
+            .await?;
+            sqlx::query("INSERT INTO chunks_fts (chunk_id, document_id, text) VALUES (?, ?, ?)")
+                .bind(&chunk.id)
+                .bind(&chunk.document_id)
+                .bind(&chunk.text)
+                .execute(&mut *tx)
+                .await?;
+        }
+        tx.commit().await?;
+
+        let sidecar_current = vector_index::remove_configured_sidecar(&self.config).is_ok();
+        Ok(CanonicalDocumentWrite {
+            document_id: document.id,
+            chunks,
+            sidecar_current,
+        })
+    }
+}
+
+#[allow(dead_code)] // The binary target compiles this module without the public library API.
+pub(crate) struct CanonicalDocumentWrite {
+    pub(crate) document_id: String,
+    pub(crate) chunks: Vec<Chunk>,
+    pub(crate) sidecar_current: bool,
 }
 
 #[async_trait]
@@ -415,7 +524,6 @@ impl AppStore for SqliteAppStore {
 }
 
 async fn source_item_to_document(pool: &SqlitePool, item: &SourceItem) -> Result<Document> {
-    let dedup_hash = dedup_hash(item);
     let existing_id: Option<String> =
         sqlx::query_scalar("SELECT id FROM documents WHERE source = ? AND source_id = ?")
             .bind(&item.source)
@@ -423,8 +531,15 @@ async fn source_item_to_document(pool: &SqlitePool, item: &SourceItem) -> Result
             .fetch_optional(pool)
             .await?;
 
-    Ok(Document {
-        id: existing_id.unwrap_or_else(|| Uuid::new_v4().to_string()),
+    Ok(document_from_source_item(
+        existing_id.unwrap_or_else(|| Uuid::new_v4().to_string()),
+        item,
+    ))
+}
+
+fn document_from_source_item(id: String, item: &SourceItem) -> Document {
+    Document {
+        id,
         source: item.source.clone(),
         source_id: item.source_id.clone(),
         source_url: item.source_url.clone(),
@@ -436,8 +551,8 @@ async fn source_item_to_document(pool: &SqlitePool, item: &SourceItem) -> Result
         body: item.body.clone(),
         metadata_json: item.metadata_json.clone(),
         raw_json: item.raw_json.clone(),
-        dedup_hash,
-    })
+        dedup_hash: dedup_hash(item),
+    }
 }
 
 fn dedup_hash(item: &SourceItem) -> String {

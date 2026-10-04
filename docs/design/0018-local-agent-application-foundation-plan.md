@@ -302,6 +302,16 @@ Split if necessary:
 disappear; unrelated content and checkpoints remain unchanged; identical retries are
 idempotent.
 
+**Slice status (2026-10-03): Implemented.** `EnrolledSource` provides opaque,
+workspace-bound authority for one configured source, and `TargetedRefresher` exposes
+bounded public-library create/update refresh with whole-batch preflight and ordered
+per-item canonical, embedding and sidecar outcomes. Canonical document/chunk/FTS and
+prior-vector replacement is atomic per item; derived failures remain independently
+retryable after canonical commit. Tests demonstrate offline enrollment and preflight,
+namespace and batch rejection, stable identity, superseded-chunk removal, unrelated
+document and checkpoint isolation, retry safety and canonical rollback on storage
+failure. Connector scans, deletion, dry-run and CLI exposure remain out of scope.
+
 ### Phase 3: Implement the minimum durable-run lifecycle
 
 This phase implements the subset of 0014 required for trustworthy background tasks.

@@ -141,6 +141,7 @@ pub mod server;
 pub mod sources;
 pub mod sqlite_store;
 pub mod stats;
+pub mod targeted_refresh;
 pub mod tool_binding;
 pub mod tool_script;
 pub mod traits;

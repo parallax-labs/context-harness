@@ -25,6 +25,31 @@ pub(crate) enum DocumentIngestOutcome {
     ExtractionSkipped,
 }
 
+pub(crate) enum DocumentPreparationError {
+    TooLarge { size: usize, limit: u64 },
+    Extraction(extract::ExtractError),
+}
+
+pub(crate) fn prepare_source_item(
+    item: &mut SourceItem,
+    max_extract_bytes: u64,
+) -> std::result::Result<(), DocumentPreparationError> {
+    let Some(bytes) = item.raw_bytes.as_ref() else {
+        return Ok(());
+    };
+    if bytes.len() as u64 > max_extract_bytes {
+        return Err(DocumentPreparationError::TooLarge {
+            size: bytes.len(),
+            limit: max_extract_bytes,
+        });
+    }
+    let body = extract::extract_text(bytes, &item.content_type)
+        .map_err(DocumentPreparationError::Extraction)?;
+    item.body = body;
+    item.raw_bytes = None;
+    Ok(())
+}
+
 /// Executes the existing canonical write path for one already-discovered item.
 pub(crate) struct DocumentIngestor<'a, S> {
     config: &'a Config,
@@ -42,29 +67,20 @@ impl<'a, S: AppStore> DocumentIngestor<'a, S> {
     }
 
     pub(crate) async fn ingest(&self, item: &mut SourceItem) -> Result<DocumentIngestOutcome> {
-        if let Some(ref bytes) = item.raw_bytes {
-            if bytes.len() as u64 > self.max_extract_bytes {
-                eprintln!(
+        if let Err(error) = prepare_source_item(item, self.max_extract_bytes) {
+            match error {
+                DocumentPreparationError::TooLarge { size, limit } => eprintln!(
                     "Warning: skipping {} (size {} > max_extract_bytes {})",
-                    item.source_id,
-                    bytes.len(),
-                    self.max_extract_bytes
-                );
-                return Ok(DocumentIngestOutcome::ExtractionSkipped);
-            }
-            match extract::extract_text(bytes, &item.content_type) {
-                Ok(text) => {
-                    item.body = text;
-                    item.raw_bytes = None;
-                }
-                Err(error) => {
+                    item.source_id, size, limit
+                ),
+                DocumentPreparationError::Extraction(error) => {
                     eprintln!(
                         "Warning: extraction failed for {}: {}",
                         item.source_id, error
                     );
-                    return Ok(DocumentIngestOutcome::ExtractionSkipped);
                 }
             }
+            return Ok(DocumentIngestOutcome::ExtractionSkipped);
         }
 
         let document_id = self.store.upsert_source_item(item).await?;

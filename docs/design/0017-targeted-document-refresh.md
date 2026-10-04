@@ -126,6 +126,21 @@ no provider or store mutation.
 - Mismatched source identity and over-limit batches fail before writes.
 - Structured outcomes support safe retry after optional derived-index failure.
 
+## Implementation Status
+
+**Slice status (2026-10-03): Implemented.** The public library API now resolves an
+opaque `EnrolledSource` from configured connector identity and canonical workspace,
+preflights bounded explicit `SourceItem` batches without connector discovery, and
+returns ordered canonical, embedding and sidecar outcomes. Accepted items use one
+SQLite transaction for document, chunk, FTS and prior-vector replacement; configured
+embedding and sidecar work occurs after canonical commit and reports pending work
+without rolling canonical content back. Targeted refresh preserves stable document
+identity, leaves discovery checkpoints and unrelated documents untouched, and removes
+superseded searchable chunks. Enrollment and rejected-batch validation do not open the
+database, resolve secrets, invoke models or providers, start processes, or make
+network requests. Deletion, connector item lookup, dry-run and CLI exposure remain
+deferred.
+
 ## Contract Resolution
 
 [ADR-0027](../adr/0027-targeted-refresh-authority-and-atomicity.md) records the
