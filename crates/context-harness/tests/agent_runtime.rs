@@ -4,7 +4,7 @@ use context_harness::{
     agent_model::{fake::FakeModel, *},
     agent_resource::{AgentResource, LoadedAgentResource, ResourceScope},
     agent_runtime::AgentRuntime,
-    agent_store::{RunOutcome, ToolOutcome},
+    agent_store::{RunLifecycle, RunOutcome, RunOutcomeKind, ToolOutcome},
     app_store::SqliteAppStore,
     chunk::chunk_text,
     config::Config,
@@ -82,6 +82,167 @@ async fn seed(cfg: &Config, text: &str) {
 }
 struct Grounded {
     calls: AtomicUsize,
+}
+
+struct OneResponse(ModelResponse);
+
+#[async_trait]
+impl ModelProvider for OneResponse {
+    async fn generate(&self, _request: &ModelRequest) -> ModelResult<ModelResponse> {
+        Ok(self.0.clone())
+    }
+}
+
+#[tokio::test]
+async fn opt_in_run_controls_suspend_without_tool_execution() {
+    let tmp = TempDir::new().unwrap();
+    let cfg = config(tmp.path());
+    let response = call(
+        "run.blocked",
+        "blocked-1",
+        json!({"code":"environment_unavailable","message":"fixture dependency is offline"}),
+    );
+    let runtime = AgentRuntime::new(cfg, tmp.path(), registry(Arc::new(OneResponse(response))))
+        .await
+        .unwrap();
+    let (_sender, cancel) = watch::channel(false);
+    let run = runtime
+        .run(
+            &resource(&["run.blocked"], 2, 10),
+            "Wait for the fixture",
+            cancel,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(run.status, "failed");
+    assert_eq!(run.lifecycle, RunLifecycle::Suspended);
+    assert_eq!(run.outcome, Some(RunOutcomeKind::Blocked));
+    assert_eq!(run.reason_code.as_deref(), Some("environment_unavailable"));
+    assert_eq!(
+        run.reason_detail.unwrap().0["message"],
+        "fixture dependency is offline"
+    );
+    assert!(runtime
+        .store()
+        .tool_invocations(&run.id)
+        .await
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        runtime
+            .store()
+            .events(&run.id, 0, 20)
+            .await
+            .unwrap()
+            .last()
+            .unwrap()
+            .event_type,
+        "run.blocked"
+    );
+}
+
+#[tokio::test]
+async fn request_user_input_suspends_with_a_typed_question() {
+    let tmp = TempDir::new().unwrap();
+    let cfg = config(tmp.path());
+    let response = call(
+        "run.request_user_input",
+        "question-1",
+        json!({"code":"information_required","question":"Which release should I inspect?"}),
+    );
+    let runtime = AgentRuntime::new(cfg, tmp.path(), registry(Arc::new(OneResponse(response))))
+        .await
+        .unwrap();
+    let (_sender, cancel) = watch::channel(false);
+    let run = runtime
+        .run(
+            &resource(&["run.request_user_input"], 2, 10),
+            "Inspect a release",
+            cancel,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(run.lifecycle, RunLifecycle::Suspended);
+    assert_eq!(run.outcome, Some(RunOutcomeKind::NeedsUserInput));
+    assert_eq!(run.reason_code.as_deref(), Some("information_required"));
+    assert_eq!(
+        run.reason_detail.unwrap().0["question"],
+        "Which release should I inspect?"
+    );
+    assert!(runtime
+        .store()
+        .tool_invocations(&run.id)
+        .await
+        .unwrap()
+        .is_empty());
+}
+
+#[tokio::test]
+async fn malformed_run_control_is_a_typed_failure_without_dispatch() {
+    let tmp = TempDir::new().unwrap();
+    let cfg = config(tmp.path());
+    let response = call(
+        "run.blocked",
+        "blocked-1",
+        json!({"code":"environment_unavailable","message":"offline","extra":true}),
+    );
+    let runtime = AgentRuntime::new(cfg, tmp.path(), registry(Arc::new(OneResponse(response))))
+        .await
+        .unwrap();
+    let (_sender, cancel) = watch::channel(false);
+    let run = runtime
+        .run(&resource(&["run.blocked"], 2, 10), "Wait", cancel)
+        .await
+        .unwrap();
+
+    assert_eq!(run.lifecycle, RunLifecycle::Terminal);
+    assert_eq!(run.outcome, Some(RunOutcomeKind::Failed));
+    assert_eq!(run.reason_code.as_deref(), Some("invalid_model_response"));
+    assert!(runtime
+        .store()
+        .tool_invocations(&run.id)
+        .await
+        .unwrap()
+        .is_empty());
+}
+
+#[tokio::test]
+async fn mixed_run_control_and_ordinary_tool_fails_before_dispatch() {
+    let tmp = TempDir::new().unwrap();
+    let cfg = config(tmp.path());
+    let mut response = call(
+        "run.request_user_input",
+        "question-1",
+        json!({"code":"decision_required","question":"Choose A or B"}),
+    );
+    response.tool_calls.push(ToolCall {
+        name: "search".into(),
+        id: "search-1".into(),
+        arguments: json!({"query":"must not run"}),
+    });
+    let runtime = AgentRuntime::new(cfg, tmp.path(), registry(Arc::new(OneResponse(response))))
+        .await
+        .unwrap();
+    let (_sender, cancel) = watch::channel(false);
+    let run = runtime
+        .run(
+            &resource(&["run.request_user_input", "search"], 2, 10),
+            "Ask if needed",
+            cancel,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(run.outcome, Some(RunOutcomeKind::Failed));
+    assert_eq!(run.reason_code.as_deref(), Some("invalid_model_response"));
+    assert!(runtime
+        .store()
+        .tool_invocations(&run.id)
+        .await
+        .unwrap()
+        .is_empty());
 }
 #[async_trait]
 impl ModelProvider for Grounded {
@@ -225,6 +386,13 @@ async fn turn_limit_stops_before_tools_and_unknown_tool_calls_never_dispatch() {
             .await
             .unwrap();
         assert_eq!(run.status, "failed");
+        if turns == 1 {
+            assert_eq!(run.outcome, Some(RunOutcomeKind::LimitExceeded));
+            assert_eq!(run.reason_code.as_deref(), Some("model_turns"));
+        } else {
+            assert_eq!(run.outcome, Some(RunOutcomeKind::Failed));
+            assert_eq!(run.reason_code.as_deref(), Some("model_error"));
+        }
         assert!(runtime
             .store()
             .tool_invocations(&run.id)
@@ -278,7 +446,14 @@ async fn timeout_and_explicit_cancellation_persist_terminal_runs() {
         assert_eq!(calls.load(Ordering::SeqCst), 1);
         if !cancel_early {
             assert_eq!(run.error.as_deref(), Some("execution timeout"));
+            assert_eq!(run.outcome, Some(RunOutcomeKind::LimitExceeded));
+            assert_eq!(run.reason_code.as_deref(), Some("duration"));
         }
+        let expected_event = if cancel_early {
+            "run.cancelled"
+        } else {
+            "run.limit_exceeded"
+        };
         assert_eq!(
             runtime
                 .store()
@@ -288,7 +463,7 @@ async fn timeout_and_explicit_cancellation_persist_terminal_runs() {
                 .last()
                 .unwrap()
                 .event_type,
-            format!("run.{}", run.status)
+            expected_event
         );
     }
 }

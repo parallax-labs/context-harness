@@ -2,6 +2,7 @@
 //! intentionally writable; model-requested retrieval uses read-only connections.
 mod checkpoint;
 pub mod cli;
+mod control;
 mod delegation;
 mod developer;
 mod files;
@@ -15,7 +16,7 @@ use policy::{ApprovalHandler, ApprovalRequest, Authorization, DenyApprovals, Run
 use crate::{
     agent_model::{FinishReason, ModelMessage, ModelRegistry, ModelRequest, ModelTool},
     agent_resource::{Capability, LoadedAgentResource, ResourceDirectory},
-    agent_store::{AgentRun, AgentRunStore, RunOutcome, ToolOutcome},
+    agent_store::{AgentRun, AgentRunStore, FailureReason, LimitReason, RunOutcome, ToolOutcome},
     app_store::SqliteAppStore,
     config::Config,
     tool_binding::{self, HostToolAuthority},
@@ -70,6 +71,13 @@ impl AgentRuntime {
         let mut tools = tools::registry(&config).await?;
         developer::register(&mut tools, &root)?;
         tools.register(Box::new(delegation::InvokeTool));
+        ensure!(
+            [control::BLOCKED, control::REQUEST_USER_INPUT]
+                .iter()
+                .all(|name| tools.find(name).is_none()),
+            "runtime control tool name is reserved"
+        );
+        control::register(&mut tools);
         Ok(Self {
             config: Arc::new(config),
             root,
@@ -158,6 +166,10 @@ impl AgentRuntime {
         if loaded.is_empty() {
             return Ok(self);
         }
+        ensure!(
+            loaded.keys().all(|name| !control::is_reserved(name)),
+            "runtime control tool name is reserved"
+        );
         let local = loaded
             .iter()
             .filter(|(_, resource)| {
@@ -208,7 +220,10 @@ impl AgentRuntime {
                 self.store
                     .finish_run(
                         &run.id,
-                        RunOutcome::Failed("run ownership is unavailable".into()),
+                        RunOutcome::FailedWithReason {
+                            code: FailureReason::RecoveryRejected,
+                            error: "run ownership is unavailable".into(),
+                        },
                     )
                     .await?;
                 return self
@@ -244,7 +259,13 @@ impl AgentRuntime {
             Ok(remaining) => remaining,
             Err(error) => {
                 self.store
-                    .finish_run(&run.id, RunOutcome::Failed(error.to_string()))
+                    .finish_run(
+                        &run.id,
+                        RunOutcome::FailedWithReason {
+                            code: FailureReason::RecoveryRejected,
+                            error: error.to_string(),
+                        },
+                    )
                     .await?;
                 return self
                     .store
@@ -258,9 +279,12 @@ impl AgentRuntime {
             _ = cancelled(&mut cancel) => RunOutcome::Cancelled,
             result = tokio::time::timeout(remaining, self.execute(&run.id, resource, &run.input, request, start_turn, files)) => {
                 match result {
-                    Ok(Ok(output)) => RunOutcome::Completed(output),
-                    Ok(Err(error)) => RunOutcome::Failed(error.to_string()),
-                    Err(_) => RunOutcome::Failed("execution timeout".into()),
+                    Ok(Ok(outcome)) => outcome,
+                    Ok(Err(error)) => RunOutcome::FailedWithReason {
+                        code: FailureReason::ToolError,
+                        error: error.to_string(),
+                    },
+                    Err(_) => RunOutcome::LimitExceeded { code: LimitReason::Duration },
                 }
             }
         };
@@ -319,15 +343,19 @@ impl AgentRuntime {
                     "delegation targets unavailable"
                 );
             }
-            let capabilities = tool
-                .capabilities()
-                .context("tool capability metadata is unavailable")?;
-            ensure!(
-                self.policy.authorize(&agent.permissions, &capabilities) != Authorization::Denied,
-                "tool capability is not permitted by agent and host policy"
-            );
+            let dispatch = tool.runtime_dispatch();
+            if !matches!(dispatch, ToolRuntimeDispatch::RunControl(_)) {
+                let capabilities = tool
+                    .capabilities()
+                    .context("tool capability metadata is unavailable")?;
+                ensure!(
+                    self.policy.authorize(&agent.permissions, &capabilities)
+                        != Authorization::Denied,
+                    "tool capability is not permitted by agent and host policy"
+                );
+            }
             let mut parameters = tool.parameters_schema();
-            if tool.runtime_dispatch() == ToolRuntimeDispatch::AgentDelegation {
+            if dispatch == ToolRuntimeDispatch::AgentDelegation {
                 parameters["properties"]["agent"]["enum"] = json!(agent.delegation.allow);
             }
             declarations.push(ModelTool {
@@ -347,7 +375,7 @@ impl AgentRuntime {
         restored: Option<ModelRequest>,
         start_turn: u32,
         files: &files::RunFiles,
-    ) -> Result<String> {
+    ) -> Result<RunOutcome> {
         let agent = &resource.definition.agent;
         ensure!(
             agent.execution.max_turns > 0 && agent.execution.timeout_seconds > 0,
@@ -389,14 +417,23 @@ impl AgentRuntime {
             for turn in start_turn..agent.execution.max_turns {
                 self.checkpoint(id, resource, &request, turn).await?;
                 if let Some(context) = &self.execution { context.consume()?; }
-                let response = self
+                let response = match self
                     .models
                     .generate_recorded(&self.store, id, &agent.model, &request)
-                    .await?;
+                    .await
+                {
+                    Ok(response) => response,
+                    Err(_) => {
+                        return Ok(RunOutcome::FailedWithReason {
+                            code: FailureReason::ModelError,
+                            error: "model request failed".into(),
+                        });
+                    }
+                };
                 match response.finish_reason {
                     FinishReason::Completed => {
                         if response.text.len() <= 64 * 1024 {
-                            return Ok(response.text);
+                            return Ok(RunOutcome::Completed(response.text));
                         }
                         let artifact = files.write_artifact("output.txt", response.text.as_bytes())?;
                         self.store
@@ -407,28 +444,75 @@ impl AgentRuntime {
                                 artifact.size,
                             )
                             .await?;
-                        return Ok(format!(
+                        return Ok(RunOutcome::Completed(format!(
                             "Output saved to {} ({} bytes; sha256 {})",
                             artifact.relative_path, artifact.size, artifact.sha256
-                        ));
+                        )));
                     }
-                    FinishReason::Length => anyhow::bail!("model output limit reached"),
-                    FinishReason::Refusal => anyhow::bail!("model refused the request"),
-                    FinishReason::ContentFilter => anyhow::bail!("model response was filtered"),
+                    FinishReason::Length => return Ok(RunOutcome::FailedWithReason {
+                        code: FailureReason::ModelOutputTruncated,
+                        error: "model output limit reached".into(),
+                    }),
+                    FinishReason::Refusal => return Ok(RunOutcome::FailedWithReason {
+                        code: FailureReason::ModelRefusal,
+                        error: "model refused the request".into(),
+                    }),
+                    FinishReason::ContentFilter => return Ok(RunOutcome::FailedWithReason {
+                        code: FailureReason::ContentFiltered,
+                        error: "model response was filtered".into(),
+                    }),
                     FinishReason::ToolCalls => {}
                 }
+                let controls: Vec<_> = response
+                    .tool_calls
+                    .iter()
+                    .filter_map(|call| {
+                        self.tools
+                            .find(&call.name)
+                            .or_else(|| external.find(&call.name))
+                            .and_then(|tool| match tool.runtime_dispatch() {
+                                ToolRuntimeDispatch::RunControl(kind) => Some((kind, call)),
+                                _ => None,
+                            })
+                    })
+                    .collect();
+                if !controls.is_empty() {
+                    if controls.len() != 1 || response.tool_calls.len() != 1 {
+                        return Ok(RunOutcome::FailedWithReason {
+                            code: FailureReason::InvalidModelResponse,
+                            error: "invalid run control response".into(),
+                        });
+                    }
+                    let (kind, call) = controls[0];
+                    return Ok(control::outcome(kind, call.arguments.clone()).unwrap_or(
+                        RunOutcome::FailedWithReason {
+                            code: FailureReason::InvalidModelResponse,
+                            error: "invalid run control response".into(),
+                        },
+                    ));
+                }
                 if let Some(context) = &self.execution {
-                    ensure!(context.remaining.load(std::sync::atomic::Ordering::SeqCst) > 0, "shared model turn budget exhausted");
+                    if context
+                        .remaining
+                        .load(std::sync::atomic::Ordering::SeqCst)
+                        == 0
+                    {
+                        return Ok(RunOutcome::LimitExceeded {
+                            code: LimitReason::ModelTurns,
+                        });
+                    }
                 }
                 // Do not execute tools if the run cannot consume their results.
-                ensure!(
-                    turn + 1 < agent.execution.max_turns,
-                    "maximum model turns reached"
-                );
-                ensure!(
-                    response.tool_calls.len() <= MAX_TOOL_CALLS_PER_TURN,
-                    "too many tool calls in one turn"
-                );
+                if turn + 1 >= agent.execution.max_turns {
+                    return Ok(RunOutcome::LimitExceeded {
+                        code: LimitReason::ModelTurns,
+                    });
+                }
+                if response.tool_calls.len() > MAX_TOOL_CALLS_PER_TURN {
+                    return Ok(RunOutcome::LimitExceeded {
+                        code: LimitReason::ToolCallsPerTurn,
+                    });
+                }
                 request.messages.push(response.message());
                 for call in response.tool_calls {
                     if let Some(context) = &self.execution {
@@ -443,10 +527,14 @@ impl AgentRuntime {
                         .capabilities()
                         .map(|caps| self.policy.authorize(&agent.permissions, &caps))
                         .unwrap_or(Authorization::Denied);
-                    let valid = if dispatch == ToolRuntimeDispatch::AgentDelegation {
-                        self.validate_delegation(resource, &call.arguments)
-                    } else {
-                        tool.validate_arguments(&call.arguments)
+                    let valid = match dispatch {
+                        ToolRuntimeDispatch::AgentDelegation => {
+                            self.validate_delegation(resource, &call.arguments)
+                        }
+                        ToolRuntimeDispatch::Direct => tool.validate_arguments(&call.arguments),
+                        ToolRuntimeDispatch::RunControl(_) => {
+                            anyhow::bail!("run control reached ordinary dispatch")
+                        }
                     };
                     if !agent.tools.contains(&call.name)
                         || authorization == Authorization::Denied
@@ -466,9 +554,13 @@ impl AgentRuntime {
                     let approval_arguments = tool.approval_arguments(&call.arguments)?;
                     self.approve_invocation(id, &call.id, &call.name, &approval_arguments, authorization).await?;
                     self.store.start_tool(id, &call.id).await?;
-                    let result = if dispatch == ToolRuntimeDispatch::AgentDelegation {
-                        self.invoke(id, &call.id, resource, call.arguments).await
-                    } else {tool.execute(call.arguments, &context).await};
+                    let result = match dispatch {
+                        ToolRuntimeDispatch::AgentDelegation => {
+                            self.invoke(id, &call.id, resource, call.arguments).await
+                        }
+                        ToolRuntimeDispatch::Direct => tool.execute(call.arguments, &context).await,
+                        ToolRuntimeDispatch::RunControl(_) => unreachable!(),
+                    };
                     match result {
                         Ok(result) => {
                             let content = serde_json::to_string(&result)?;
@@ -505,7 +597,9 @@ impl AgentRuntime {
                     }
                 }
             }
-            anyhow::bail!("maximum model turns reached")
+            Ok(RunOutcome::LimitExceeded {
+                code: LimitReason::ModelTurns,
+            })
         }
         .await;
         for session in &mut sessions {

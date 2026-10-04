@@ -215,6 +215,36 @@ pub async fn run_migrations(config: &Config) -> Result<()> {
             sqlx::query(statement).execute(&mut *tx).await?;
         }
     }
+    let columns: Vec<String> =
+        sqlx::query_scalar("SELECT name FROM pragma_table_info('agent_runs')")
+            .fetch_all(&mut *tx)
+            .await?;
+    for (name, definition) in [
+        (
+            "lifecycle",
+            "TEXT NOT NULL DEFAULT 'active' CHECK (lifecycle IN ('active', 'suspended', 'terminal'))",
+        ),
+        (
+            "outcome",
+            "TEXT CHECK (outcome IS NULL OR outcome IN ('completed', 'blocked', 'needs_user_input', 'failed', 'limit_exceeded', 'cancelled'))",
+        ),
+        ("reason_code", "TEXT"),
+        (
+            "reason_detail",
+            "TEXT CHECK (reason_detail IS NULL OR json_valid(reason_detail))",
+        ),
+    ] {
+        if !columns.iter().any(|column| column == name) {
+            sqlx::query(&format!("ALTER TABLE agent_runs ADD COLUMN {name} {definition}"))
+                .execute(&mut *tx)
+                .await?;
+        }
+    }
+    sqlx::query(
+        "UPDATE agent_runs SET lifecycle = CASE status WHEN 'running' THEN 'active' ELSE 'terminal' END, outcome = CASE status WHEN 'completed' THEN 'completed' WHEN 'failed' THEN 'failed' WHEN 'cancelled' THEN 'cancelled' END, reason_code = CASE status WHEN 'completed' THEN 'legacy_completed' WHEN 'failed' THEN 'legacy_failure' WHEN 'cancelled' THEN 'legacy_cancelled' END, reason_detail = CASE WHEN status = 'running' THEN NULL ELSE '{}' END WHERE reason_code IS NULL",
+    )
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
 
     pool.close().await;

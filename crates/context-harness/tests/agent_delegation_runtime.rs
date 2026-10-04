@@ -3,6 +3,7 @@ use context_harness::{
     agent_model::{fake::FakeModel, *},
     agent_resource::{AgentResource, Capability, LoadedAgentResource, ResourceScope},
     agent_runtime::{policy::*, AgentRuntime},
+    agent_store::RunOutcomeKind,
     config::Config,
 };
 use serde_json::{json, Value};
@@ -253,11 +254,8 @@ async fn parent_and_child_share_model_turn_budget() {
     let (_tx, rx) = watch::channel(false);
     let run = runtime.run(&parent, "task", rx).await.unwrap();
     assert_eq!(run.status, "failed");
-    assert!(run
-        .error
-        .as_deref()
-        .unwrap()
-        .contains("shared model turn budget"));
+    assert_eq!(run.outcome, Some(RunOutcomeKind::Failed));
+    assert_eq!(run.reason_code.as_deref(), Some("tool_error"));
     let child = runtime.store().children(&run.id).await.unwrap().remove(0);
     assert_eq!(
         runtime

@@ -279,6 +279,13 @@ pub trait Tool: Send + Sync {
 pub enum ToolRuntimeDispatch {
     Direct,
     AgentDelegation,
+    RunControl(RunControlKind),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunControlKind {
+    Blocked,
+    RequestUserInput,
 }
 
 #[derive(Debug, Clone)]

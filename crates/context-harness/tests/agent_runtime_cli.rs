@@ -55,6 +55,9 @@ fn cli_run_history_and_paged_inspect_work_without_credentials() {
         true,
     );
     assert_eq!(completed["status"], "completed");
+    assert_eq!(completed["lifecycle"], "terminal");
+    assert_eq!(completed["outcome"], "completed");
+    assert_eq!(completed["reason_code"], "final_response");
     assert!(completed["output"]
         .as_str()
         .unwrap()
@@ -106,6 +109,8 @@ fn failed_run_returns_nonzero_with_inspectable_json_record() {
         false,
     );
     assert_eq!(failed["status"], "failed");
+    assert_eq!(failed["lifecycle"], "terminal");
+    assert_eq!(failed["outcome"], "failed");
     let id = failed["id"].as_str().unwrap();
     let inspected = json(
         run(&root, &global, &["agent", "inspect", id, "--json"]),

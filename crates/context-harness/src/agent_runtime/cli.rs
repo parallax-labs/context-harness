@@ -41,7 +41,14 @@ fn print_run(run: AgentRun, json_output: bool) -> Result<()> {
     if json_output {
         println!("{}", serde_json::to_string_pretty(&run)?);
     } else {
-        println!("Run: {}\nStatus: {}", run.id, run.status);
+        println!(
+            "Run: {}\nStatus: {}\nLifecycle: {:?}\nOutcome: {:?}\nReason: {}",
+            run.id,
+            run.status,
+            run.lifecycle,
+            run.outcome,
+            run.reason_code.as_deref().unwrap_or("-")
+        );
         if let Some(output) = &run.output {
             println!("\n{output}");
         }
@@ -50,7 +57,7 @@ fn print_run(run: AgentRun, json_output: bool) -> Result<()> {
         }
     }
     ensure!(
-        run.status == "completed",
+        run.outcome == Some(crate::agent_store::RunOutcomeKind::Completed),
         "agent run {} ended with status {}",
         run.id,
         run.status
@@ -209,8 +216,9 @@ pub async fn inspect(
         );
     } else {
         println!(
-            "Run: {}\nAgent: {}\nModel: {}\nWorkspace: {}\nStatus: {}",
-            run.id, run.agent_name, run.model, run.workspace_id, run.status
+            "Run: {}\nAgent: {}\nModel: {}\nWorkspace: {}\nStatus: {}\nLifecycle: {:?}\nOutcome: {:?}\nReason: {}",
+            run.id, run.agent_name, run.model, run.workspace_id, run.status,
+            run.lifecycle, run.outcome, run.reason_code.as_deref().unwrap_or("-")
         );
         println!(
             "Root: {}\nParent: {:?}\nDepth: {}",

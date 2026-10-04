@@ -333,6 +333,16 @@ compatibly. Expose it through store APIs, events, CLI JSON and human inspection.
 Implement the selected completion/control mechanism with backward-compatible ordinary
 completion.
 
+**Slice status (2026-10-04): Implemented.** Additive run columns and deterministic
+legacy backfill now preserve the four-value status projection while public store and
+CLI inspection expose typed lifecycle, outcome, reason code and bounded detail.
+Opt-in `run.blocked` and `run.request_user_input` controls are runtime-owned,
+capability-free, collision-protected and validated without database, provider,
+network or process access. Runtime and migration fixtures cover completion,
+suspension, malformed/mixed controls, failure, turn/duration limits, cancellation,
+legacy rows and existing recovery/delegation behavior. Phase 3B cumulative budgets
+and Phase 3C checkpoint/recovery evolution remain pending.
+
 #### 3B. Cumulative budgets
 
 Persist and enforce approved model-turn, duration, token and tool-call budgets across
