@@ -422,6 +422,20 @@ Implement transactional conditional claims, leases, heartbeat, concurrency, atte
 graceful shutdown and resource-drift checks. Link a claimed task to an ordinary run
 before model work proceeds. Extend the public host API with bounded worker operation.
 
+**Slice status (2026-10-05): Implemented.** `AgentTaskStore` now grants exclusive
+database-clock claims with opaque tokens, bounded pre-run attempts and token-guarded
+heartbeats and finalization. The additive trusted-host worker API validates all worker
+bounds before initialization, runs only when explicitly awaited, limits active executions,
+stops claiming on shutdown and keeps leases alive while ordinary runtime cancellation
+finishes. Workers recompute the accepted identity before run creation; drift becomes a
+terminal scheduling result without provider or tool construction. Root run creation,
+lineage/event initialization, immutable task linkage and `task.run_linked` commit in one
+SQLite transaction before providers are constructed, then the worker drives that run
+through the same `AgentRuntime` execution path as direct runs. Focused contention,
+stale-token, rollback, drift, sanitized setup-failure, concurrency, heartbeat and graceful
+shutdown fixtures cover the boundary. Cancellation requests, expired-lease reconciliation,
+run-state projection and CLI/service surfaces remain Phase 4C/4D work.
+
 #### 4C. Cancellation and reconciliation
 
 Project the linked run's authoritative outcome into task inspection. Reconcile expired

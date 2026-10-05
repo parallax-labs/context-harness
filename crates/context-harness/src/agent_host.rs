@@ -9,12 +9,12 @@ use crate::{
     agent_resource::{load_resources, LoadedAgentResource, ResourceDirectory},
     agent_runtime::{
         policy::{ApprovalHandler, DenyApprovals, RuntimePolicy},
-        static_tool_identity, workspace_id, AgentRuntime,
+        run_budgets, static_tool_identity, workspace_id, AgentRuntime,
     },
     agent_store::{AgentRun, AgentRunStore},
     agent_task_store::{
-        AcceptedTaskIdentity, AgentTaskStore, AgentTaskSubmission, AgentTaskSubmissionResult,
-        DEFAULT_QUEUE_LIMIT,
+        AcceptedTaskIdentity, AgentTaskClaim, AgentTaskStore, AgentTaskSubmission,
+        AgentTaskSubmissionResult, DEFAULT_QUEUE_LIMIT,
     },
     app_store::SqliteAppStore,
     config::Config,
@@ -22,9 +22,11 @@ use crate::{
 };
 use anyhow::{ensure, Context, Result};
 use serde::Serialize;
-use std::{collections::BTreeMap, path::Path, path::PathBuf, sync::Arc};
-use tokio::sync::watch;
+use std::{collections::BTreeMap, path::Path, path::PathBuf, sync::Arc, time::Duration};
+use tokio::{sync::watch, task::JoinSet};
+use uuid::Uuid;
 
+#[derive(Clone)]
 struct ToolBindings {
     directories: Vec<ResourceDirectory>,
     catalog: ToolImplementationCatalog,
@@ -32,6 +34,7 @@ struct ToolBindings {
 }
 
 /// Trusted inputs for assembling one direct-execution agent host.
+#[derive(Clone)]
 pub struct AgentHostBuilder {
     config: Config,
     root: PathBuf,
@@ -95,6 +98,18 @@ impl AgentHostBuilder {
 
     /// Assemble the existing direct runtime for one agent and its delegation graph.
     pub async fn build(self, agent_name: &str) -> Result<AgentHost> {
+        self.build_with_initialized_store(agent_name, false).await
+    }
+
+    async fn build_initialized(self, agent_name: &str) -> Result<AgentHost> {
+        self.build_with_initialized_store(agent_name, true).await
+    }
+
+    async fn build_with_initialized_store(
+        self,
+        agent_name: &str,
+        initialized: bool,
+    ) -> Result<AgentHost> {
         ensure!(!agent_name.trim().is_empty(), "agent name is required");
         let resources = load_resources(&self.agent_directories, &self.config)?;
         let resource = resources
@@ -103,8 +118,12 @@ impl AgentHostBuilder {
             .context("standalone agent not found; profiles are prompt-only")?;
         let definitions = reachable_model_definitions(&self.config, &resources, agent_name)?;
         let models = ModelRegistry::from_config_with_catalog(&definitions, &self.models)?;
-        let mut runtime = AgentRuntime::new(self.config, &self.root, models)
-            .await?
+        let runtime = if initialized {
+            AgentRuntime::new_initialized(self.config, &self.root, models).await?
+        } else {
+            AgentRuntime::new(self.config, &self.root, models).await?
+        };
+        let mut runtime = runtime
             .with_resources(resources)
             .with_policy(self.policy, self.approvals);
         if let Some(bindings) = self.tool_bindings {
@@ -135,6 +154,24 @@ impl AgentHostBuilder {
             agent_name: resolved.agent_name,
             agent_version: resolved.agent_version,
             accepted_identity: resolved.accepted_identity,
+        })
+    }
+
+    /// Assemble an explicitly started foreground worker. No background work is
+    /// started until [`AgentWorker::run`] is awaited.
+    pub async fn build_worker(self, options: AgentWorkerOptions) -> Result<AgentWorker> {
+        options.validate()?;
+        let mut config = self.config.clone();
+        if config.db.path.is_relative() {
+            config.db.path = self.root.join(&config.db.path);
+        }
+        SqliteAppStore::initialize_config(&config).await?;
+        let app = SqliteAppStore::connect(&config).await?;
+        let store = app.agent_tasks(&workspace_id(&self.root)?)?;
+        Ok(AgentWorker {
+            builder: self,
+            store,
+            options,
         })
     }
 
@@ -232,6 +269,212 @@ impl AgentHostBuilder {
             agent_version: resource.version.clone(),
             accepted_identity,
         })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AgentWorkerOptions {
+    pub worker_id: Option<String>,
+    pub concurrency: usize,
+    pub lease_duration: Duration,
+    pub heartbeat_interval: Duration,
+    pub polling_interval: Duration,
+    pub max_claim_attempts: u32,
+    pub graceful_shutdown_timeout: Duration,
+}
+
+impl Default for AgentWorkerOptions {
+    fn default() -> Self {
+        Self {
+            worker_id: None,
+            concurrency: 1,
+            lease_duration: Duration::from_secs(60),
+            heartbeat_interval: Duration::from_secs(20),
+            polling_interval: Duration::from_millis(500),
+            max_claim_attempts: 3,
+            graceful_shutdown_timeout: Duration::from_secs(30),
+        }
+    }
+}
+
+impl AgentWorkerOptions {
+    fn validate(&self) -> Result<()> {
+        ensure!(
+            (1..=32).contains(&self.concurrency),
+            "worker concurrency must be 1-32"
+        );
+        ensure!(
+            (5..=3_600).contains(&self.lease_duration.as_secs()),
+            "lease duration must be 5-3600 seconds"
+        );
+        ensure!(
+            self.heartbeat_interval >= Duration::from_secs(1)
+                && self.heartbeat_interval < self.lease_duration / 2,
+            "heartbeat interval must be at least one second and less than half the lease"
+        );
+        ensure!(
+            self.polling_interval >= Duration::from_millis(50)
+                && self.polling_interval <= Duration::from_secs(60),
+            "polling interval must be 50ms-60s"
+        );
+        ensure!(
+            (1..=100).contains(&self.max_claim_attempts),
+            "maximum claim attempts must be 1-100"
+        );
+        ensure!(
+            self.graceful_shutdown_timeout >= Duration::from_secs(1)
+                && self.graceful_shutdown_timeout <= Duration::from_secs(3_600),
+            "graceful shutdown timeout must be 1-3600 seconds"
+        );
+        if let Some(worker_id) = &self.worker_id {
+            ensure!(
+                !worker_id.is_empty()
+                    && worker_id.len() <= 128
+                    && !worker_id.chars().any(char::is_control),
+                "worker ID must contain 1-128 non-control UTF-8 bytes"
+            );
+        }
+        Ok(())
+    }
+}
+
+/// Explicit foreground executor for durably accepted agent tasks.
+pub struct AgentWorker {
+    builder: AgentHostBuilder,
+    store: AgentTaskStore,
+    options: AgentWorkerOptions,
+}
+
+impl AgentWorker {
+    pub fn store(&self) -> &AgentTaskStore {
+        &self.store
+    }
+
+    pub async fn run(&self, mut shutdown: watch::Receiver<bool>) -> Result<()> {
+        let worker_id = self
+            .options
+            .worker_id
+            .clone()
+            .unwrap_or_else(|| format!("worker-{}", Uuid::new_v4()));
+        let mut active = JoinSet::new();
+        loop {
+            while !*shutdown.borrow() && active.len() < self.options.concurrency {
+                let claim = self
+                    .store
+                    .claim_next(
+                        &worker_id,
+                        self.options.lease_duration.as_secs(),
+                        self.options.max_claim_attempts,
+                    )
+                    .await?;
+                let Some(claim) = claim else { break };
+                let builder = self.builder.clone();
+                let store = self.store.clone();
+                let options = self.options.clone();
+                let task_shutdown = shutdown.clone();
+                active.spawn(async move {
+                    process_claim(builder, store, options, claim, task_shutdown).await
+                });
+            }
+
+            if *shutdown.borrow() {
+                break;
+            }
+            if active.is_empty() {
+                tokio::select! {
+                    changed = shutdown.changed() => { changed.context("worker shutdown channel closed")?; }
+                    () = tokio::time::sleep(self.options.polling_interval) => {}
+                }
+            } else {
+                tokio::select! {
+                    changed = shutdown.changed() => { changed.context("worker shutdown channel closed")?; }
+                    joined = active.join_next() => {
+                        joined.context("worker task set ended unexpectedly")???;
+                    }
+                    () = tokio::time::sleep(self.options.polling_interval) => {}
+                }
+            }
+        }
+
+        let deadline = tokio::time::Instant::now() + self.options.graceful_shutdown_timeout;
+        while !active.is_empty() {
+            match tokio::time::timeout_at(deadline, active.join_next()).await {
+                Ok(Some(joined)) => joined??,
+                Ok(None) => break,
+                Err(_) => {
+                    active.abort_all();
+                    break;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+async fn process_claim(
+    builder: AgentHostBuilder,
+    store: AgentTaskStore,
+    options: AgentWorkerOptions,
+    claim: AgentTaskClaim,
+    mut shutdown: watch::Receiver<bool>,
+) -> Result<()> {
+    let resolved = match builder.resolve_task_identity(&claim.task.agent_name) {
+        Ok(resolved) => resolved,
+        Err(_) => {
+            store.finish_identity_changed(&claim).await?;
+            return Ok(());
+        }
+    };
+    if resolved.accepted_identity().digest() != claim.task.accepted_identity_digest {
+        store.finish_identity_changed(&claim).await?;
+        return Ok(());
+    }
+    let resources = load_resources(&builder.agent_directories, &builder.config)?;
+    let resource = resources
+        .get(&claim.task.agent_name)
+        .cloned()
+        .context("claimed agent resource disappeared")?;
+    let run = store
+        .link_run(
+            &claim,
+            &resource.version,
+            &resource.definition.agent.model,
+            run_budgets(&resource),
+        )
+        .await?;
+
+    let host = match builder.build_initialized(&claim.task.agent_name).await {
+        Ok(host) => host,
+        Err(_) => {
+            store.fail_linked_run_setup(&claim, &run.id).await?;
+            return Ok(());
+        }
+    };
+    let (cancel_tx, cancel_rx) = watch::channel(false);
+    if *shutdown.borrow() {
+        let _ = cancel_tx.send(true);
+    }
+    let execution = host.execute_linked(&run, cancel_rx);
+    tokio::pin!(execution);
+    let mut heartbeat = tokio::time::interval(options.heartbeat_interval);
+    heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    heartbeat.tick().await;
+    loop {
+        tokio::select! {
+            result = &mut execution => {
+                result?;
+                store.finish_run_stopped(&claim).await?;
+                return Ok(());
+            }
+            _ = heartbeat.tick() => {
+                store.heartbeat(&claim, options.lease_duration.as_secs()).await?;
+            }
+            changed = shutdown.changed() => {
+                if changed.is_err() || *shutdown.borrow() {
+                    let _ = cancel_tx.send(true);
+                }
+            }
+        }
     }
 }
 
@@ -334,6 +577,16 @@ impl AgentHost {
 
     pub async fn resume(&self, id: &str, cancel: watch::Receiver<bool>) -> Result<AgentRun> {
         self.runtime.resume(id, &self.resource, cancel).await
+    }
+
+    async fn execute_linked(
+        &self,
+        run: &AgentRun,
+        cancel: watch::Receiver<bool>,
+    ) -> Result<AgentRun> {
+        self.runtime
+            .execute_existing_run(run, &self.resource, cancel)
+            .await
     }
 }
 

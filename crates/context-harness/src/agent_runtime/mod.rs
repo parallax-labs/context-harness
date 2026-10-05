@@ -39,7 +39,7 @@ use tokio::sync::watch;
 
 const MAX_TOOL_RESULT_BYTES: usize = 1024 * 1024;
 
-fn run_budgets(resource: &LoadedAgentResource) -> RunBudgets {
+pub(crate) fn run_budgets(resource: &LoadedAgentResource) -> RunBudgets {
     let limits = &resource.definition.agent.execution;
     RunBudgets {
         max_turns: Some(u64::from(limits.max_turns)),
@@ -144,6 +144,26 @@ impl AgentRuntime {
             config.db.path = root.join(&config.db.path);
         }
         SqliteAppStore::initialize_config(&config).await?;
+        Self::from_initialized_config(config, root, models).await
+    }
+
+    pub(crate) async fn new_initialized(
+        mut config: Config,
+        root: &Path,
+        models: ModelRegistry,
+    ) -> Result<Self> {
+        let root = root.canonicalize()?;
+        if config.db.path.is_relative() {
+            config.db.path = root.join(&config.db.path);
+        }
+        Self::from_initialized_config(config, root, models).await
+    }
+
+    async fn from_initialized_config(
+        config: Config,
+        root: PathBuf,
+        models: ModelRegistry,
+    ) -> Result<Self> {
         let app = SqliteAppStore::connect(&config).await?;
         let store = app.agent_runs(&workspace_id(&root)?)?;
         let mut tools = tools::registry(&config).await?;
@@ -299,6 +319,25 @@ impl AgentRuntime {
                 run_budgets(resource),
             )
             .await?;
+        self.execute_existing_run(&run, resource, cancel).await
+    }
+
+    /// Drive a root run whose creation was atomically linked by the task store.
+    pub(crate) async fn execute_existing_run(
+        &self,
+        run: &AgentRun,
+        resource: &LoadedAgentResource,
+        cancel: watch::Receiver<bool>,
+    ) -> Result<AgentRun> {
+        let agent = &resource.definition.agent;
+        ensure!(
+            run.workspace_id == workspace_id(&self.root)?
+                && run.agent_name == agent.name
+                && run.agent_version == resource.version
+                && run.model == agent.model
+                && run.lifecycle == crate::agent_store::RunLifecycle::Active,
+            "linked run identity does not match the configured runtime"
+        );
         let files = match files::acquire(&self.root, &run.id) {
             Ok(files) => files,
             Err(_) => {
@@ -327,7 +366,7 @@ impl AgentRuntime {
             ),
             ancestry: vec![agent.name.clone()],
         });
-        runtime.drive(&run, resource, None, 0, cancel, &files).await
+        runtime.drive(run, resource, None, 0, cancel, &files).await
     }
 
     async fn drive(

@@ -60,6 +60,7 @@ pub trait ModelProviderFactory: Send + Sync {
     fn build(&self, definition: &ModelDefinition) -> anyhow::Result<Arc<dyn ModelProvider>>;
 }
 
+#[derive(Clone)]
 struct RegisteredFactory {
     implementation: ModelProviderImplementation,
     factory: Arc<dyn ModelProviderFactory>,
@@ -69,7 +70,7 @@ struct RegisteredFactory {
 ///
 /// Provider names are case-sensitive and first-registration wins: registering
 /// an existing name returns an error and leaves the catalog unchanged.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct ModelProviderCatalog {
     factories: BTreeMap<String, RegisteredFactory>,
 }
