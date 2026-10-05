@@ -1,6 +1,7 @@
 //! Durable accepted agent work. Tasks own scheduling facts; linked runs own all
 //! execution lifecycle, outcome, checkpoint, usage and effect history.
 
+use crate::agent_store::{AgentRun, AgentRunStore, FailureReason, RunBudgets, RunOutcome};
 use anyhow::{ensure, Context, Result};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -162,6 +163,13 @@ pub struct AgentTaskEvent {
 }
 
 #[derive(Debug, Serialize)]
+pub struct AgentTaskClaim {
+    pub task: AgentTask,
+    pub worker_id: String,
+    pub claim_token: String,
+}
+
+#[derive(Debug, Serialize)]
 #[serde(tag = "disposition", content = "task", rename_all = "snake_case")]
 pub enum AgentTaskSubmissionResult {
     Created(AgentTask),
@@ -304,6 +312,215 @@ impl AgentTaskStore {
             .await?)
     }
 
+    /// Claim the oldest queued task using the database clock for its lease.
+    pub async fn claim_next(
+        &self,
+        worker_id: &str,
+        lease_seconds: u64,
+        max_attempts: u32,
+    ) -> Result<Option<AgentTaskClaim>> {
+        validate_worker_id(worker_id)?;
+        ensure!(
+            (5..=3_600).contains(&lease_seconds),
+            "lease duration must be 5-3600 seconds"
+        );
+        ensure!(
+            (1..=100).contains(&max_attempts),
+            "maximum claim attempts must be 1-100"
+        );
+        let claim_token = Uuid::new_v4().to_string();
+        let mut tx = self.pool.begin().await?;
+        let task: Option<AgentTask> = sqlx::query_as(
+            "WITH candidate AS (SELECT id FROM agent_tasks WHERE workspace_id = ? AND status = 'queued' AND claim_attempts < ? ORDER BY created_at, id LIMIT 1) UPDATE agent_tasks SET status = 'claimed', claim_owner = ?, claim_token = ?, lease_expires_at = CAST(unixepoch('subsec') * 1000 AS INTEGER) + ?, claim_attempts = claim_attempts + 1, claimed_at = CAST(unixepoch('subsec') * 1000 AS INTEGER), updated_at = CAST(unixepoch('subsec') * 1000 AS INTEGER) WHERE id = (SELECT id FROM candidate) AND workspace_id = ? AND status = 'queued' RETURNING *",
+        )
+        .bind(&self.workspace_id)
+        .bind(i64::from(max_attempts))
+        .bind(worker_id)
+        .bind(&claim_token)
+        .bind(i64::try_from(lease_seconds)?.saturating_mul(1_000))
+        .bind(&self.workspace_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(task) = task else {
+            tx.commit().await?;
+            return Ok(None);
+        };
+        append_event(
+            &mut tx,
+            &task.id,
+            task.updated_at,
+            "task.claimed",
+            &json!({"worker_id": worker_id, "claim_attempt": task.claim_attempts}),
+        )
+        .await?;
+        tx.commit().await?;
+        let task = self.get(&task.id).await?.context("claimed task missing")?;
+        Ok(Some(AgentTaskClaim {
+            task,
+            worker_id: worker_id.to_owned(),
+            claim_token,
+        }))
+    }
+
+    /// Extend an owned claim from the database's current time.
+    pub async fn heartbeat(&self, claim: &AgentTaskClaim, lease_seconds: u64) -> Result<AgentTask> {
+        ensure!(
+            (5..=3_600).contains(&lease_seconds),
+            "lease duration must be 5-3600 seconds"
+        );
+        let mut tx = self.pool.begin().await?;
+        let timestamp: Option<i64> = sqlx::query_scalar(
+            "UPDATE agent_tasks SET lease_expires_at = CAST(unixepoch('subsec') * 1000 AS INTEGER) + ?, updated_at = CAST(unixepoch('subsec') * 1000 AS INTEGER) WHERE id = ? AND workspace_id = ? AND claim_owner = ? AND claim_token = ? AND status IN ('claimed', 'cancel_requested') RETURNING updated_at",
+        )
+        .bind(i64::try_from(lease_seconds)?.saturating_mul(1_000))
+        .bind(&claim.task.id)
+        .bind(&self.workspace_id)
+        .bind(&claim.worker_id)
+        .bind(&claim.claim_token)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let timestamp = timestamp.context("task claim is no longer owned by this worker")?;
+        append_event(
+            &mut tx,
+            &claim.task.id,
+            timestamp,
+            "task.heartbeat",
+            &json!({}),
+        )
+        .await?;
+        tx.commit().await?;
+        self.get(&claim.task.id)
+            .await?
+            .context("heartbeat task missing")
+    }
+
+    /// Atomically create the task's sole root run and persist its immutable link.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn link_run(
+        &self,
+        claim: &AgentTaskClaim,
+        agent_version: &str,
+        model: &str,
+        budgets: RunBudgets,
+    ) -> Result<AgentRun> {
+        let mut tx = self.pool.begin().await?;
+        let task: AgentTask = sqlx::query_as(
+            "UPDATE agent_tasks SET updated_at = updated_at WHERE id = ? AND workspace_id = ? AND status = 'claimed' AND claim_owner = ? AND claim_token = ? AND run_id IS NULL RETURNING *",
+        )
+        .bind(&claim.task.id)
+        .bind(&self.workspace_id)
+        .bind(&claim.worker_id)
+        .bind(&claim.claim_token)
+        .fetch_optional(&mut *tx)
+        .await?
+        .context("task claim cannot create a run")?;
+        let runs = AgentRunStore::new(self.pool.clone(), &self.workspace_id)?;
+        let run_id = runs
+            .create_root_run_in(
+                &mut tx,
+                &task.agent_name,
+                agent_version,
+                model,
+                &task.input,
+                &budgets,
+            )
+            .await?;
+        let timestamp: i64 = sqlx::query_scalar(
+            "UPDATE agent_tasks SET run_id = ?, updated_at = CAST(unixepoch('subsec') * 1000 AS INTEGER) WHERE id = ? AND workspace_id = ? AND status = 'claimed' AND claim_owner = ? AND claim_token = ? AND run_id IS NULL RETURNING updated_at",
+        )
+        .bind(&run_id)
+        .bind(&claim.task.id)
+        .bind(&self.workspace_id)
+        .bind(&claim.worker_id)
+        .bind(&claim.claim_token)
+        .fetch_one(&mut *tx)
+        .await?;
+        append_event(
+            &mut tx,
+            &claim.task.id,
+            timestamp,
+            "task.run_linked",
+            &json!({"run_id": run_id}),
+        )
+        .await?;
+        tx.commit().await?;
+        runs.get_run(&run_id).await?.context("linked run missing")
+    }
+
+    pub async fn finish_identity_changed(&self, claim: &AgentTaskClaim) -> Result<AgentTask> {
+        self.finish_claim(claim, "accepted_identity_changed", false)
+            .await
+    }
+
+    pub async fn finish_run_stopped(&self, claim: &AgentTaskClaim) -> Result<AgentTask> {
+        self.finish_claim(claim, "run_stopped", true).await
+    }
+
+    pub(crate) async fn fail_linked_run_setup(
+        &self,
+        claim: &AgentTaskClaim,
+        run_id: &str,
+    ) -> Result<AgentTask> {
+        let owned: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM agent_tasks WHERE id = ? AND workspace_id = ? AND status = 'claimed' AND claim_owner = ? AND claim_token = ? AND run_id = ?)",
+        )
+        .bind(&claim.task.id)
+        .bind(&self.workspace_id)
+        .bind(&claim.worker_id)
+        .bind(&claim.claim_token)
+        .bind(run_id)
+        .fetch_one(&self.pool)
+        .await?;
+        ensure!(owned, "task claim no longer owns the linked run");
+        AgentRunStore::new(self.pool.clone(), &self.workspace_id)?
+            .finish_run(
+                run_id,
+                RunOutcome::FailedWithReason {
+                    code: FailureReason::RecoveryRejected,
+                    error: "runtime assembly failed".into(),
+                },
+            )
+            .await?;
+        self.finish_run_stopped(claim).await
+    }
+
+    async fn finish_claim(
+        &self,
+        claim: &AgentTaskClaim,
+        reason: &str,
+        require_run: bool,
+    ) -> Result<AgentTask> {
+        let mut tx = self.pool.begin().await?;
+        let run_predicate = if require_run {
+            "run_id IS NOT NULL"
+        } else {
+            "run_id IS NULL"
+        };
+        let statement = format!(
+            "UPDATE agent_tasks SET status = 'terminal', scheduling_reason = ?, scheduling_detail = '{{}}', claim_owner = NULL, claim_token = NULL, lease_expires_at = NULL, updated_at = CAST(unixepoch('subsec') * 1000 AS INTEGER), completed_at = CAST(unixepoch('subsec') * 1000 AS INTEGER), last_sequence = last_sequence + 1 WHERE id = ? AND workspace_id = ? AND status IN ('claimed', 'cancel_requested') AND claim_owner = ? AND claim_token = ? AND {run_predicate} RETURNING last_sequence, updated_at"
+        );
+        let changed: Option<(i64, i64)> = sqlx::query_as(&statement)
+            .bind(reason)
+            .bind(&claim.task.id)
+            .bind(&self.workspace_id)
+            .bind(&claim.worker_id)
+            .bind(&claim.claim_token)
+            .fetch_optional(&mut *tx)
+            .await?;
+        let (sequence, timestamp) = changed.context("task claim cannot be finalized")?;
+        sqlx::query("INSERT INTO agent_task_events (task_id, sequence, timestamp, event_type, payload) VALUES (?, ?, ?, 'task.terminal', ?)")
+            .bind(&claim.task.id)
+            .bind(sequence)
+            .bind(timestamp)
+            .bind(sqlx::types::Json(json!({"scheduling_reason": reason})))
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        self.get(&claim.task.id)
+            .await?
+            .context("finalized task missing")
+    }
+
     /// Cancel accepted work only while it is still queued. Worker-owned
     /// cancellation is introduced with Phase 4B.
     pub async fn cancel_queued(&self, id: &str) -> Result<AgentTask> {
@@ -341,6 +558,14 @@ impl AgentTaskStore {
         tx.commit().await?;
         Ok(task)
     }
+}
+
+fn validate_worker_id(worker_id: &str) -> Result<()> {
+    ensure!(
+        !worker_id.is_empty() && worker_id.len() <= 128 && !worker_id.chars().any(char::is_control),
+        "worker ID must contain 1-128 non-control UTF-8 bytes"
+    );
+    Ok(())
 }
 
 fn validate_submission(submission: &AgentTaskSubmission) -> Result<()> {

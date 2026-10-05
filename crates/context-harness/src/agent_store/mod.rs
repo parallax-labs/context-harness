@@ -441,6 +441,25 @@ impl AgentRunStore {
         input: &str,
         budgets: RunBudgets,
     ) -> Result<AgentRun> {
+        let mut tx = self.pool.begin().await?;
+        let id = self
+            .create_root_run_in(&mut tx, agent_name, agent_version, model, input, &budgets)
+            .await?;
+        tx.commit().await?;
+        self.get_run(&id).await?.context("created run missing")
+    }
+
+    /// Create a root run inside a caller-owned transaction. Task linkage uses
+    /// this to make the run identity and task event one atomic commit.
+    pub(crate) async fn create_root_run_in(
+        &self,
+        tx: &mut Transaction<'_, Sqlite>,
+        agent_name: &str,
+        agent_version: &str,
+        model: &str,
+        input: &str,
+        budgets: &RunBudgets,
+    ) -> Result<String> {
         budgets.validate()?;
         ensure!(!agent_name.trim().is_empty(), "agent name is required");
         ensure!(
@@ -450,24 +469,22 @@ impl AgentRunStore {
         ensure!(!model.trim().is_empty(), "model is required");
         let id = Uuid::new_v4().to_string();
         let now = Utc::now().timestamp_millis();
-        let mut tx = self.pool.begin().await?;
         sqlx::query("INSERT INTO agent_runs (id, workspace_id, agent_name, agent_version, model, status, created_at, updated_at, input, budgets) VALUES (?, ?, ?, ?, ?, 'running', ?, ?, ?, ?)")
-            .bind(&id).bind(&self.workspace_id).bind(agent_name).bind(agent_version).bind(model).bind(now).bind(now).bind(input).bind(sqlx::types::Json(&budgets))
-            .execute(&mut *tx).await?;
+            .bind(&id).bind(&self.workspace_id).bind(agent_name).bind(agent_version).bind(model).bind(now).bind(now).bind(input).bind(sqlx::types::Json(budgets))
+            .execute(&mut **tx).await?;
         sqlx::query("INSERT INTO agent_run_lineage (run_id, root_run_id, depth) VALUES (?, ?, 0)")
             .bind(&id)
             .bind(&id)
-            .execute(&mut *tx)
+            .execute(&mut **tx)
             .await?;
         self.append_in(
-            &mut tx,
+            tx,
             &id,
             "run.started",
             &json!({"agent": agent_name, "model": model, "workspace_id": self.workspace_id, "budgets": budgets}),
         )
         .await?;
-        tx.commit().await?;
-        self.get_run(&id).await?.context("created run missing")
+        Ok(id)
     }
 
     pub async fn lineage(&self, id: &str) -> Result<RunLineage> {
@@ -711,6 +728,23 @@ impl AgentRunStore {
         Ok(rows)
     }
 
+    async fn acquire_run_write(
+        tx: &mut Transaction<'_, Sqlite>,
+        id: &str,
+        workspace_id: &str,
+    ) -> Result<()> {
+        let changed = sqlx::query(
+            "UPDATE agent_runs SET updated_at = updated_at WHERE id = ? AND workspace_id = ? AND lifecycle = 'active'",
+        )
+        .bind(id)
+        .bind(workspace_id)
+        .execute(&mut **tx)
+        .await?
+        .rows_affected();
+        ensure!(changed == 1, "run is not active in workspace");
+        Ok(())
+    }
+
     async fn save_usage(
         tx: &mut Transaction<'_, Sqlite>,
         row: &BudgetRow,
@@ -731,6 +765,7 @@ impl AgentRunStore {
         payload: &Value,
     ) -> Result<BudgetDecision> {
         let mut tx = self.pool.begin().await?;
+        Self::acquire_run_write(&mut tx, id, &self.workspace_id).await?;
         let rows = Self::active_budget_chain(&mut tx, id, &self.workspace_id).await?;
         if rows.iter().any(|row| {
             row.budgets.max_total_tokens.is_some() && row.usage.responses_without_usage > 0
@@ -770,6 +805,7 @@ impl AgentRunStore {
         usage: Option<(u64, u64, u64)>,
     ) -> Result<BudgetDecision> {
         let mut tx = self.pool.begin().await?;
+        Self::acquire_run_write(&mut tx, id, &self.workspace_id).await?;
         let rows = Self::active_budget_chain(&mut tx, id, &self.workspace_id).await?;
         let mut decision = BudgetDecision::Allowed;
         for row in &rows {
@@ -1273,6 +1309,7 @@ impl AgentRunStore {
 
     pub async fn start_tool(&self, id: &str, call_id: &str) -> Result<()> {
         let mut tx = self.pool.begin().await?;
+        Self::acquire_run_write(&mut tx, id, &self.workspace_id).await?;
         let rows = Self::active_budget_chain(&mut tx, id, &self.workspace_id).await?;
         ensure!(
             !rows.iter().any(|row| row

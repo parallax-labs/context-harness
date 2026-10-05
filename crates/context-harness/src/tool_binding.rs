@@ -523,7 +523,7 @@ pub trait ToolImplementationFactory: Send + Sync {
     async fn bind(&self, request: ToolBindingRequest) -> Result<Box<dyn Tool>>;
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct ToolImplementationCatalog {
     factories: BTreeMap<String, Arc<dyn ToolImplementationFactory>>,
 }

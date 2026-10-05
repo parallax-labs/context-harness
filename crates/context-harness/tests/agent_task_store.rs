@@ -1,6 +1,7 @@
 use context_harness::{
+    agent_store::RunBudgets,
     agent_task_store::{
-        AcceptedTaskIdentity, AgentTaskStatus, AgentTaskStore, AgentTaskSubmission,
+        AcceptedTaskIdentity, AgentTaskClaim, AgentTaskStatus, AgentTaskStore, AgentTaskSubmission,
         AgentTaskSubmissionResult, TaskSchedulingReason,
     },
     app_store::SqliteAppStore,
@@ -236,4 +237,120 @@ async fn invalid_inputs_fail_before_writes() {
     invalid.payload_identity = vec![0; 8193];
     assert!(store.submit(invalid).await.is_err());
     assert!(store.list(10).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn claims_are_exclusive_database_timed_and_token_guarded() {
+    let (_temp, app, store) = setup().await;
+    let task = created(store.submit(submission("claim", "input")).await.unwrap());
+    let other = store.clone();
+    let (left, right) = tokio::join!(
+        store.claim_next("worker-a", 60, 3),
+        other.claim_next("worker-b", 60, 3)
+    );
+    let mut claims = [left.unwrap(), right.unwrap()]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+    assert_eq!(claims.len(), 1);
+    let first = claims.pop().unwrap();
+    assert_eq!(first.task.id, task.id);
+    assert_eq!(first.task.status, AgentTaskStatus::Claimed);
+    assert_eq!(first.task.claim_attempts, 1);
+    assert!(first.task.lease_expires_at.unwrap() > first.task.updated_at);
+    assert!(store.claim_next("worker-c", 60, 3).await.unwrap().is_none());
+
+    let stale = AgentTaskClaim {
+        task: store.get(&task.id).await.unwrap().unwrap(),
+        worker_id: first.worker_id.clone(),
+        claim_token: "stale-token".into(),
+    };
+    assert!(store.heartbeat(&stale, 60).await.is_err());
+    let renewed = store.heartbeat(&first, 60).await.unwrap();
+    assert_eq!(renewed.last_sequence, 3);
+    assert_eq!(
+        store
+            .events(&task.id, 0, 10)
+            .await
+            .unwrap()
+            .iter()
+            .map(|event| event.event_type.as_str())
+            .collect::<Vec<_>>(),
+        ["task.submitted", "task.claimed", "task.heartbeat"]
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM agent_runs")
+            .fetch_one(app.pool())
+            .await
+            .unwrap(),
+        0
+    );
+}
+
+#[tokio::test]
+async fn run_creation_and_task_link_are_atomic_and_immutable() {
+    let (_temp, app, store) = setup().await;
+    let task = created(store.submit(submission("link", "input")).await.unwrap());
+    let claim = store.claim_next("worker", 60, 3).await.unwrap().unwrap();
+    let stale = AgentTaskClaim {
+        task: store.get(&task.id).await.unwrap().unwrap(),
+        worker_id: claim.worker_id.clone(),
+        claim_token: "stale-token".into(),
+    };
+    assert!(store
+        .link_run(&stale, "agent-v1", "fake", RunBudgets::default())
+        .await
+        .is_err());
+    assert!(store.finish_identity_changed(&stale).await.is_err());
+    let run = store
+        .link_run(&claim, "agent-v1", "fake", RunBudgets::default())
+        .await
+        .unwrap();
+    assert_eq!(run.input, "input");
+    assert_eq!(
+        store
+            .get(&task.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .run_id
+            .as_deref(),
+        Some(run.id.as_str())
+    );
+    assert!(store
+        .link_run(&claim, "agent-v1", "fake", RunBudgets::default())
+        .await
+        .is_err());
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM agent_runs")
+            .fetch_one(app.pool())
+            .await
+            .unwrap(),
+        1
+    );
+    let terminal = store.finish_run_stopped(&claim).await.unwrap();
+    assert_eq!(terminal.status, AgentTaskStatus::Terminal);
+    assert_eq!(terminal.run_id.as_deref(), Some(run.id.as_str()));
+    assert!(terminal.claim_token.is_none());
+}
+
+#[tokio::test]
+async fn identity_drift_finishes_without_creating_a_run() {
+    let (_temp, app, store) = setup().await;
+    let task = created(store.submit(submission("drift", "input")).await.unwrap());
+    let claim = store.claim_next("worker", 60, 3).await.unwrap().unwrap();
+    let terminal = store.finish_identity_changed(&claim).await.unwrap();
+    assert_eq!(
+        terminal.scheduling_reason_kind(),
+        Some(TaskSchedulingReason::AcceptedIdentityChanged)
+    );
+    assert!(terminal.run_id.is_none());
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM agent_runs")
+            .fetch_one(app.pool())
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(store.get(&task.id).await.unwrap().unwrap().last_sequence, 3);
 }
