@@ -406,6 +406,16 @@ Add additive `agent_tasks` migrations and `AgentTaskStore`. Implement workspace-
 request keys, immutable digests, queue bounds, accepted identities, list/inspect and
 queued cancellation. Submission performs no provider/tool call.
 
+**Slice status (2026-10-05): Implemented.** The main crate now persists workspace-scoped
+accepted tasks and gapless task events separately from run history. The public trusted-host
+submission path resolves canonical agent, reachable-resource, model-provider, advertised-tool,
+binding-authority and host-policy identity before database initialization; fixture counters
+demonstrate that static inspection and submission do not construct a provider, bind or execute
+a tool, resolve credentials, invoke a model, or make a network request. Atomic submission
+enforces request-key idempotency, immutable request and accepted-identity digests and bounded
+queue capacity. Inspection, bounded listing/event reads and idempotent queued cancellation are
+available without adding claims, leases, workers, run linkage, reconciliation or CLI commands.
+
 #### 4B. Worker claims and execution
 
 Implement transactional conditional claims, leases, heartbeat, concurrency, attempts,

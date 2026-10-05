@@ -68,3 +68,45 @@ CREATE TABLE IF NOT EXISTS agent_run_lineage (
         OR (depth > 0 AND parent_run_id IS NOT NULL AND parent_call_id IS NOT NULL))
 );
 CREATE INDEX IF NOT EXISTS idx_agent_run_lineage_root ON agent_run_lineage(root_run_id);
+
+-- Accepted background intent is separate from execution history. Worker-owned
+-- fields are present for forward-compatible Phase 4B migrations but Phase 4A
+-- writes only queued and queued-cancelled tasks.
+CREATE TABLE IF NOT EXISTS agent_tasks (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    request_key TEXT NOT NULL,
+    request_digest TEXT NOT NULL,
+    agent_name TEXT NOT NULL,
+    agent_version TEXT NOT NULL,
+    accepted_identity TEXT NOT NULL CHECK (json_valid(accepted_identity)),
+    accepted_identity_digest TEXT NOT NULL,
+    input TEXT NOT NULL,
+    payload_identity BLOB NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('queued', 'claimed', 'cancel_requested', 'terminal')),
+    scheduling_reason TEXT,
+    scheduling_detail TEXT CHECK (scheduling_detail IS NULL OR json_valid(scheduling_detail)),
+    claim_owner TEXT,
+    claim_token TEXT,
+    lease_expires_at INTEGER,
+    claim_attempts INTEGER NOT NULL DEFAULT 0 CHECK (claim_attempts >= 0),
+    run_id TEXT REFERENCES agent_runs(id),
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    claimed_at INTEGER,
+    completed_at INTEGER,
+    last_sequence INTEGER NOT NULL DEFAULT 0 CHECK (last_sequence >= 0),
+    UNIQUE (workspace_id, request_key),
+    CHECK ((status IN ('queued', 'terminal') AND claim_owner IS NULL AND claim_token IS NULL AND lease_expires_at IS NULL)
+        OR (status IN ('claimed', 'cancel_requested') AND claim_owner IS NOT NULL AND claim_token IS NOT NULL AND lease_expires_at IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS idx_agent_tasks_workspace_queue
+    ON agent_tasks(workspace_id, status, created_at, id);
+CREATE TABLE IF NOT EXISTS agent_task_events (
+    task_id TEXT NOT NULL REFERENCES agent_tasks(id),
+    sequence INTEGER NOT NULL CHECK (sequence > 0),
+    timestamp INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    payload TEXT NOT NULL CHECK (json_valid(payload)),
+    PRIMARY KEY (task_id, sequence)
+);
