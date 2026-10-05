@@ -8,12 +8,13 @@ use crate::{
     agent_model::{ModelProviderCatalog, ModelRegistry},
     agent_resource::{load_resources, LoadedAgentResource, ResourceDirectory},
     agent_runtime::{
+        files::RunOwnershipUnavailable,
         policy::{ApprovalHandler, DenyApprovals, RuntimePolicy},
         run_budgets, static_tool_identity, workspace_id, AgentRuntime,
     },
-    agent_store::{AgentRun, AgentRunStore},
+    agent_store::{AgentRun, AgentRunStore, RecoveryDisposition},
     agent_task_store::{
-        AcceptedTaskIdentity, AgentTaskClaim, AgentTaskStore, AgentTaskSubmission,
+        AcceptedTaskIdentity, AgentTaskClaim, AgentTaskStatus, AgentTaskStore, AgentTaskSubmission,
         AgentTaskSubmissionResult, DEFAULT_QUEUE_LIMIT,
     },
     app_store::SqliteAppStore,
@@ -345,6 +346,11 @@ pub struct AgentWorker {
     options: AgentWorkerOptions,
 }
 
+enum WorkerClaim {
+    New(AgentTaskClaim),
+    Reconcile(AgentTaskClaim),
+}
+
 impl AgentWorker {
     pub fn store(&self) -> &AgentTaskStore {
         &self.store
@@ -359,14 +365,22 @@ impl AgentWorker {
         let mut active = JoinSet::new();
         loop {
             while !*shutdown.borrow() && active.len() < self.options.concurrency {
-                let claim = self
+                let claim = if let Some(expired) = self
                     .store
-                    .claim_next(
-                        &worker_id,
-                        self.options.lease_duration.as_secs(),
-                        self.options.max_claim_attempts,
-                    )
-                    .await?;
+                    .claim_next_expired(&worker_id, self.options.lease_duration.as_secs())
+                    .await?
+                {
+                    Some(WorkerClaim::Reconcile(expired.claim))
+                } else {
+                    self.store
+                        .claim_next(
+                            &worker_id,
+                            self.options.lease_duration.as_secs(),
+                            self.options.max_claim_attempts,
+                        )
+                        .await?
+                        .map(WorkerClaim::New)
+                };
                 let Some(claim) = claim else { break };
                 let builder = self.builder.clone();
                 let store = self.store.clone();
@@ -415,9 +429,22 @@ async fn process_claim(
     builder: AgentHostBuilder,
     store: AgentTaskStore,
     options: AgentWorkerOptions,
-    claim: AgentTaskClaim,
+    claim: WorkerClaim,
     mut shutdown: watch::Receiver<bool>,
 ) -> Result<()> {
+    let (claim, reconcile) = match claim {
+        WorkerClaim::New(claim) => (claim, false),
+        WorkerClaim::Reconcile(claim) => (claim, true),
+    };
+    if reconcile {
+        return reconcile_claim(builder, store, options, claim, shutdown).await;
+    }
+    if store.get(&claim.task.id).await?.is_some_and(|task| {
+        task.status == AgentTaskStatus::CancelRequested && task.run_id.is_none()
+    }) {
+        store.finish_cancelled_before_run(&claim).await?;
+        return Ok(());
+    }
     let resolved = match builder.resolve_task_identity(&claim.task.agent_name) {
         Ok(resolved) => resolved,
         Err(_) => {
@@ -434,14 +461,32 @@ async fn process_claim(
         .get(&claim.task.agent_name)
         .cloned()
         .context("claimed agent resource disappeared")?;
-    let run = store
+    if store.get(&claim.task.id).await?.is_some_and(|task| {
+        task.status == AgentTaskStatus::CancelRequested && task.run_id.is_none()
+    }) {
+        store.finish_cancelled_before_run(&claim).await?;
+        return Ok(());
+    }
+    let run = match store
         .link_run(
             &claim,
             &resource.version,
             &resource.definition.agent.model,
             run_budgets(&resource),
         )
-        .await?;
+        .await
+    {
+        Ok(run) => run,
+        Err(error) => {
+            if store.get(&claim.task.id).await?.is_some_and(|task| {
+                task.status == AgentTaskStatus::CancelRequested && task.run_id.is_none()
+            }) {
+                store.finish_cancelled_before_run(&claim).await?;
+                return Ok(());
+            }
+            return Err(error);
+        }
+    };
 
     let host = match builder.build_initialized(&claim.task.agent_name).await {
         Ok(host) => host,
@@ -455,19 +500,206 @@ async fn process_claim(
         let _ = cancel_tx.send(true);
     }
     let execution = host.execute_linked(&run, cancel_rx);
+    monitor_owned_execution(
+        &store,
+        &options,
+        &claim,
+        cancel_tx,
+        execution,
+        &mut shutdown,
+    )
+    .await
+}
+
+async fn reconcile_claim(
+    builder: AgentHostBuilder,
+    store: AgentTaskStore,
+    options: AgentWorkerOptions,
+    claim: AgentTaskClaim,
+    mut shutdown: watch::Receiver<bool>,
+) -> Result<()> {
+    let workspace_root = builder.root.clone();
+    let current = store
+        .get(&claim.task.id)
+        .await?
+        .context("reconciliation task disappeared")?;
+    let Some(run_id) = current.run_id.as_deref() else {
+        if current.status == AgentTaskStatus::CancelRequested {
+            store.finish_cancelled_before_run(&claim).await?;
+        } else if current.claim_attempts >= i64::from(options.max_claim_attempts) {
+            store.finish_claim_attempts_exhausted(&claim).await?;
+        } else {
+            store.requeue(&claim).await?;
+        }
+        return Ok(());
+    };
+
+    let runs = store.run_store()?;
+    match runs.recovery_disposition(run_id).await? {
+        RecoveryDisposition::Complete | RecoveryDisposition::Suspended => {
+            store.finish_run_stopped(&claim).await?;
+            return Ok(());
+        }
+        RecoveryDisposition::RestartRequired => {
+            store.finish_restart_required(&claim).await?;
+            return Ok(());
+        }
+        RecoveryDisposition::ReconciliationRequired => {
+            store.finish_reconciliation_required(&claim).await?;
+            return Ok(());
+        }
+        RecoveryDisposition::ResumeEligible => {}
+    }
+
+    let host = match builder.build_initialized(&current.agent_name).await {
+        Ok(host) => host,
+        Err(_) => {
+            return finish_rejected_recovery(&store, &claim, &runs, run_id).await;
+        }
+    };
+    let (cancel_tx, cancel_rx) = watch::channel(current.status == AgentTaskStatus::CancelRequested);
+    let execution = host.resume(run_id, cancel_rx);
     tokio::pin!(execution);
+    let result = monitor_owned_execution_inner(
+        &store,
+        &options,
+        &claim,
+        cancel_tx,
+        &mut execution,
+        &mut shutdown,
+    )
+    .await;
+    match result {
+        Ok(()) => Ok(()),
+        Err(error) if error.downcast_ref::<RunOwnershipUnavailable>().is_some() => {
+            observe_owned_run(
+                &store,
+                &options,
+                &claim,
+                &runs,
+                &workspace_root,
+                run_id,
+                &mut shutdown,
+            )
+            .await
+        }
+        Err(_) => finish_rejected_recovery(&store, &claim, &runs, run_id).await,
+    }
+}
+
+async fn finish_rejected_recovery(
+    store: &AgentTaskStore,
+    claim: &AgentTaskClaim,
+    runs: &AgentRunStore,
+    run_id: &str,
+) -> Result<()> {
+    if runs.recovery_disposition(run_id).await? == RecoveryDisposition::ReconciliationRequired {
+        store.finish_reconciliation_required(claim).await?;
+    } else {
+        store.finish_restart_required(claim).await?;
+    }
+    Ok(())
+}
+
+async fn observe_owned_run(
+    store: &AgentTaskStore,
+    options: &AgentWorkerOptions,
+    claim: &AgentTaskClaim,
+    runs: &AgentRunStore,
+    workspace_root: &Path,
+    run_id: &str,
+    shutdown: &mut watch::Receiver<bool>,
+) -> Result<()> {
     let mut heartbeat = tokio::time::interval(options.heartbeat_interval);
     heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     heartbeat.tick().await;
     loop {
         tokio::select! {
-            result = &mut execution => {
+            _ = heartbeat.tick() => {
+                store.heartbeat(claim, options.lease_duration.as_secs()).await?;
+                match runs.recovery_disposition(run_id).await? {
+                    RecoveryDisposition::Complete | RecoveryDisposition::Suspended => {
+                        store.finish_run_stopped(claim).await?;
+                        return Ok(());
+                    }
+                    RecoveryDisposition::RestartRequired => {
+                        store.finish_restart_required(claim).await?;
+                        return Ok(());
+                    }
+                    RecoveryDisposition::ReconciliationRequired => {
+                        store.finish_reconciliation_required(claim).await?;
+                        return Ok(());
+                    }
+                    RecoveryDisposition::ResumeEligible => {
+                        match crate::agent_runtime::files::acquire(workspace_root, run_id) {
+                            Ok(ownership) => {
+                                drop(ownership);
+                                return Ok(());
+                            }
+                            Err(error) if error.downcast_ref::<RunOwnershipUnavailable>().is_some() => {}
+                            Err(error) => return Err(error),
+                        }
+                    }
+                }
+            }
+            changed = shutdown.changed() => {
+                if changed.is_err() || *shutdown.borrow() {
+                    return Ok(());
+                }
+            }
+        }
+    }
+}
+
+async fn monitor_owned_execution<F>(
+    store: &AgentTaskStore,
+    options: &AgentWorkerOptions,
+    claim: &AgentTaskClaim,
+    cancel_tx: watch::Sender<bool>,
+    execution: F,
+    shutdown: &mut watch::Receiver<bool>,
+) -> Result<()>
+where
+    F: std::future::Future<Output = Result<AgentRun>>,
+{
+    tokio::pin!(execution);
+    monitor_owned_execution_inner(store, options, claim, cancel_tx, &mut execution, shutdown).await
+}
+
+async fn monitor_owned_execution_inner<F>(
+    store: &AgentTaskStore,
+    options: &AgentWorkerOptions,
+    claim: &AgentTaskClaim,
+    cancel_tx: watch::Sender<bool>,
+    execution: &mut std::pin::Pin<&mut F>,
+    shutdown: &mut watch::Receiver<bool>,
+) -> Result<()>
+where
+    F: std::future::Future<Output = Result<AgentRun>>,
+{
+    let mut heartbeat = tokio::time::interval(options.heartbeat_interval);
+    heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    heartbeat.tick().await;
+    let mut cancellation = tokio::time::interval(options.polling_interval);
+    cancellation.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    cancellation.tick().await;
+    loop {
+        tokio::select! {
+            result = execution.as_mut() => {
                 result?;
-                store.finish_run_stopped(&claim).await?;
+                store.finish_run_stopped(claim).await?;
                 return Ok(());
             }
             _ = heartbeat.tick() => {
-                store.heartbeat(&claim, options.lease_duration.as_secs()).await?;
+                let task = store.heartbeat(claim, options.lease_duration.as_secs()).await?;
+                if task.status == AgentTaskStatus::CancelRequested {
+                    let _ = cancel_tx.send(true);
+                }
+            }
+            _ = cancellation.tick() => {
+                if store.get(&claim.task.id).await?.is_some_and(|task| task.status == AgentTaskStatus::CancelRequested) {
+                    let _ = cancel_tx.send(true);
+                }
             }
             changed = shutdown.changed() => {
                 if changed.is_err() || *shutdown.borrow() {

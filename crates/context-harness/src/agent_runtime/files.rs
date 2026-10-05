@@ -8,6 +8,17 @@ use std::path::{Path, PathBuf};
 
 const MAX_ARTIFACT_BYTES: usize = 16 * 1024 * 1024;
 
+#[derive(Debug)]
+pub(crate) struct RunOwnershipUnavailable;
+
+impl std::fmt::Display for RunOwnershipUnavailable {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("run already has an active owner")
+    }
+}
+
+impl std::error::Error for RunOwnershipUnavailable {}
+
 #[derive(Debug, Clone)]
 pub struct ArtifactFile {
     pub relative_path: String,
@@ -150,8 +161,16 @@ mod unix {
         let root = root.canonicalize().context("resolve workspace root")?;
         let directory = directory(&root, id, true)?;
         let lock = child_file(&directory, ".lock", false)?;
-        lock.try_lock()
-            .context("run already has an active owner or locking is unavailable")?;
+        if let Err(error) = lock.try_lock() {
+            match error {
+                std::fs::TryLockError::WouldBlock => {
+                    return Err(RunOwnershipUnavailable.into());
+                }
+                std::fs::TryLockError::Error(error) => {
+                    return Err(error).context("acquire run ownership lock");
+                }
+            }
+        }
         directory.sync_all().context("sync run lock directory")?;
         let artifacts = child_directory(&directory, "artifacts", true)?;
         let files = RunFiles {
@@ -231,7 +250,8 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let id = uuid::Uuid::new_v4().to_string();
         let first = acquire(root.path(), &id).unwrap();
-        assert!(acquire(root.path(), &id).is_err());
+        let error = acquire(root.path(), &id).unwrap_err();
+        assert!(error.downcast_ref::<RunOwnershipUnavailable>().is_some());
         let lock = root.path().join(format!(".ctx/runs/{id}/.lock"));
         assert!(lock.is_file());
         drop(first);

@@ -170,6 +170,18 @@ pub struct AgentTaskClaim {
 }
 
 #[derive(Debug, Serialize)]
+pub struct ExpiredAgentTaskClaim {
+    pub claim: AgentTaskClaim,
+}
+
+/// Task scheduling state together with the authoritative linked run, when any.
+#[derive(Debug, Serialize)]
+pub struct AgentTaskInspection {
+    pub task: AgentTask,
+    pub run: Option<AgentRun>,
+}
+
+#[derive(Debug, Serialize)]
 #[serde(tag = "disposition", content = "task", rename_all = "snake_case")]
 pub enum AgentTaskSubmissionResult {
     Created(AgentTask),
@@ -191,6 +203,10 @@ impl AgentTaskStore {
             pool,
             workspace_id: workspace_id.to_owned(),
         })
+    }
+
+    pub(crate) fn run_store(&self) -> Result<AgentRunStore> {
+        AgentRunStore::new(self.pool.clone(), &self.workspace_id)
     }
 
     pub async fn submit(
@@ -277,6 +293,37 @@ impl AgentTaskStore {
         )
     }
 
+    /// Inspect scheduling state without copying execution state into the task.
+    pub async fn inspect(&self, id: &str) -> Result<Option<AgentTaskInspection>> {
+        let Some(task) = self.get(id).await? else {
+            return Ok(None);
+        };
+        let run = match &task.run_id {
+            Some(run_id) => {
+                AgentRunStore::new(self.pool.clone(), &self.workspace_id)?
+                    .get_run(run_id)
+                    .await?
+            }
+            None => None,
+        };
+        Ok(Some(AgentTaskInspection { task, run }))
+    }
+
+    /// List bounded scheduling records with authoritative linked run projections.
+    pub async fn list_inspections(&self, limit: u32) -> Result<Vec<AgentTaskInspection>> {
+        let tasks = self.list(limit).await?;
+        let runs = self.run_store()?;
+        let mut inspections = Vec::with_capacity(tasks.len());
+        for task in tasks {
+            let run = match &task.run_id {
+                Some(run_id) => runs.get_run(run_id).await?,
+                None => None,
+            };
+            inspections.push(AgentTaskInspection { task, run });
+        }
+        Ok(inspections)
+    }
+
     pub async fn list(&self, limit: u32) -> Result<Vec<AgentTask>> {
         ensure!(
             (1..=1_000).contains(&limit),
@@ -359,6 +406,50 @@ impl AgentTaskStore {
             task,
             worker_id: worker_id.to_owned(),
             claim_token,
+        }))
+    }
+
+    /// Take scheduling ownership of the oldest expired claim for reconciliation.
+    pub async fn claim_next_expired(
+        &self,
+        worker_id: &str,
+        lease_seconds: u64,
+    ) -> Result<Option<ExpiredAgentTaskClaim>> {
+        validate_worker_id(worker_id)?;
+        ensure!(
+            (5..=3_600).contains(&lease_seconds),
+            "lease duration must be 5-3600 seconds"
+        );
+        let claim_token = Uuid::new_v4().to_string();
+        let mut tx = self.pool.begin().await?;
+        let task: Option<AgentTask> = sqlx::query_as(
+            "WITH candidate AS (SELECT id FROM agent_tasks WHERE workspace_id = ? AND status IN ('claimed', 'cancel_requested') AND lease_expires_at <= CAST(unixepoch('subsec') * 1000 AS INTEGER) ORDER BY lease_expires_at, created_at, id LIMIT 1) UPDATE agent_tasks SET claim_owner = ?, claim_token = ?, lease_expires_at = CAST(unixepoch('subsec') * 1000 AS INTEGER) + ?, updated_at = CAST(unixepoch('subsec') * 1000 AS INTEGER), last_sequence = last_sequence + 1 WHERE id = (SELECT id FROM candidate) AND workspace_id = ? AND status IN ('claimed', 'cancel_requested') AND lease_expires_at <= CAST(unixepoch('subsec') * 1000 AS INTEGER) RETURNING *",
+        )
+        .bind(&self.workspace_id)
+        .bind(worker_id)
+        .bind(&claim_token)
+        .bind(i64::try_from(lease_seconds)?.saturating_mul(1_000))
+        .bind(&self.workspace_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(task) = task else {
+            tx.commit().await?;
+            return Ok(None);
+        };
+        sqlx::query("INSERT INTO agent_task_events (task_id, sequence, timestamp, event_type, payload) VALUES (?, ?, ?, 'task.claimed', ?)")
+            .bind(&task.id)
+            .bind(task.last_sequence)
+            .bind(task.updated_at)
+            .bind(sqlx::types::Json(json!({"worker_id": worker_id, "reconciliation": true})))
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(Some(ExpiredAgentTaskClaim {
+            claim: AgentTaskClaim {
+                task,
+                worker_id: worker_id.to_owned(),
+                claim_token,
+            },
         }))
     }
 
@@ -456,13 +547,63 @@ impl AgentTaskStore {
         self.finish_claim(claim, "run_stopped", true).await
     }
 
+    pub async fn finish_cancelled_before_run(&self, claim: &AgentTaskClaim) -> Result<AgentTask> {
+        self.finish_claim(claim, "cancelled_before_run", false)
+            .await
+    }
+
+    pub async fn finish_claim_attempts_exhausted(
+        &self,
+        claim: &AgentTaskClaim,
+    ) -> Result<AgentTask> {
+        self.finish_claim(claim, "claim_attempts_exhausted", false)
+            .await
+    }
+
+    pub async fn finish_restart_required(&self, claim: &AgentTaskClaim) -> Result<AgentTask> {
+        self.finish_claim(claim, "restart_required", true).await
+    }
+
+    pub async fn finish_reconciliation_required(
+        &self,
+        claim: &AgentTaskClaim,
+    ) -> Result<AgentTask> {
+        self.finish_claim(claim, "reconciliation_required", true)
+            .await
+    }
+
+    /// Return an expired pre-run claim to the queue without changing attempts.
+    pub async fn requeue(&self, claim: &AgentTaskClaim) -> Result<AgentTask> {
+        let mut tx = self.pool.begin().await?;
+        let changed: Option<(i64, i64)> = sqlx::query_as(
+            "UPDATE agent_tasks SET status = 'queued', claim_owner = NULL, claim_token = NULL, lease_expires_at = NULL, updated_at = CAST(unixepoch('subsec') * 1000 AS INTEGER), last_sequence = last_sequence + 1 WHERE id = ? AND workspace_id = ? AND status = 'claimed' AND claim_owner = ? AND claim_token = ? AND run_id IS NULL RETURNING last_sequence, updated_at",
+        )
+        .bind(&claim.task.id)
+        .bind(&self.workspace_id)
+        .bind(&claim.worker_id)
+        .bind(&claim.claim_token)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let (sequence, timestamp) = changed.context("task claim cannot be requeued")?;
+        sqlx::query("INSERT INTO agent_task_events (task_id, sequence, timestamp, event_type, payload) VALUES (?, ?, ?, 'task.requeued', '{}')")
+            .bind(&claim.task.id)
+            .bind(sequence)
+            .bind(timestamp)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        self.get(&claim.task.id)
+            .await?
+            .context("requeued task missing")
+    }
+
     pub(crate) async fn fail_linked_run_setup(
         &self,
         claim: &AgentTaskClaim,
         run_id: &str,
     ) -> Result<AgentTask> {
         let owned: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM agent_tasks WHERE id = ? AND workspace_id = ? AND status = 'claimed' AND claim_owner = ? AND claim_token = ? AND run_id = ?)",
+            "SELECT EXISTS(SELECT 1 FROM agent_tasks WHERE id = ? AND workspace_id = ? AND status IN ('claimed', 'cancel_requested') AND claim_owner = ? AND claim_token = ? AND run_id = ?)",
         )
         .bind(&claim.task.id)
         .bind(&self.workspace_id)
@@ -521,8 +662,46 @@ impl AgentTaskStore {
             .context("finalized task missing")
     }
 
-    /// Cancel accepted work only while it is still queued. Worker-owned
-    /// cancellation is introduced with Phase 4B.
+    /// Request cancellation without rewriting linked run state.
+    pub async fn cancel(&self, id: &str) -> Result<AgentTask> {
+        let mut tx = self.pool.begin().await?;
+        let changed: Option<(String, i64, i64)> = sqlx::query_as("UPDATE agent_tasks SET status = CASE WHEN status = 'queued' THEN 'terminal' ELSE 'cancel_requested' END, scheduling_reason = CASE WHEN status = 'queued' THEN 'cancelled_before_run' ELSE scheduling_reason END, scheduling_detail = CASE WHEN status = 'queued' THEN '{}' ELSE scheduling_detail END, updated_at = CAST(unixepoch('subsec') * 1000 AS INTEGER), completed_at = CASE WHEN status = 'queued' THEN CAST(unixepoch('subsec') * 1000 AS INTEGER) ELSE completed_at END, last_sequence = last_sequence + 1 WHERE id = ? AND workspace_id = ? AND status IN ('queued', 'claimed') AND (status != 'queued' OR run_id IS NULL) RETURNING status, last_sequence, updated_at")
+            .bind(id)
+            .bind(&self.workspace_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+        if let Some((status, sequence, timestamp)) = changed {
+            let (event_type, payload) = if status == "terminal" {
+                (
+                    "task.terminal",
+                    json!({"scheduling_reason":"cancelled_before_run"}),
+                )
+            } else {
+                ("task.cancel_requested", json!({}))
+            };
+            sqlx::query("INSERT INTO agent_task_events (task_id, sequence, timestamp, event_type, payload) VALUES (?, ?, ?, ?, ?)")
+                .bind(id)
+                .bind(sequence)
+                .bind(timestamp)
+                .bind(event_type)
+                .bind(sqlx::types::Json(payload))
+                .execute(&mut *tx)
+                .await?;
+            tx.commit().await?;
+            return self.get(id).await?.context("cancelled task missing");
+        }
+        let task: AgentTask =
+            sqlx::query_as("SELECT * FROM agent_tasks WHERE id = ? AND workspace_id = ?")
+                .bind(id)
+                .bind(&self.workspace_id)
+                .fetch_optional(&mut *tx)
+                .await?
+                .context("task not found in workspace")?;
+        tx.commit().await?;
+        Ok(task)
+    }
+
+    /// Backward-compatible queued-only cancellation surface.
     pub async fn cancel_queued(&self, id: &str) -> Result<AgentTask> {
         let now = Utc::now().timestamp_millis();
         let mut tx = self.pool.begin().await?;
