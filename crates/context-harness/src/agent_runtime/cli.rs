@@ -168,9 +168,15 @@ pub async fn history(config: Config, limit: u32, json_output: bool) -> Result<()
     if json_output {
         println!("{}", serde_json::to_string_pretty(&runs)?);
     } else {
-        println!("{:<36} {:<12} AGENT", "RUN", "STATUS");
+        println!("{:<36} {:<12} {:<24} AGENT", "RUN", "STATUS", "RECOVERY");
         for run in runs {
-            println!("{:<36} {:<12} {}", run.id, run.status, run.agent_name);
+            println!(
+                "{:<36} {:<12} {:<24} {}",
+                run.id,
+                run.status,
+                format!("{:?}", run.recovery_disposition),
+                run.agent_name
+            );
         }
     }
     Ok(())
@@ -219,9 +225,9 @@ pub async fn inspect(
         );
     } else {
         println!(
-            "Run: {}\nAgent: {}\nModel: {}\nWorkspace: {}\nStatus: {}\nLifecycle: {:?}\nOutcome: {:?}\nReason: {}\nElapsed: {}ms\nBudgets: {}\nUsage: {}",
+            "Run: {}\nAgent: {}\nModel: {}\nWorkspace: {}\nStatus: {}\nLifecycle: {:?}\nOutcome: {:?}\nRecovery: {:?}\nReason: {}\nElapsed: {}ms\nBudgets: {}\nUsage: {}",
             run.id, run.agent_name, run.model, run.workspace_id, run.status,
-            run.lifecycle, run.outcome, run.reason_code.as_deref().unwrap_or("-"),
+            run.lifecycle, run.outcome, run.recovery_disposition, run.reason_code.as_deref().unwrap_or("-"),
             run.elapsed_ms, serde_json::to_string(&run.budgets.0)?,
             serde_json::to_string(&run.usage.0)?
         );

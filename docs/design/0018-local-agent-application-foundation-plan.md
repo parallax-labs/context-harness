@@ -200,6 +200,13 @@ state.
 **Acceptance:** existing runtime and resume fixtures produce equivalent requests and
 outcomes; no new lifecycle state or database migration.
 
+**Slice status (2026-10-05): Implemented.** The runtime now delegates fresh and
+restored request projection to an internal `RunContextBuilder`. The compatibility
+builder preserves the complete transcript and existing tool declarations verbatim,
+while emitting non-secret builder, strategy, category and count metadata into
+context-resolution events and checkpoint schema v2. No compaction, selection policy,
+working-state model or public lifecycle change is introduced.
+
 #### 1B. Provider catalog seam
 
 Move OpenAI/fake construction out of provider-name branching into a trusted provider
@@ -372,6 +379,16 @@ the specified recovery categories.
 **Acceptance:** tests distinguish completed, blocked, needs-input, failed,
 limit-exceeded and cancelled as specified; budgets do not reset on resume; legacy
 runs remain inspectable; uncertain effects are never replayed.
+
+**Slice status (2026-10-05): Implemented.** Checkpoint schema v2 persists cumulative
+budgets and usage, the original deadline, typed-outcome schema version, compatible
+context-projection metadata and stable provider implementation identity. Version 1
+snapshots retain their original binding and decoding path. Store and CLI inspection
+now expose a deterministic persisted-state recovery disposition without resolving
+resources, constructing providers, acquiring execution locks or invoking external
+systems; live resume remains the authoritative validation boundary. Focused fixtures
+cover compatible projection, v2 tamper rejection, disposition categories, cumulative
+counter retention and uncertain-effect reconciliation.
 
 ### Phase 4: Deliver durable background tasks
 
