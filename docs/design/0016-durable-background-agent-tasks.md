@@ -23,6 +23,14 @@ defines that authoritative lifecycle vocabulary and recovery disposition, satisf
 Gate L. Task persistence and worker behavior still wait for the separate Gate Q task
 contract. Local generation and targeted refresh do not share that dependency.
 
+**Gate Q status (2026-10-05): Resolved.**
+[ADR-0029](../adr/0029-durable-agent-task-ownership.md) selects a separate
+workspace-scoped task store, exactly one immutable run link, database-clock claims
+and leases, and authoritative run outcome projection. [SPEC-0026](../spec/0026-durable-agent-tasks.md)
+defines identity, submission, scheduling states, bounds, cancellation, worker
+ownership, reconciliation and public host behavior. Implementation may proceed in
+the Phase 4 slices from DESIGN-0018.
+
 ## Proposal
 
 ### Task/run separation
@@ -138,8 +146,8 @@ or claim behavior remains opt-in and must preserve existing router isolation.
    injection around claim, run creation, checkpoints, and terminal projection.
 5. Publish the host builder and two unrelated fixture integrations.
 6. Add approved CLI surfaces and a service-manager-neutral runbook.
-7. Write the ADR/spec chain and reconcile it with the 0014 lifecycle/recovery specs
-   before implementation behavior becomes authoritative.
+7. Keep ADR-0029 and SPEC-0026 reconciled with the 0014 lifecycle/recovery specs as
+   implementation evidence accumulates.
 
 ## Acceptance Criteria
 
@@ -152,14 +160,10 @@ or claim behavior remains opt-in and must preserve existing router isolation.
 - External hosts register constrained tools and correlate task/run IDs publicly.
 - Direct run/resume/history behavior remains unchanged.
 
-## Open Questions
+## Resolved Questions
 
-1. Core, CLI, or optional module placement?
-2. Exact accepted identity and drift policy?
-3. One run per task or explicitly safe multiple attempts?
-4. Lease/heartbeat/clock/shutdown defaults?
-5. Initial task state names and operator-required recovery representation?
-6. Minimum CLI versus library-only surface?
-
-The answer to question 5 must reuse 0014's typed run outcome rather than introduce a
-second execution-status vocabulary.
+ADR-0029 and SPEC-0026 place the task store and initial library API in the main crate,
+pin a versioned non-secret accepted identity, fail visibly on drift, permit one run
+per task, define database-clock lease and shutdown bounds, limit scheduling state to
+four task-owned values, project linked run outcomes, and defer CLI exposure to Phase
+4D.
