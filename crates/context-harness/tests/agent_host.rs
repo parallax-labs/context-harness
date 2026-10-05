@@ -731,9 +731,28 @@ async fn worker_heartbeats_and_gracefully_cancels_owned_execution() {
             calls.load(Ordering::SeqCst)
         );
     }
-    tokio::time::sleep(Duration::from_millis(1_100)).await;
-    assert!(store.get(&first.id).await.unwrap().unwrap().last_sequence >= 4);
-    assert!(store.get(&second.id).await.unwrap().unwrap().last_sequence >= 4);
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let first_heartbeat = store
+                .events(&first.id, 0, 10)
+                .await
+                .unwrap()
+                .iter()
+                .any(|event| event.event_type == "task.heartbeat");
+            let second_heartbeat = store
+                .events(&second.id, 0, 10)
+                .await
+                .unwrap()
+                .iter()
+                .any(|event| event.event_type == "task.heartbeat");
+            if first_heartbeat && second_heartbeat {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("both workers should persist a heartbeat");
     shutdown_tx.send(true).unwrap();
     running.await.unwrap().unwrap();
     for task in [&first, &second] {
