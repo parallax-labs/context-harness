@@ -2,6 +2,7 @@
 //! intentionally writable; model-requested retrieval uses read-only connections.
 mod checkpoint;
 pub mod cli;
+mod context;
 mod control;
 mod delegation;
 mod developer;
@@ -70,6 +71,7 @@ pub struct AgentRuntime {
     resources: Arc<std::collections::BTreeMap<String, LoadedAgentResource>>,
     tool_bindings: Arc<std::collections::BTreeMap<String, tool_binding::LoadedToolResource>>,
     execution: Option<delegation::ExecutionContext>,
+    context_builder: Arc<dyn context::RunContextBuilder>,
 }
 impl AgentRuntime {
     /// Initialize runtime history and bind all context reads to this config/DB.
@@ -100,6 +102,7 @@ impl AgentRuntime {
             resources: Arc::new(Default::default()),
             tool_bindings: Arc::new(Default::default()),
             execution: None,
+            context_builder: Arc::new(context::CompatibilityContextBuilder),
             policy: RuntimePolicy::default(),
             approvals: Arc::new(DenyApprovals),
         })
@@ -295,7 +298,7 @@ impl AgentRuntime {
         let outcome = tokio::select! {
             biased;
             _ = cancelled(&mut cancel) => RunOutcome::Cancelled,
-            result = tokio::time::timeout(remaining, self.execute(&run.id, resource, &run.input, request, start_turn, files)) => {
+            result = tokio::time::timeout(remaining, self.execute(run, resource, &run.input, request, start_turn, files)) => {
                 match result {
                     Ok(Ok(outcome)) => outcome,
                     Ok(Err(error)) => RunOutcome::FailedWithReason {
@@ -391,13 +394,14 @@ impl AgentRuntime {
 
     async fn execute(
         &self,
-        id: &str,
+        run: &AgentRun,
         resource: &LoadedAgentResource,
         input: &str,
         restored: Option<ModelRequest>,
         start_turn: u32,
         files: &files::RunFiles,
     ) -> Result<RunOutcome> {
+        let id = &run.id;
         let agent = &resource.definition.agent;
         ensure!(
             agent.execution.max_turns > 0 && agent.execution.timeout_seconds > 0,
@@ -406,6 +410,17 @@ impl AgentRuntime {
         let (external, mut sessions) = self.external_tools(id, resource).await?;
         let result = async {
             let declarations = self.declarations_with(resource, &external)?;
+            let context = ToolContext::new(self.config.clone());
+            if restored.is_none() {
+                self.prepare_selected_tools(id, resource, &external, &context)
+                    .await?;
+            }
+            let projected = self.context_builder.project(
+                &resource.definition.prompt.system,
+                input,
+                declarations,
+                restored,
+            )?;
             self.store
                 .append_event(
                     id,
@@ -413,31 +428,24 @@ impl AgentRuntime {
                     &json!({
                         "workspace_root": self.root, "agent_version": resource.version,
                         "tools": agent.tools, "retrieval": "keyword",
+                        "projection": projected.metadata,
                         "tool_binding_contract": tool_binding::CATALOG_CONTRACT_VERSION,
                         "tool_bindings": self.selected_binding_metadata_with(resource, Some(&external))?,
                         "host_policy": {"allow":self.policy.allow, "require_approval":self.policy.require_approval}
                     }),
                 )
                 .await?;
-            let context = ToolContext::new(self.config.clone());
-            if restored.is_none() {
-                self.prepare_selected_tools(id, resource, &external, &context)
-                    .await?;
-            }
-            let mut request = restored.unwrap_or_else(|| ModelRequest {
-                messages: vec![
-                    ModelMessage::System {
-                        content: resource.definition.prompt.system.clone(),
-                    },
-                    ModelMessage::User {
-                        content: input.into(),
-                    },
-                ],
-                tools: declarations,
-                ..Default::default()
-            });
+            let mut request = projected.request;
             for turn in start_turn..agent.execution.max_turns {
-                self.checkpoint(id, resource, &request, turn).await?;
+                self.checkpoint(
+                    id,
+                    resource,
+                    &request,
+                    &self.context_builder.describe(&request),
+                    turn,
+                    (turn == start_turn).then_some(run),
+                )
+                .await?;
                 let recorded = match self
                     .models
                     .generate_recorded_with_budget(&self.store, id, &agent.model, &request)

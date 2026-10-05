@@ -66,6 +66,22 @@ pub struct RunUsage {
     pub token_accounting: TokenAccounting,
 }
 
+/// A read-only classification of the durable state available for recovery.
+///
+/// `ResumeEligible` means that persisted state is safe enough to attempt the
+/// runtime's authoritative live resume preflight. It is not a promise that the
+/// current resource, provider, tools, or policy still match.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RecoveryDisposition {
+    Complete,
+    ResumeEligible,
+    Suspended,
+    #[default]
+    RestartRequired,
+    ReconciliationRequired,
+}
+
 /// Materialized state of an execution. Inputs and outputs are plain text.
 #[derive(Debug, Serialize, FromRow)]
 pub struct AgentRun {
@@ -89,6 +105,8 @@ pub struct AgentRun {
     pub budgets: sqlx::types::Json<RunBudgets>,
     pub usage: sqlx::types::Json<RunUsage>,
     pub elapsed_ms: i64,
+    #[sqlx(skip)]
+    pub recovery_disposition: RecoveryDisposition,
 }
 
 /// Immutable ancestry of a run. Legacy runs without a row are treated as roots.
@@ -563,24 +581,115 @@ impl AgentRunStore {
     }
 
     pub async fn get_run(&self, id: &str) -> Result<Option<AgentRun>> {
-        Ok(
-            sqlx::query_as("SELECT *, MAX(0, COALESCE(completed_at, CAST(unixepoch('subsec') * 1000 AS INTEGER)) - created_at) AS elapsed_ms FROM agent_runs WHERE id = ? AND workspace_id = ?")
-                .bind(id)
-                .bind(&self.workspace_id)
-                .fetch_optional(&self.pool)
-                .await?,
-        )
+        let mut run = self.get_run_raw(id).await?;
+        if let Some(run) = &mut run {
+            run.recovery_disposition = self.classify_recovery(run).await?;
+        }
+        Ok(run)
+    }
+
+    pub(crate) async fn get_run_raw(&self, id: &str) -> Result<Option<AgentRun>> {
+        Ok(sqlx::query_as("SELECT *, MAX(0, COALESCE(completed_at, CAST(unixepoch('subsec') * 1000 AS INTEGER)) - created_at) AS elapsed_ms FROM agent_runs WHERE id = ? AND workspace_id = ?")
+            .bind(id)
+            .bind(&self.workspace_id)
+            .fetch_optional(&self.pool)
+            .await?)
     }
 
     /// Most recent runs first, with a bounded result count.
     pub async fn history(&self, limit: u32) -> Result<Vec<AgentRun>> {
-        Ok(sqlx::query_as(
+        let mut runs: Vec<AgentRun> = sqlx::query_as(
             "SELECT *, MAX(0, COALESCE(completed_at, CAST(unixepoch('subsec') * 1000 AS INTEGER)) - created_at) AS elapsed_ms FROM agent_runs WHERE workspace_id = ? ORDER BY created_at DESC, id LIMIT ?",
         )
         .bind(&self.workspace_id)
         .bind(limit)
         .fetch_all(&self.pool)
-        .await?)
+        .await?;
+        for run in &mut runs {
+            run.recovery_disposition = self.classify_recovery(run).await?;
+        }
+        Ok(runs)
+    }
+
+    /// Classify only persisted state. This performs no provider/resource
+    /// resolution and makes no network, process, or model calls.
+    pub async fn recovery_disposition(&self, id: &str) -> Result<RecoveryDisposition> {
+        let run: AgentRun = sqlx::query_as("SELECT *, MAX(0, COALESCE(completed_at, CAST(unixepoch('subsec') * 1000 AS INTEGER)) - created_at) AS elapsed_ms FROM agent_runs WHERE id = ? AND workspace_id = ?")
+            .bind(id)
+            .bind(&self.workspace_id)
+            .fetch_optional(&self.pool)
+            .await?
+            .context("run not found in workspace")?;
+        self.classify_recovery(&run).await
+    }
+
+    async fn classify_recovery(&self, run: &AgentRun) -> Result<RecoveryDisposition> {
+        if run.outcome == Some(RunOutcomeKind::Completed) {
+            return Ok(RecoveryDisposition::Complete);
+        }
+        if run.lifecycle == RunLifecycle::Suspended {
+            return Ok(RecoveryDisposition::Suspended);
+        }
+
+        let checkpoint_sequence: Option<i64> =
+            sqlx::query_scalar("SELECT MAX(sequence) FROM agent_checkpoints WHERE run_id = ?")
+                .bind(&run.id)
+                .fetch_one(&self.pool)
+                .await?;
+        let Some(checkpoint_sequence) = checkpoint_sequence else {
+            return Ok(RecoveryDisposition::RestartRequired);
+        };
+
+        let unsafe_invocation: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tool_invocations WHERE run_id = ? AND (status != 'completed' OR requested_sequence >= ?))")
+            .bind(&run.id)
+            .bind(checkpoint_sequence)
+            .fetch_one(&self.pool)
+            .await?;
+        let artifact_after_checkpoint: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM agent_events WHERE run_id = ? AND event_type = 'artifact.created' AND sequence > ?)")
+            .bind(&run.id)
+            .bind(checkpoint_sequence)
+            .fetch_one(&self.pool)
+            .await?;
+        if unsafe_invocation || artifact_after_checkpoint {
+            return Ok(RecoveryDisposition::ReconciliationRequired);
+        }
+
+        if run.outcome == Some(RunOutcomeKind::LimitExceeded) {
+            return Ok(RecoveryDisposition::RestartRequired);
+        }
+        let delegated: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM agent_run_lineage WHERE (run_id = ? AND parent_run_id IS NOT NULL) OR parent_run_id = ?)")
+            .bind(&run.id)
+            .bind(&run.id)
+            .fetch_one(&self.pool)
+            .await?;
+        if delegated {
+            return Ok(RecoveryDisposition::RestartRequired);
+        }
+        if let Some(timeout) = run.budgets.timeout_seconds {
+            let deadline = i64::try_from(timeout)
+                .ok()
+                .and_then(|seconds| seconds.checked_mul(1000))
+                .and_then(|millis| run.created_at.checked_add(millis));
+            if deadline.is_none_or(|deadline| Utc::now().timestamp_millis() >= deadline) {
+                return Ok(RecoveryDisposition::RestartRequired);
+            }
+        }
+        if run
+            .budgets
+            .max_turns
+            .is_some_and(|limit| run.usage.model_turns >= limit)
+            || run
+                .budgets
+                .max_total_tokens
+                .is_some_and(|limit| run.usage.total_tokens.is_none_or(|total| total >= limit))
+            || run
+                .budgets
+                .max_tool_calls
+                .is_some_and(|limit| run.usage.tool_calls >= limit)
+        {
+            return Ok(RecoveryDisposition::RestartRequired);
+        }
+        Ok(RecoveryDisposition::ResumeEligible)
     }
 
     async fn active_budget_chain(

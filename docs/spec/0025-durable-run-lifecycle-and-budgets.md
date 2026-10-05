@@ -253,8 +253,10 @@ database migration, network access, secret resolution, and process startup.
 Inspection and future workers SHALL derive one of these dispositions:
 
 - `complete`: terminal/completed;
-- `resume_eligible`: interrupted active, terminal/failed, or terminal/cancelled, only
-  when all SPEC-0019 ownership, deadline, checkpoint, binding, and effect checks pass;
+- `resume_eligible`: interrupted active, terminal/failed, or terminal/cancelled when
+  durable inspection finds a checkpoint, unexpired persisted deadline and no known
+  unsafe effect or exhausted budget. This means eligible to attempt resume, not that
+  current external bindings or execution ownership have already been validated;
 - `suspended`: blocked or needs_user_input; retain for explicit future continuation;
 - `restart_required`: limit_exceeded or a safe run that cannot satisfy resume
   identity/deadline requirements; or
@@ -267,6 +269,16 @@ The first lifecycle implementation SHALL preserve current failed/cancelled resum
 eligibility, but suspended runs SHALL reject `ctx agent resume` until continuation is
 specified. A future contract may narrow legacy recovery only with a migration and
 compatibility plan.
+
+Read-only inspection SHALL derive the disposition only from already persisted run,
+checkpoint, lineage, tool, approval, artifact and event state. It SHALL NOT load the
+current resource, construct a provider, recompute the current binding or acquire an
+execution lock. `AgentRuntime::resume` remains authoritative: before reopening a
+`resume_eligible` run it SHALL acquire ownership and complete the current workspace,
+resource, provider/model, tool, policy, checkpoint and effect validation required by
+SPEC-0019. A failed live preflight SHALL leave the run unchanged and SHALL NOT make a
+prior read-only disposition incorrect; it means the candidate can no longer satisfy
+the external recovery conditions.
 
 The Phase 3 checkpoint migration SHALL bump the checkpoint schema and persist the
 configured budgets, cumulative counters, accounting completeness, canonical outcome

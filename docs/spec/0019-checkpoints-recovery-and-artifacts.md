@@ -66,7 +66,9 @@ available. Run IDs SHALL be canonical UUIDs. Runtime paths SHALL reject symlink
 components and hard-linked lockfiles. New directories/files use 0700/0600 modes;
 existing directory permissions are not changed.
 
-Resume SHALL acquire ownership, validate the run and latest checkpoint, then
+The read-only `resume_eligible` disposition means that persisted state is eligible to
+attempt this live preflight; it is not a guarantee that current resources, bindings or
+ownership still match. Resume SHALL acquire ownership, validate the run and latest checkpoint, then
 reopen it transactionally using its expected last event sequence. Concurrent
 state changes SHALL reject that transition. Eligibility SHALL follow SPEC-0025's
 recovery disposition. The compatibility path retains running-after-interruption,

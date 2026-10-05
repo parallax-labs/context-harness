@@ -1,5 +1,8 @@
 use context_harness::{
-    agent_store::{AgentRunStore, RunOutcome, ToolOutcome, MAX_ARTIFACT_BYTES},
+    agent_store::{
+        AgentRunStore, BlockedReason, RecoveryDisposition, RunOutcome, ToolOutcome,
+        MAX_ARTIFACT_BYTES,
+    },
     app_store::SqliteAppStore,
     config::Config,
 };
@@ -14,6 +17,85 @@ async fn setup() -> (TempDir, SqliteAppStore, AgentRunStore) {
     let app = SqliteAppStore::connect(&cfg).await.unwrap();
     let store = app.agent_runs("project").unwrap();
     (tmp, app, store)
+}
+
+#[tokio::test]
+async fn recovery_disposition_is_deterministic_from_persisted_state() {
+    let (_tmp, _app, store) = setup().await;
+
+    let restart = store
+        .create_run("agent", "version", "fake", "input")
+        .await
+        .unwrap();
+    assert_eq!(
+        restart.recovery_disposition,
+        RecoveryDisposition::RestartRequired
+    );
+
+    let eligible = store
+        .create_run("agent", "version", "fake", "input")
+        .await
+        .unwrap();
+    store
+        .save_checkpoint(&eligible.id, 1, 0, &json!({}))
+        .await
+        .unwrap();
+    assert_eq!(
+        store.recovery_disposition(&eligible.id).await.unwrap(),
+        RecoveryDisposition::ResumeEligible
+    );
+
+    store
+        .request_tool(&eligible.id, "call", "process.exec", &json!({}))
+        .await
+        .unwrap();
+    assert_eq!(
+        store.recovery_disposition(&eligible.id).await.unwrap(),
+        RecoveryDisposition::ReconciliationRequired
+    );
+
+    let suspended = store
+        .create_run("agent", "version", "fake", "input")
+        .await
+        .unwrap();
+    store
+        .finish_run(
+            &suspended.id,
+            RunOutcome::Blocked {
+                code: BlockedReason::ExternalDependency,
+                message: "wait".into(),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .get_run(&suspended.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .recovery_disposition,
+        RecoveryDisposition::Suspended
+    );
+
+    let complete = store
+        .create_run("agent", "version", "fake", "input")
+        .await
+        .unwrap();
+    store
+        .finish_run(&complete.id, RunOutcome::Completed("done".into()))
+        .await
+        .unwrap();
+    assert_eq!(
+        store.recovery_disposition(&complete.id).await.unwrap(),
+        RecoveryDisposition::Complete
+    );
+
+    let history = store.history(10).await.unwrap();
+    assert!(history.iter().any(|run| {
+        run.id == eligible.id
+            && run.recovery_disposition == RecoveryDisposition::ReconciliationRequired
+    }));
 }
 
 #[tokio::test]

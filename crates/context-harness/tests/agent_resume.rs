@@ -49,9 +49,28 @@ fn resource(tools: &[&str]) -> LoadedAgentResource {
     }
 }
 async fn runtime(tmp: &TempDir, provider: Arc<dyn ModelProvider>) -> AgentRuntime {
-    let mut registry = ModelRegistry::default();
-    registry.register("test", "fake", "test", provider).unwrap();
-    AgentRuntime::new(config(tmp), tmp.path(), registry)
+    struct FixtureFactory(Arc<dyn ModelProvider>);
+    impl ModelProviderFactory for FixtureFactory {
+        fn provider_name(&self) -> &str {
+            "fake"
+        }
+        fn implementation(&self) -> ModelProviderImplementation {
+            ModelProviderImplementation::new("context-harness.fake", "1")
+        }
+        fn validate(&self, _: &ModelDefinition) -> anyhow::Result<()> {
+            Ok(())
+        }
+        fn build(&self, _: &ModelDefinition) -> anyhow::Result<Arc<dyn ModelProvider>> {
+            Ok(self.0.clone())
+        }
+    }
+    let config = config(tmp);
+    let mut catalog = ModelProviderCatalog::new();
+    catalog
+        .register(Arc::new(FixtureFactory(provider)))
+        .unwrap();
+    let registry = ModelRegistry::from_config_with_catalog(&config.models, &catalog).unwrap();
+    AgentRuntime::new(config, tmp.path(), registry)
         .await
         .unwrap()
 }
@@ -165,7 +184,60 @@ async fn crash_after_completed_turn_restores_conversation_without_replaying_tool
         .await
         .unwrap()
         .unwrap();
+    assert_eq!(checkpoint.schema_version, 2);
     assert_eq!(checkpoint.turn, 2);
+    assert_eq!(checkpoint.state["outcome_schema_version"], 1);
+    assert_eq!(
+        checkpoint.state["projection"]["builder"],
+        "compatibility_v1"
+    );
+    assert_eq!(
+        checkpoint.state["projection"]["strategy"],
+        "complete_transcript"
+    );
+    assert_eq!(checkpoint.state["usage"]["tool_calls"], 1);
+}
+
+#[tokio::test]
+async fn tampered_v2_checkpoint_is_rejected_without_mutating_history() {
+    let tmp = TempDir::new().unwrap();
+    let res = resource(&[]);
+    let (rt, id) = crash(&tmp, res.clone()).await;
+    let before = rt
+        .store()
+        .get_run(&id)
+        .await
+        .unwrap()
+        .unwrap()
+        .last_sequence;
+    let pool = sqlx::SqlitePool::connect(&format!(
+        "sqlite:{}",
+        tmp.path().join(".ctx/data/ctx.sqlite").display()
+    ))
+    .await
+    .unwrap();
+    sqlx::query("UPDATE agent_checkpoints SET state = json_set(state, '$.projection.builder', 'tampered') WHERE run_id = ?")
+        .bind(&id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    pool.close().await;
+    let (_tx, rx) = watch::channel(false);
+    assert!(rt
+        .resume(&id, &res, rx)
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("checkpoint run state"));
+    assert_eq!(
+        rt.store()
+            .get_run(&id)
+            .await
+            .unwrap()
+            .unwrap()
+            .last_sequence,
+        before
+    );
 }
 #[tokio::test]
 async fn rejects_changed_bindings_checkpoint_schema_and_exhausted_budget() {
