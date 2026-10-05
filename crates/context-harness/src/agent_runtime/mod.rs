@@ -23,13 +23,14 @@ use crate::{
     },
     app_store::SqliteAppStore,
     config::Config,
-    tool_binding::{self, HostToolAuthority},
+    tool_binding::{self, HostToolAuthority, ResolvedToolResource},
     traits::{ToolContext, ToolRegistry, ToolRuntimeDispatch},
 };
 use anyhow::{ensure, Context, Result};
-use serde_json::json;
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
+    collections::BTreeMap,
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
@@ -57,6 +58,68 @@ pub fn workspace_id(root: &Path) -> Result<String> {
         "local-{:x}",
         Sha256::digest(root.as_os_str().as_encoded_bytes())
     ))
+}
+
+/// Resolve the exact advertised schemas and non-secret binding metadata used by
+/// accepted tasks without opening the database or binding/executing a tool.
+pub(crate) fn static_tool_identity(
+    config: &Config,
+    root: &Path,
+    resources: &BTreeMap<String, LoadedAgentResource>,
+    bindings: &BTreeMap<String, ResolvedToolResource>,
+    policy: &RuntimePolicy,
+) -> Result<Value> {
+    let mut builtins = tools::metadata_registry(config)?;
+    developer::register(&mut builtins, root)?;
+    builtins.register(Box::new(delegation::InvokeTool));
+    control::register(&mut builtins);
+
+    let mut agents = serde_json::Map::new();
+    for (agent_name, resource) in resources {
+        let agent = &resource.definition.agent;
+        let mut advertised = Vec::new();
+        for name in &agent.tools {
+            if let Some(binding) = bindings.get(name) {
+                ensure!(
+                    policy.authorize(&agent.permissions, &binding.binding.capabilities)
+                        != Authorization::Denied,
+                    "tool capability is not permitted by agent and host policy"
+                );
+                advertised.push(json!({
+                    "name": name,
+                    "description": binding.binding.description,
+                    "parameters": binding.binding.public_schema,
+                    "resource_version": binding.resource_version,
+                    "binding": binding.binding,
+                }));
+                continue;
+            }
+            let tool = builtins
+                .find(name)
+                .context("unsupported runtime tool declaration")?;
+            let capabilities = tool
+                .capabilities()
+                .context("tool capability metadata is unavailable")?;
+            if !matches!(tool.runtime_dispatch(), ToolRuntimeDispatch::RunControl(_)) {
+                ensure!(
+                    policy.authorize(&agent.permissions, &capabilities) != Authorization::Denied,
+                    "tool capability is not permitted by agent and host policy"
+                );
+            }
+            let mut parameters = tool.parameters_schema();
+            if tool.runtime_dispatch() == ToolRuntimeDispatch::AgentDelegation {
+                parameters["properties"]["agent"]["enum"] = json!(agent.delegation.allow);
+            }
+            advertised.push(json!({
+                "name": name,
+                "description": tool.description(),
+                "parameters": parameters,
+                "binding": tool.binding_metadata(),
+            }));
+        }
+        agents.insert(agent_name.clone(), Value::Array(advertised));
+    }
+    Ok(Value::Object(agents))
 }
 
 #[derive(Clone)]

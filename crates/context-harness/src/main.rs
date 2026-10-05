@@ -59,6 +59,8 @@ mod agent_runtime;
 mod agent_script;
 #[allow(dead_code)]
 mod agent_store;
+#[allow(dead_code)]
+mod agent_task_store;
 mod agents;
 mod app_store;
 mod chunk;

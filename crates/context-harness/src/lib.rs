@@ -109,6 +109,7 @@ pub mod agent_resource;
 pub mod agent_runtime;
 pub mod agent_script;
 pub mod agent_store;
+pub mod agent_task_store;
 pub mod agents;
 pub mod app_store;
 pub mod chunk;

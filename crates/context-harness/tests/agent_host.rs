@@ -77,6 +77,7 @@ impl ModelProviderFactory for FixtureProviderFactory {
 
 struct EchoFactory {
     descriptor: ToolImplementationDescriptor,
+    binds: Arc<AtomicUsize>,
 }
 
 #[async_trait]
@@ -86,6 +87,7 @@ impl ToolImplementationFactory for EchoFactory {
     }
 
     async fn bind(&self, request: ToolBindingRequest) -> Result<Box<dyn Tool>> {
+        self.binds.fetch_add(1, Ordering::SeqCst);
         Ok(Box::new(EchoTool {
             binding: request.resolved,
         }))
@@ -204,10 +206,11 @@ fn model_catalog(builds: Arc<AtomicUsize>, calls: Arc<AtomicUsize>) -> ModelProv
     catalog
 }
 
-fn tool_catalog() -> ToolImplementationCatalog {
+fn tool_catalog(binds: Arc<AtomicUsize>) -> ToolImplementationCatalog {
     let mut catalog = ToolImplementationCatalog::new();
     catalog
         .register(Arc::new(EchoFactory {
+            binds,
             descriptor: ToolImplementationDescriptor {
                 id: "rust.fixture.echo".into(),
                 version: "1".into(),
@@ -235,6 +238,7 @@ async fn external_host_composes_registered_model_and_tool_factories() {
     let database = config.db.path.clone();
     let builds = Arc::new(AtomicUsize::new(0));
     let calls = Arc::new(AtomicUsize::new(0));
+    let binds = Arc::new(AtomicUsize::new(0));
     let mut authority = HostToolAuthority::new(temp.path(), vec![Capability::ReadOnly]).unwrap();
     authority.enroll_path(temp.path()).unwrap();
     let builder = AgentHostBuilder::new(
@@ -244,7 +248,7 @@ async fn external_host_composes_registered_model_and_tool_factories() {
     )
     .unwrap()
     .with_agent_resources(agents)
-    .with_tool_bindings(tools, tool_catalog(), Arc::new(authority))
+    .with_tool_bindings(tools, tool_catalog(binds.clone()), Arc::new(authority))
     .with_policy(
         RuntimePolicy {
             allow: vec![Capability::ReadOnly],
@@ -255,9 +259,11 @@ async fn external_host_composes_registered_model_and_tool_factories() {
 
     assert_eq!(builds.load(Ordering::SeqCst), 0);
     assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert_eq!(binds.load(Ordering::SeqCst), 0);
     assert!(!database.exists());
     let host = builder.build("fixture-host").await.unwrap();
     assert_eq!(builds.load(Ordering::SeqCst), 1);
+    assert_eq!(binds.load(Ordering::SeqCst), 1);
     assert_eq!(calls.load(Ordering::SeqCst), 0);
 
     let (_sender, cancel) = watch::channel(false);
@@ -269,6 +275,61 @@ async fn external_host_composes_registered_model_and_tool_factories() {
         host.store().tool_invocations(&run.id).await.unwrap().len(),
         1
     );
+}
+
+#[tokio::test]
+async fn task_submission_uses_static_identity_without_building_or_binding() {
+    let (temp, config, agents, tools) = fixture();
+    let database = config.db.path.clone();
+    let builds = Arc::new(AtomicUsize::new(0));
+    let calls = Arc::new(AtomicUsize::new(0));
+    let binds = Arc::new(AtomicUsize::new(0));
+    let authority =
+        Arc::new(HostToolAuthority::new(temp.path(), vec![Capability::ReadOnly]).unwrap());
+    let builder = AgentHostBuilder::new(
+        config,
+        temp.path(),
+        model_catalog(builds.clone(), calls.clone()),
+    )
+    .unwrap()
+    .with_agent_resources(agents)
+    .with_tool_bindings(tools, tool_catalog(binds.clone()), authority)
+    .with_policy(
+        RuntimePolicy {
+            allow: vec![Capability::ReadOnly],
+            require_approval: vec![],
+        },
+        Arc::new(DenyApprovals),
+    );
+
+    let resolved = builder.resolve_task_identity("fixture-host").unwrap();
+    assert!(!database.exists());
+    assert_eq!(builds.load(Ordering::SeqCst), 0);
+    assert_eq!(binds.load(Ordering::SeqCst), 0);
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert_eq!(resolved.agent_name(), "fixture-host");
+    assert_eq!(
+        resolved.accepted_identity().value()["models"]["fixture"]["implementation_id"],
+        "fixture.host-model"
+    );
+    assert_eq!(
+        resolved.accepted_identity().value()["tools"]["fixture-host"][0]["name"],
+        "fixture.echo"
+    );
+
+    let submitter = builder.build_task_submitter("fixture-host").await.unwrap();
+    let result = submitter
+        .submit("fixture-request", "Echo hello", Vec::new())
+        .await
+        .unwrap();
+    assert!(matches!(
+        result,
+        context_harness::agent_task_store::AgentTaskSubmissionResult::Created(_)
+    ));
+    assert!(database.exists());
+    assert_eq!(builds.load(Ordering::SeqCst), 0);
+    assert_eq!(binds.load(Ordering::SeqCst), 0);
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]

@@ -128,6 +128,15 @@ impl SqliteAppStore {
         crate::agent_store::AgentRunStore::new(self.pool.clone(), workspace_id)
     }
 
+    /// Accepted background tasks share the canonical database but remain
+    /// workspace-scoped and distinct from concrete run attempts.
+    pub fn agent_tasks(
+        &self,
+        workspace_id: &str,
+    ) -> Result<crate::agent_task_store::AgentTaskStore> {
+        crate::agent_task_store::AgentTaskStore::new(self.pool.clone(), workspace_id)
+    }
+
     pub async fn close(&self) {
         self.pool.close().await;
     }

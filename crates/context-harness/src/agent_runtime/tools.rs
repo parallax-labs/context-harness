@@ -109,6 +109,27 @@ pub(super) async fn registry(config: &Config) -> Result<ToolRegistry> {
     Ok(registry)
 }
 
+/// Build the built-in declaration registry without opening the database.
+/// The lazy pool is metadata-only and cannot issue I/O unless a tool executes.
+pub(super) fn metadata_registry(config: &Config) -> Result<ToolRegistry> {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(2)
+        .connect_lazy_with(
+            SqliteConnectOptions::new()
+                .filename(&config.db.path)
+                .read_only(true)
+                .create_if_missing(false)
+                .pragma("query_only", "ON"),
+        );
+    let mut registry = ToolRegistry::new();
+    registry.register(Box::new(ReadSearch {
+        pool: pool.clone(),
+        candidate_limit: config.retrieval.candidate_k_keyword.clamp(1, 1000),
+    }));
+    registry.register(Box::new(ReadGet { pool }));
+    Ok(registry)
+}
+
 struct ReadSearch {
     pool: SqlitePool,
     candidate_limit: i64,
