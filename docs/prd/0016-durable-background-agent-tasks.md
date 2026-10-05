@@ -96,13 +96,13 @@ recovery. Leases can expire while the underlying process is still alive, so expi
 alone cannot authorize a second run. SQLite contention and clock assumptions require
 explicit bounds.
 
-## Open Questions
+## Resolved Decisions
 
-1. Does the task subsystem live in the core crate, CLI crate, or an optional module?
-2. Which resource identities are pinned at acceptance, and how is later drift handled?
-3. May an explicitly safe retry create multiple run attempts for one task?
-4. What lease, heartbeat, attempt, and shutdown semantics belong in version one?
-5. Which CLI surfaces ship initially versus remaining library-only?
+Resolved by [ADR-0029](../adr/0029-durable-agent-task-ownership.md) and
+[SPEC-0026](../spec/0026-durable-agent-tasks.md): the main crate owns a separate task
+store; submission pins a versioned non-secret execution identity and fails visibly on
+drift; version one permits one immutable run link; claims use bounded database-clock
+leases and attempts; Phase 4A is library-first and CLI surfaces remain Phase 4D.
 
 ## Related Documents
 
@@ -118,4 +118,7 @@ explicit bounds.
 - [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md): recovery rules.
 - [SPEC-0023](../spec/0023-declarative-tool-bindings.md): binding authority/identity.
 - [PRD-0015](0015-local-generation-providers.md): independent local provider work.
-- Future ADR/specs are deferred until the design questions are resolved.
+- [ADR-0029](../adr/0029-durable-agent-task-ownership.md): task/run authority,
+  exactly-one-run ownership, claims and cancellation rationale.
+- [SPEC-0026](../spec/0026-durable-agent-tasks.md): authoritative task identity,
+  persistence, submission, worker and reconciliation behavior.

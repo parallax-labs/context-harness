@@ -44,6 +44,7 @@ See [SPEC-0000](0000-spec-policy.md) for the full policy.
 | [0023](0023-declarative-tool-bindings.md) | Declarative Tool Bindings | Authoritative |
 | [0024](0024-targeted-document-refresh.md) | Targeted Document Refresh | Authoritative |
 | [0025](0025-durable-run-lifecycle-and-budgets.md) | Durable Run Lifecycle and Cumulative Budgets | Authoritative — implementation pending |
+| [0026](0026-durable-agent-tasks.md) | Durable Agent Tasks | Authoritative — implementation pending |
 
 ## Creating a New Spec
 

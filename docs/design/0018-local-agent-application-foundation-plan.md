@@ -168,6 +168,14 @@ scheduling and ownership; the linked run remains authoritative for execution out
 
 **Gate Q:** Persistent task migrations and public CLI behavior wait for this spec.
 
+**Gate status (2026-10-05): Resolved.**
+[ADR-0029](../adr/0029-durable-agent-task-ownership.md) and
+[SPEC-0026](../spec/0026-durable-agent-tasks.md) define the separate task/run
+authority boundary, accepted identity, idempotent submission, four scheduling states,
+one immutable run link, database-clock claims and leases, bounded worker settings,
+cancellation, conservative reconciliation and staged public API/CLI delivery. Phase
+4A may implement persistence and submission without worker behavior.
+
 #### 0D. Targeted-refresh contract
 
 Resolve input form (`SourceItem`, connector item ID, or both), enrolled source handle,
