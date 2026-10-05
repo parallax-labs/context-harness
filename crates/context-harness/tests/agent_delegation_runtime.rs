@@ -110,6 +110,10 @@ async fn child_result_and_lineage_are_durable() {
         .unwrap()
         .unwrap();
     assert_eq!(child.output.as_deref(), Some("Child evidence"));
+    assert_eq!(child.usage.model_turns, 1);
+    assert_eq!(run.usage.model_turns, 3);
+    assert_eq!(run.usage.responses_without_usage, 3);
+    assert_eq!(run.usage.tool_calls, 1);
     let calls = runtime.store().tool_invocations(&run.id).await.unwrap();
     assert_eq!(
         calls[0].result.as_ref().unwrap()["output"],
@@ -254,8 +258,8 @@ async fn parent_and_child_share_model_turn_budget() {
     let (_tx, rx) = watch::channel(false);
     let run = runtime.run(&parent, "task", rx).await.unwrap();
     assert_eq!(run.status, "failed");
-    assert_eq!(run.outcome, Some(RunOutcomeKind::Failed));
-    assert_eq!(run.reason_code.as_deref(), Some("tool_error"));
+    assert_eq!(run.outcome, Some(RunOutcomeKind::LimitExceeded));
+    assert_eq!(run.reason_code.as_deref(), Some("model_turns"));
     let child = runtime.store().children(&run.id).await.unwrap().remove(0);
     assert_eq!(
         runtime

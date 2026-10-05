@@ -155,7 +155,7 @@ async fn model_failure_is_recorded_but_does_not_finish_the_run() {
         .is_err());
     let events = store.events(&run.id, 0, 10).await.unwrap();
     assert_eq!(events[2].event_type, "model.failed");
-    assert_eq!(events[2].payload["error"]["kind"], "rate_limited");
+    assert_eq!(events[2].payload["error"], "model request failed");
     assert_eq!(
         store.get_run(&run.id).await.unwrap().unwrap().status,
         "running"

@@ -48,6 +48,9 @@ async fn legacy_run_rows_receive_deterministic_typed_state() {
     assert_eq!(active.outcome, None);
     assert_eq!(active.reason_code, None);
     assert_eq!(active.reason_detail, None);
+    assert_eq!(active.budgets.max_turns, None);
+    assert_eq!(active.usage.model_turns, 0);
+    assert_eq!(active.usage.total_tokens, None);
 
     for (id, outcome, reason) in [
         ("done", RunOutcomeKind::Completed, "legacy_completed"),

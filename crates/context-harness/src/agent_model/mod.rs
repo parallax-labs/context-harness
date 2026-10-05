@@ -19,7 +19,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::agent_resource::ModelDefinition;
-use crate::agent_store::AgentRunStore;
+use crate::agent_store::{AgentRunStore, BudgetDecision, LimitReason};
 
 pub type ModelResult<T> = Result<T, ModelError>;
 
@@ -169,6 +169,11 @@ pub struct ModelResponse {
     pub finish_reason: FinishReason,
     pub structured_output: Option<Value>,
     pub continuation: Option<ProviderContinuation>,
+}
+
+pub struct RecordedModelResponse {
+    pub response: ModelResponse,
+    pub limit: Option<LimitReason>,
 }
 impl ModelResponse {
     pub fn text(text: impl Into<String>) -> Self {
@@ -405,6 +410,23 @@ impl ModelRegistry {
         alias: &str,
         request: &ModelRequest,
     ) -> anyhow::Result<ModelResponse> {
+        let recorded = self
+            .generate_recorded_with_budget(store, run_id, alias, request)
+            .await?;
+        ensure!(
+            recorded.limit.is_none(),
+            "model response exceeded run budget"
+        );
+        Ok(recorded.response)
+    }
+
+    pub async fn generate_recorded_with_budget(
+        &self,
+        store: &AgentRunStore,
+        run_id: &str,
+        alias: &str,
+        request: &ModelRequest,
+    ) -> anyhow::Result<RecordedModelResponse> {
         let model = self
             .models
             .get(alias)
@@ -416,35 +438,51 @@ impl ModelRegistry {
             .context("run not found in workspace")?;
         ensure!(run.model == alias, "model alias does not match run binding");
         let call_id = Uuid::new_v4().to_string();
-        store.append_event(run_id, "model.requested", &json!({
+        let decision = store.record_model_requested(run_id, &json!({
             "call_id": call_id, "model_alias": alias, "provider": model.provider_name,
             "model": model.model_name, "message_count": request.messages.len(),
             "tool_count": request.tools.len(), "structured_output": request.output_schema.is_some()
         })).await?;
+        if let BudgetDecision::Exceeded(reason) = decision {
+            return Ok(RecordedModelResponse {
+                response: ModelResponse::text(String::new()),
+                limit: Some(reason),
+            });
+        }
         let result = model.provider.generate(request).await.and_then(|response| {
             response.validate(request)?;
             Ok(response)
         });
         match result {
             Ok(response) => {
-                store
-                    .append_event(
+                let usage = response
+                    .usage
+                    .as_ref()
+                    .map(|usage| (usage.input_tokens, usage.output_tokens, usage.total_tokens));
+                let decision = store
+                    .record_model_responded(
                         run_id,
-                        "model.responded",
                         &json!({
                             "call_id": call_id, "finish_reason": response.finish_reason,
                             "usage": response.usage, "tool_call_count": response.tool_calls.len()
                         }),
+                        usage,
                     )
                     .await?;
-                Ok(response)
+                Ok(RecordedModelResponse {
+                    response,
+                    limit: match decision {
+                        BudgetDecision::Allowed => None,
+                        BudgetDecision::Exceeded(reason) => Some(reason),
+                    },
+                })
             }
             Err(error) => {
                 store
                     .append_event(
                         run_id,
                         "model.failed",
-                        &json!({"call_id": call_id, "error": error}),
+                        &json!({"call_id": call_id, "error": "model request failed"}),
                     )
                     .await?;
                 Err(error.into())

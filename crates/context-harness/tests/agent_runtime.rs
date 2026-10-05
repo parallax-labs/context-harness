@@ -4,7 +4,7 @@ use context_harness::{
     agent_model::{fake::FakeModel, *},
     agent_resource::{AgentResource, LoadedAgentResource, ResourceScope},
     agent_runtime::AgentRuntime,
-    agent_store::{RunLifecycle, RunOutcome, RunOutcomeKind, ToolOutcome},
+    agent_store::{RunLifecycle, RunOutcome, RunOutcomeKind, TokenAccounting, ToolOutcome},
     app_store::SqliteAppStore,
     chunk::chunk_text,
     config::Config,
@@ -38,6 +38,17 @@ fn resource(tools: &[&str], max_turns: u32, timeout: u64) -> LoadedAgentResource
         version: definition.version().unwrap(),
         definition,
     }
+}
+fn budgeted_resource(
+    tools: &[&str],
+    max_total_tokens: Option<u64>,
+    max_tool_calls: Option<u64>,
+) -> LoadedAgentResource {
+    let mut resource = resource(tools, 4, 10);
+    resource.definition.agent.execution.max_total_tokens = max_total_tokens;
+    resource.definition.agent.execution.max_tool_calls = max_tool_calls;
+    resource.version = resource.definition.version().unwrap();
+    resource
 }
 fn registry(provider: Arc<dyn ModelProvider>) -> ModelRegistry {
     let mut models = ModelRegistry::default();
@@ -91,6 +102,128 @@ impl ModelProvider for OneResponse {
     async fn generate(&self, _request: &ModelRequest) -> ModelResult<ModelResponse> {
         Ok(self.0.clone())
     }
+}
+
+#[tokio::test]
+async fn cumulative_token_budget_rejects_over_budget_final_response() {
+    let tmp = TempDir::new().unwrap();
+    let mut response = ModelResponse::text("must not be accepted");
+    response.usage = Some(Usage {
+        input_tokens: 7,
+        output_tokens: 4,
+        total_tokens: 11,
+    });
+    let runtime = AgentRuntime::new(
+        config(tmp.path()),
+        tmp.path(),
+        registry(Arc::new(OneResponse(response))),
+    )
+    .await
+    .unwrap();
+    let (_sender, cancel) = watch::channel(false);
+    let run = runtime
+        .run(&budgeted_resource(&[], Some(10), None), "question", cancel)
+        .await
+        .unwrap();
+
+    assert_eq!(run.outcome, Some(RunOutcomeKind::LimitExceeded));
+    assert_eq!(run.reason_code.as_deref(), Some("total_tokens"));
+    assert_eq!(run.output, None);
+    assert_eq!(run.usage.model_turns, 1);
+    assert_eq!(run.usage.total_tokens, Some(11));
+    assert_eq!(run.usage.token_accounting, TokenAccounting::Complete);
+    let stopped = runtime
+        .store()
+        .events(&run.id, 0, 20)
+        .await
+        .unwrap()
+        .pop()
+        .unwrap();
+    assert_eq!(stopped.event_type, "run.limit_exceeded");
+    assert_eq!(stopped.payload["usage"]["total_tokens"], 11);
+    assert_eq!(stopped.payload["budgets"]["max_total_tokens"], 10);
+}
+
+#[tokio::test]
+async fn configured_token_budget_fails_closed_when_usage_is_missing() {
+    let tmp = TempDir::new().unwrap();
+    let runtime = AgentRuntime::new(
+        config(tmp.path()),
+        tmp.path(),
+        registry(Arc::new(OneResponse(ModelResponse::text("not accepted")))),
+    )
+    .await
+    .unwrap();
+    let (_sender, cancel) = watch::channel(false);
+    let run = runtime
+        .run(&budgeted_resource(&[], Some(10), None), "question", cancel)
+        .await
+        .unwrap();
+
+    assert_eq!(run.outcome, Some(RunOutcomeKind::LimitExceeded));
+    assert_eq!(run.reason_code.as_deref(), Some("token_usage_unavailable"));
+    assert_eq!(run.usage.responses_without_usage, 1);
+    assert_eq!(run.usage.total_tokens, None);
+    assert_eq!(run.usage.token_accounting, TokenAccounting::Unavailable);
+}
+
+#[tokio::test]
+async fn missing_usage_without_token_budget_remains_observable_but_completes() {
+    let tmp = TempDir::new().unwrap();
+    let runtime = AgentRuntime::new(
+        config(tmp.path()),
+        tmp.path(),
+        registry(Arc::new(OneResponse(ModelResponse::text("accepted")))),
+    )
+    .await
+    .unwrap();
+    let (_sender, cancel) = watch::channel(false);
+    let run = runtime
+        .run(&budgeted_resource(&[], None, None), "question", cancel)
+        .await
+        .unwrap();
+
+    assert_eq!(run.outcome, Some(RunOutcomeKind::Completed));
+    assert_eq!(run.output.as_deref(), Some("accepted"));
+    assert_eq!(run.usage.total_tokens, None);
+    assert_eq!(run.usage.token_accounting, TokenAccounting::Unavailable);
+}
+
+#[tokio::test]
+async fn cumulative_tool_budget_rejects_a_whole_response_batch() {
+    let tmp = TempDir::new().unwrap();
+    let mut response = call("search", "one", json!({"query":"first"}));
+    response.tool_calls.push(ToolCall {
+        name: "get".into(),
+        id: "two".into(),
+        arguments: json!({"id":"doc"}),
+    });
+    let runtime = AgentRuntime::new(
+        config(tmp.path()),
+        tmp.path(),
+        registry(Arc::new(OneResponse(response))),
+    )
+    .await
+    .unwrap();
+    let (_sender, cancel) = watch::channel(false);
+    let run = runtime
+        .run(
+            &budgeted_resource(&["search", "get"], None, Some(1)),
+            "question",
+            cancel,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(run.outcome, Some(RunOutcomeKind::LimitExceeded));
+    assert_eq!(run.reason_code.as_deref(), Some("tool_calls"));
+    assert_eq!(run.usage.tool_calls, 0);
+    assert!(runtime
+        .store()
+        .tool_invocations(&run.id)
+        .await
+        .unwrap()
+        .is_empty());
 }
 
 #[tokio::test]
