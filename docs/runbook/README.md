@@ -40,6 +40,7 @@ See [RUNBOOK-0000](0000-runbook-policy.md) for the full policy.
 | [0008](0008-deploy-systemd.md) | Deploy with systemd | Active |
 | [0009](0009-deploy-mcp-cursor.md) | Deploy MCP Server for Cursor | Active |
 | [0018](0018-multi-workspace-mcp-routing.md) | Serve Multiple Workspaces Over One MCP Endpoint | Draft |
+| [0020](0020-operate-agent-task-worker.md) | Operate a Durable Agent Task Worker | Active |
 
 ### Data and Content
 
