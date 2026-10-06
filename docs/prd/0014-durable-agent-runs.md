@@ -1,6 +1,6 @@
 # PRD-0014: Durable Long-Running Agent Runs
 
-**Status:** Planned
+**Status:** In Progress
 **Date:** 2026-10-01
 **Author:** Context Harness contributors
 
@@ -191,5 +191,9 @@ its named Phase 5 contract before implementation.
   compatibility, control-call, and accounting architecture.
 - [SPEC-0025](../spec/0025-durable-run-lifecycle-and-budgets.md): authoritative
   lifecycle, budget, inspection, and recovery contract.
-- A future ADR/spec is still required before working-state ownership, compaction,
-  recoverable tool observations, or suspended continuation changes runtime behavior.
+- [ADR-0030](../adr/0030-runtime-owned-materialized-working-state.md): runtime-owned,
+  versioned materialized working-state projection.
+- [SPEC-0027](../spec/0027-structured-agent-working-state.md): authoritative Phase 5A
+  persistence, derivation, inspection and compatibility contract.
+- Future contracts remain required before context compaction, recoverable tool
+  observations, or suspended continuation changes runtime behavior.

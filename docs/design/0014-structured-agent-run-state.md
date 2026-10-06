@@ -3,7 +3,7 @@
 **Status:** Planning
 **Date:** 2026-10-01
 **Author:** Context Harness contributors
-**Related:** [PRD-0014](../prd/0014-durable-agent-runs.md), [ADR-0024](../adr/0024-local-agent-runtime.md), [SPEC-0017](../spec/0017-local-agent-execution.md), [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md)
+**Related:** [PRD-0014](../prd/0014-durable-agent-runs.md), [ADR-0024](../adr/0024-local-agent-runtime.md), [ADR-0030](../adr/0030-runtime-owned-materialized-working-state.md), [SPEC-0017](../spec/0017-local-agent-execution.md), [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md), [SPEC-0027](../spec/0027-structured-agent-working-state.md)
 
 ## Context
 
@@ -311,6 +311,13 @@ Structured working-state ownership, selective context projection, recoverable to
 observations, and suspended continuation remain unresolved Phase 5 work. They SHALL
 NOT be inferred from the minimum lifecycle contract.
 
+[ADR-0030](../adr/0030-runtime-owned-materialized-working-state.md) and
+[SPEC-0027](../spec/0027-structured-agent-working-state.md) now resolve the Phase 5A
+boundary: one versioned runtime-owned materialized projection per run, updated
+transactionally with canonical events and containing only deterministic facts and
+references. Model-authored state and selective context projection remain unresolved
+later Phase 5 work and are not implied by that contract.
+
 ## Implementation Plan
 
 With the minimum lifecycle contract accepted, the smallest staged path is:
@@ -363,10 +370,10 @@ as the compatibility baseline until its replacement has acceptance coverage.
 
 ## Remaining Open Questions
 
-1. Is working state a single versioned snapshot, normalized records, or a projection
-   derived from typed events plus a small materialized summary?
-2. Which actor may update plan and summary fields: runtime, model control calls,
-   tools, or a constrained combination?
+1. **Resolved by ADR-0030/SPEC-0027:** Phase 5A uses one versioned materialized
+   snapshot of deterministic facts and canonical-record references per run.
+2. **Resolved for Phase 5A by ADR-0030/SPEC-0027:** only the runtime writes the
+   snapshot. Model-authored fields require a later constrained contract.
 3. What context-compaction algorithm ships first, and how is loss measured?
 4. How should OpenAI encrypted reasoning continuation items behave when older
    conversation is summarized or omitted?

@@ -3,7 +3,7 @@
 **Status:** Draft
 **Date:** 2026-10-02
 **Author:** Context Harness contributors
-**Related:** [PRD-0014](../prd/0014-durable-agent-runs.md), [DESIGN-0014](0014-structured-agent-run-state.md), [PRD-0015](../prd/0015-local-generation-providers.md), [DESIGN-0015](0015-local-generation-providers.md), [PRD-0016](../prd/0016-durable-background-agent-tasks.md), [DESIGN-0016](0016-durable-background-agent-tasks.md), [PRD-0017](../prd/0017-targeted-document-refresh.md), [DESIGN-0017](0017-targeted-document-refresh.md), [ADR-0024](../adr/0024-local-agent-runtime.md), [ADR-0026](../adr/0026-native-ollama-local-generation.md), [ADR-0028](../adr/0028-typed-run-outcomes-and-compatibility.md), [SPEC-0016](../spec/0016-model-runtime.md), [SPEC-0017](../spec/0017-local-agent-execution.md), [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md), [SPEC-0023](../spec/0023-declarative-tool-bindings.md), [SPEC-0025](../spec/0025-durable-run-lifecycle-and-budgets.md)
+**Related:** [PRD-0014](../prd/0014-durable-agent-runs.md), [DESIGN-0014](0014-structured-agent-run-state.md), [PRD-0015](../prd/0015-local-generation-providers.md), [DESIGN-0015](0015-local-generation-providers.md), [PRD-0016](../prd/0016-durable-background-agent-tasks.md), [DESIGN-0016](0016-durable-background-agent-tasks.md), [PRD-0017](../prd/0017-targeted-document-refresh.md), [DESIGN-0017](0017-targeted-document-refresh.md), [ADR-0024](../adr/0024-local-agent-runtime.md), [ADR-0026](../adr/0026-native-ollama-local-generation.md), [ADR-0028](../adr/0028-typed-run-outcomes-and-compatibility.md), [ADR-0030](../adr/0030-runtime-owned-materialized-working-state.md), [SPEC-0016](../spec/0016-model-runtime.md), [SPEC-0017](../spec/0017-local-agent-execution.md), [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md), [SPEC-0023](../spec/0023-declarative-tool-bindings.md), [SPEC-0025](../spec/0025-durable-run-lifecycle-and-budgets.md), [SPEC-0027](../spec/0027-structured-agent-working-state.md)
 
 ## Context
 
@@ -483,6 +483,12 @@ quality rather than submission ownership.
 Add the selected materialized state representation and transaction/event relationship.
 Start with deterministic runtime facts; add model-authored fields only through the
 specified constrained mechanism.
+
+**Contract status (2026-10-06): Ready for implementation.** ADR-0030 selects one
+versioned runtime-owned materialized projection per run; SPEC-0027 defines its
+transactional event relationship, bounded version-1 schema, deterministic rebuild,
+inspection states and compatibility boundary. Context selection and model-authored
+state remain outside 5A.
 
 #### 5B. Bounded context projection
 
