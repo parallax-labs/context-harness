@@ -449,6 +449,7 @@ pub async fn inspect(
     let artifacts = store.artifacts(id).await?;
     let lineage = store.lineage(id).await?;
     let children = store.children(id).await?;
+    let working_state = store.working_state(id).await?;
     let invocations: Vec<Value> = store
         .tool_invocations(id)
         .await?
@@ -469,7 +470,7 @@ pub async fn inspect(
         println!(
             "{}",
             serde_json::to_string_pretty(
-                &json!({"run":run, "events":events, "tool_invocations":invocations, "next_after_sequence":cursor, "artifacts":artifacts, "lineage":lineage, "children":children})
+                &json!({"run":run, "working_state":working_state, "events":events, "tool_invocations":invocations, "next_after_sequence":cursor, "artifacts":artifacts, "lineage":lineage, "children":children})
             )?
         );
     } else {
@@ -484,6 +485,33 @@ pub async fn inspect(
             "Root: {}\nParent: {:?}\nDepth: {}",
             lineage.root_run_id, lineage.parent_run_id, lineage.depth
         );
+        println!(
+            "Working state: {:?}\nProjection: {}\nRevision: {}\nEvent cursor: {}",
+            working_state.status,
+            working_state
+                .projection_version
+                .map_or("-".into(), |v| v.to_string()),
+            working_state.revision.map_or("-".into(), |v| v.to_string()),
+            working_state
+                .event_cursor
+                .map_or("-".into(), |v| v.to_string()),
+        );
+        if let Some(snapshot) = &working_state.snapshot {
+            println!(
+                "Latest projected event: {} {}\nArtifacts: {} retained, {} total, {} omitted",
+                snapshot.latest_event.sequence,
+                snapshot.latest_event.event_type,
+                snapshot.artifacts.items.len(),
+                snapshot.artifacts.total,
+                snapshot.artifacts.omitted,
+            );
+            for artifact in &snapshot.artifacts.items {
+                println!(
+                    "Artifact reference: {} {} {} {} bytes",
+                    artifact.sequence, artifact.relative_path, artifact.sha256, artifact.size
+                );
+            }
+        }
         for child in children {
             println!("Child: {}", child.run_id);
         }

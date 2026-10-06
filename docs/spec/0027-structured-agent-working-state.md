@@ -1,6 +1,7 @@
 # SPEC-0027: Structured Agent Working State
 
-**Status:** Authoritative — implementation pending  
+**Status:** Implemented
+
 **Date:** 2026-10-06  
 **Related:** [PRD-0014](../prd/0014-durable-agent-runs.md),
 [DESIGN-0014](../design/0014-structured-agent-run-state.md),

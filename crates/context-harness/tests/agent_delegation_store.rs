@@ -62,6 +62,19 @@ async fn child_creation_is_scoped_unique_and_transactional() {
     assert_eq!(lineage.root_run_id, root.id);
     assert_eq!(lineage.parent_run_id.as_deref(), Some(root.id.as_str()));
     assert_eq!(lineage.parent_call_id.as_deref(), Some("call"));
+    let parent_before = store.working_state(&root.id).await.unwrap();
+    let parent_cursor = parent_before.event_cursor;
+    store
+        .record_model_requested(&child.id, &json!({}))
+        .await
+        .unwrap();
+    let parent_after = store.working_state(&root.id).await.unwrap();
+    assert_eq!(parent_after.event_cursor, parent_cursor);
+    assert_eq!(
+        parent_after.revision,
+        parent_before.revision.map(|value| value + 1)
+    );
+    assert_eq!(parent_after.snapshot.unwrap().usage.model_turns, 1);
     let sequence = store
         .get_run(&root.id)
         .await

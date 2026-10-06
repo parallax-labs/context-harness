@@ -484,11 +484,17 @@ Add the selected materialized state representation and transaction/event relatio
 Start with deterministic runtime facts; add model-authored fields only through the
 specified constrained mechanism.
 
-**Contract status (2026-10-06): Ready for implementation.** ADR-0030 selects one
-versioned runtime-owned materialized projection per run; SPEC-0027 defines its
-transactional event relationship, bounded version-1 schema, deterministic rebuild,
-inspection states and compatibility boundary. Context selection and model-authored
-state remain outside 5A.
+**Slice status (2026-10-06): Implemented.** `AgentRunStore` now maintains one
+versioned, runtime-owned working-state projection per run in the same transaction as
+each event, and refreshes ancestor projections when delegated usage changes without
+advancing their event cursors. The public store exposes typed, workspace-scoped
+inspection and trusted deterministic rebuild with current, stale, unavailable and
+unsupported compatibility states. CLI inspection adds the bounded objective, run,
+usage, latest-event and 128-reference artifact projection without changing history,
+provider requests, checkpoints or resume bindings. Focused fixtures cover atomic
+rollback, concurrent cursors and revisions, legacy absence, rebuild equivalence,
+corrupt and future rows, workspace isolation, delegated usage and artifact omission.
+Context selection, compaction and model-authored state remain outside 5A.
 
 #### 5B. Bounded context projection
 

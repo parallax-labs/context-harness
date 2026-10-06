@@ -76,6 +76,11 @@ fn cli_run_history_and_paged_inspect_work_without_credentials() {
         true,
     );
     assert_eq!(inspected["events"].as_array().unwrap().len(), 2);
+    assert_eq!(inspected["working_state"]["status"], "current");
+    assert_eq!(
+        inspected["working_state"]["event_cursor"],
+        inspected["run"]["last_sequence"]
+    );
     assert_eq!(inspected["next_after_sequence"], 2);
     let page2 = json(
         run(
@@ -92,7 +97,10 @@ fn cli_run_history_and_paged_inspect_work_without_credentials() {
     );
     let human = run(&root, &global, &["agent", "inspect", id]);
     assert!(human.status.success());
-    assert!(String::from_utf8_lossy(&human.stdout).contains("run.completed"));
+    let human = String::from_utf8_lossy(&human.stdout);
+    assert!(human.contains("Working state: Current"));
+    assert!(human.contains("Latest projected event:"));
+    assert!(human.contains("run.completed"));
 }
 #[test]
 fn failed_run_returns_nonzero_with_inspectable_json_record() {

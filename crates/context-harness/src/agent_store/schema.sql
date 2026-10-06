@@ -23,6 +23,14 @@ CREATE TABLE IF NOT EXISTS agent_runs (
 );
 CREATE INDEX IF NOT EXISTS idx_agent_runs_workspace
     ON agent_runs(workspace_id, created_at DESC, id);
+CREATE TABLE IF NOT EXISTS agent_run_working_state (
+    run_id TEXT PRIMARY KEY REFERENCES agent_runs(id),
+    projection_version INTEGER NOT NULL CHECK (projection_version > 0),
+    revision INTEGER NOT NULL CHECK (revision > 0),
+    event_cursor INTEGER NOT NULL CHECK (event_cursor >= 0),
+    updated_at INTEGER NOT NULL,
+    snapshot TEXT NOT NULL CHECK (json_valid(snapshot))
+);
 CREATE TABLE IF NOT EXISTS agent_events (
     run_id TEXT NOT NULL REFERENCES agent_runs(id),
     sequence INTEGER NOT NULL CHECK (sequence > 0),
