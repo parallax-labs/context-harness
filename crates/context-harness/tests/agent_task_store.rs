@@ -1,5 +1,5 @@
 use context_harness::{
-    agent_store::RunBudgets,
+    agent_store::{RecoveryDisposition, RunBudgets},
     agent_task_store::{
         AcceptedTaskIdentity, AgentTaskClaim, AgentTaskStatus, AgentTaskStore, AgentTaskSubmission,
         AgentTaskSubmissionResult, TaskSchedulingReason,
@@ -353,4 +353,162 @@ async fn identity_drift_finishes_without_creating_a_run() {
         0
     );
     assert_eq!(store.get(&task.id).await.unwrap().unwrap().last_sequence, 3);
+}
+
+#[tokio::test]
+async fn cancellation_is_idempotent_and_preserves_linked_run_authority() {
+    let (_temp, _app, store) = setup().await;
+    let queued = created(
+        store
+            .submit(submission("cancel-queued", "input"))
+            .await
+            .unwrap(),
+    );
+    let terminal = store.cancel(&queued.id).await.unwrap();
+    assert_eq!(terminal.status, AgentTaskStatus::Terminal);
+    assert_eq!(
+        terminal.scheduling_reason_kind(),
+        Some(TaskSchedulingReason::CancelledBeforeRun)
+    );
+    assert_eq!(store.cancel(&queued.id).await.unwrap().last_sequence, 2);
+
+    let claimed = created(
+        store
+            .submit(submission("cancel-claimed", "input"))
+            .await
+            .unwrap(),
+    );
+    let claim = store.claim_next("worker", 60, 3).await.unwrap().unwrap();
+    assert_eq!(claim.task.id, claimed.id);
+    let requested = store.cancel(&claimed.id).await.unwrap();
+    assert_eq!(requested.status, AgentTaskStatus::CancelRequested);
+    assert_eq!(store.cancel(&claimed.id).await.unwrap().last_sequence, 3);
+    assert!(requested.run_id.is_none());
+    let terminal = store.finish_cancelled_before_run(&claim).await.unwrap();
+    assert_eq!(
+        terminal.scheduling_reason_kind(),
+        Some(TaskSchedulingReason::CancelledBeforeRun)
+    );
+
+    let linked = created(
+        store
+            .submit(submission("cancel-linked", "input"))
+            .await
+            .unwrap(),
+    );
+    let claim = store.claim_next("worker", 60, 3).await.unwrap().unwrap();
+    assert_eq!(claim.task.id, linked.id);
+    let run = store
+        .link_run(&claim, "agent-v1", "fake", RunBudgets::default())
+        .await
+        .unwrap();
+    let requested = store.cancel(&linked.id).await.unwrap();
+    assert_eq!(requested.status, AgentTaskStatus::CancelRequested);
+    assert_eq!(requested.run_id.as_deref(), Some(run.id.as_str()));
+    assert_eq!(store.cancel(&linked.id).await.unwrap().last_sequence, 4);
+}
+
+#[tokio::test]
+async fn expired_claim_takeover_requeues_or_terminalizes_without_a_second_run() {
+    let (_temp, app, store) = setup().await;
+    let task = created(store.submit(submission("requeue", "input")).await.unwrap());
+    let stale = store.claim_next("stale", 60, 3).await.unwrap().unwrap();
+    sqlx::query("UPDATE agent_tasks SET lease_expires_at = 0 WHERE id = ?")
+        .bind(&task.id)
+        .execute(app.pool())
+        .await
+        .unwrap();
+    let reconciler = store
+        .claim_next_expired("reconciler", 60)
+        .await
+        .unwrap()
+        .unwrap()
+        .claim;
+    assert_ne!(reconciler.claim_token, stale.claim_token);
+    assert!(store.heartbeat(&stale, 60).await.is_err());
+    let queued = store.requeue(&reconciler).await.unwrap();
+    assert_eq!(queued.status, AgentTaskStatus::Queued);
+    assert_eq!(queued.claim_attempts, 1);
+    let second = store.claim_next("next", 60, 3).await.unwrap().unwrap();
+    assert_eq!(second.task.id, task.id);
+    assert_eq!(second.task.claim_attempts, 2);
+
+    sqlx::query("UPDATE agent_tasks SET lease_expires_at = 0 WHERE id = ?")
+        .bind(&task.id)
+        .execute(app.pool())
+        .await
+        .unwrap();
+    let exhausted = store
+        .claim_next_expired("reconciler", 60)
+        .await
+        .unwrap()
+        .unwrap()
+        .claim;
+    let terminal = store
+        .finish_claim_attempts_exhausted(&exhausted)
+        .await
+        .unwrap();
+    assert_eq!(
+        terminal.scheduling_reason_kind(),
+        Some(TaskSchedulingReason::ClaimAttemptsExhausted)
+    );
+    assert!(terminal.run_id.is_none());
+}
+
+#[tokio::test]
+async fn inspection_projects_authoritative_linked_run_state() {
+    let (_temp, _app, store) = setup().await;
+    let task = created(store.submit(submission("inspect", "input")).await.unwrap());
+    let claim = store.claim_next("worker", 60, 3).await.unwrap().unwrap();
+    let run = store
+        .link_run(&claim, "agent-v1", "fake", RunBudgets::default())
+        .await
+        .unwrap();
+    let inspected = store.inspect(&task.id).await.unwrap().unwrap();
+    assert_eq!(inspected.task.run_id.as_deref(), Some(run.id.as_str()));
+    assert_eq!(
+        inspected.run.unwrap().recovery_disposition,
+        RecoveryDisposition::RestartRequired
+    );
+    let listed = store.list_inspections(10).await.unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].task.id, task.id);
+    assert_eq!(listed[0].run.as_ref().unwrap().id, run.id);
+}
+
+#[tokio::test]
+async fn cancellation_and_run_link_race_has_one_inspectable_result() {
+    let (_temp, app, store) = setup().await;
+    let task = created(
+        store
+            .submit(submission("cancel-link-race", "input"))
+            .await
+            .unwrap(),
+    );
+    let claim = store.claim_next("worker", 60, 3).await.unwrap().unwrap();
+    let linker = store.clone();
+    let task_id = task.id.clone();
+    let (linked, cancelled) = tokio::join!(
+        linker.link_run(&claim, "agent-v1", "fake", RunBudgets::default()),
+        store.cancel(&task_id)
+    );
+    let cancelled = cancelled.unwrap();
+    match linked {
+        Ok(run) => {
+            assert_eq!(cancelled.status, AgentTaskStatus::CancelRequested);
+            assert_eq!(cancelled.run_id.as_deref(), Some(run.id.as_str()));
+        }
+        Err(_) => {
+            assert_eq!(cancelled.status, AgentTaskStatus::CancelRequested);
+            assert!(cancelled.run_id.is_none());
+            store.finish_cancelled_before_run(&claim).await.unwrap();
+        }
+    }
+    assert!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM agent_runs")
+            .fetch_one(app.pool())
+            .await
+            .unwrap()
+            <= 1
+    );
 }

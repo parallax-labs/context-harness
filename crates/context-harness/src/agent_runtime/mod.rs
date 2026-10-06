@@ -6,7 +6,7 @@ mod context;
 mod control;
 mod delegation;
 mod developer;
-mod files;
+pub(crate) mod files;
 mod mcp;
 mod mcp_client;
 pub mod policy;

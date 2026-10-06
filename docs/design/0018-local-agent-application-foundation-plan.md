@@ -442,6 +442,21 @@ Project the linked run's authoritative outcome into task inspection. Reconcile e
 claims by distinguishing no run, terminal run, resumable/suspended run and uncertain
 effect. Never start a second run solely because a lease expired.
 
+**Slice status (2026-10-05): Implemented.** Task inspection now projects the linked
+run's typed lifecycle, outcome, reason and recovery disposition without copying them
+into scheduling state. Cancellation is workspace-scoped and idempotent across queued,
+claimed, linked and terminal tasks; workers observe durable requests and let the normal
+runtime record its stopped outcome before terminal task projection. Expired claims are
+retaken with a fresh token and reconciled according to persisted run truth: pre-run work
+is requeued, exhausted or cancelled; complete and suspended runs project `run_stopped`;
+resume-eligible runs use authoritative same-run resume; and unsafe or incompatible state
+becomes `reconciliation_required` or `restart_required`. A typed process lock conflict
+keeps the reconciler observing and heartbeating without invoking the owned run, then
+releases scheduling work for a later lease after the execution owner disappears. Focused
+fixtures cover cancellation/link contention, stale tokens, every recovery-disposition
+branch, provider-independent inspection, cancellation delivery and the invariant that
+reconciliation never creates a second run. CLI and service-manager surfaces remain 4D.
+
 #### 4D. CLI and operations
 
 Add only spec-approved enqueue, worker, job list/inspect and cancel surfaces. Keep the

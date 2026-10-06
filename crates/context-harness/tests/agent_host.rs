@@ -8,6 +8,8 @@ use context_harness::{
     },
     agent_resource::{Capability, ModelDefinition, ResourceDirectory, ResourceScope},
     agent_runtime::policy::{DenyApprovals, RuntimePolicy},
+    agent_store::{BlockedReason, RunOutcome, RunOutcomeKind},
+    agent_task_store::{AgentTaskStatus, TaskSchedulingReason},
     config::Config,
     tool_binding::{
         HostToolAuthority, ResolvedToolBinding, RestrictionKind, ToolBindingRequest,
@@ -764,6 +766,249 @@ async fn worker_heartbeats_and_gracefully_cancels_owned_execution() {
         assert_eq!(terminal.scheduling_reason.as_deref(), Some("run_stopped"));
     }
     assert_eq!(builds.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn durable_cancellation_stops_the_owned_run_before_task_terminalization() {
+    let (temp, config, agents, tools) = fixture();
+    let inspection_config = config.clone();
+    let builds = Arc::new(AtomicUsize::new(0));
+    let calls = Arc::new(AtomicUsize::new(0));
+    let authority =
+        Arc::new(HostToolAuthority::new(temp.path(), vec![Capability::ReadOnly]).unwrap());
+    let builder = AgentHostBuilder::new(
+        config,
+        temp.path(),
+        slow_model_catalog(builds.clone(), calls.clone()),
+    )
+    .unwrap()
+    .with_agent_resources(agents)
+    .with_tool_bindings(
+        tools,
+        tool_catalog(Arc::new(AtomicUsize::new(0))),
+        authority,
+    )
+    .with_policy(
+        RuntimePolicy {
+            allow: vec![Capability::ReadOnly],
+            require_approval: vec![],
+        },
+        Arc::new(DenyApprovals),
+    );
+    let submitter = builder
+        .clone()
+        .build_task_submitter("fixture-host")
+        .await
+        .unwrap();
+    let task = match submitter
+        .submit("durable-cancel", "Wait", Vec::new())
+        .await
+        .unwrap()
+    {
+        context_harness::agent_task_store::AgentTaskSubmissionResult::Created(task) => task,
+        _ => panic!("expected created task"),
+    };
+    let store = submitter.store().clone();
+    let worker = builder
+        .build_worker(AgentWorkerOptions {
+            worker_id: Some("cancel-worker".into()),
+            lease_duration: Duration::from_secs(5),
+            heartbeat_interval: Duration::from_secs(1),
+            polling_interval: Duration::from_millis(50),
+            graceful_shutdown_timeout: Duration::from_secs(3),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let running = tokio::spawn(async move { worker.run(shutdown_rx).await });
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while calls.load(Ordering::SeqCst) == 0 {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        store.cancel(&task.id).await.unwrap().status,
+        AgentTaskStatus::CancelRequested
+    );
+    let terminal = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let current = store.get(&task.id).await.unwrap().unwrap();
+            if current.status == AgentTaskStatus::Terminal {
+                break current;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    shutdown_tx.send(true).unwrap();
+    running.await.unwrap().unwrap();
+    let app = context_harness::app_store::SqliteAppStore::connect(&inspection_config)
+        .await
+        .unwrap();
+    let run = app
+        .agent_runs(&terminal.workspace_id)
+        .unwrap()
+        .get_run(terminal.run_id.as_deref().unwrap())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(run.outcome, Some(RunOutcomeKind::Cancelled));
+    assert_eq!(
+        terminal.scheduling_reason_kind(),
+        Some(TaskSchedulingReason::RunStopped)
+    );
+    assert_eq!(builds.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn expired_linked_claims_follow_the_recovery_matrix_without_new_runs() {
+    let (temp, config, agents, tools) = fixture();
+    let inspection_config = config.clone();
+    let builds = Arc::new(AtomicUsize::new(0));
+    let authority =
+        Arc::new(HostToolAuthority::new(temp.path(), vec![Capability::ReadOnly]).unwrap());
+    let builder = AgentHostBuilder::new(
+        config,
+        temp.path(),
+        model_catalog(builds.clone(), Arc::new(AtomicUsize::new(0))),
+    )
+    .unwrap()
+    .with_agent_resources(agents)
+    .with_tool_bindings(
+        tools,
+        tool_catalog(Arc::new(AtomicUsize::new(0))),
+        authority,
+    )
+    .with_policy(
+        RuntimePolicy {
+            allow: vec![Capability::ReadOnly],
+            require_approval: vec![],
+        },
+        Arc::new(DenyApprovals),
+    );
+    let submitter = builder
+        .clone()
+        .build_task_submitter("fixture-host")
+        .await
+        .unwrap();
+    let store = submitter.store().clone();
+    let app = context_harness::app_store::SqliteAppStore::connect(&inspection_config)
+        .await
+        .unwrap();
+    let mut fixtures = Vec::new();
+    for key in [
+        "complete",
+        "suspended",
+        "restart",
+        "uncertain",
+        "invalid-resume",
+    ] {
+        let task = match submitter.submit(key, "input", Vec::new()).await.unwrap() {
+            context_harness::agent_task_store::AgentTaskSubmissionResult::Created(task) => task,
+            _ => panic!("expected created task"),
+        };
+        let claim = store.claim_next("crashed", 60, 3).await.unwrap().unwrap();
+        assert_eq!(claim.task.id, task.id);
+        let run = store
+            .link_run(
+                &claim,
+                "agent-v1",
+                "fixture",
+                context_harness::agent_store::RunBudgets::default(),
+            )
+            .await
+            .unwrap();
+        fixtures.push((key, task, run));
+    }
+    let runs = app.agent_runs(&fixtures[0].1.workspace_id).unwrap();
+    runs.finish_run(&fixtures[0].2.id, RunOutcome::Completed("done".into()))
+        .await
+        .unwrap();
+    runs.finish_run(
+        &fixtures[1].2.id,
+        RunOutcome::Blocked {
+            code: BlockedReason::ExternalDependency,
+            message: "wait".into(),
+        },
+    )
+    .await
+    .unwrap();
+    runs.save_checkpoint(&fixtures[3].2.id, 1, 0, &json!({}))
+        .await
+        .unwrap();
+    runs.request_tool(
+        &fixtures[3].2.id,
+        "uncertain-call",
+        "fixture.echo",
+        &json!({}),
+    )
+    .await
+    .unwrap();
+    runs.save_checkpoint(&fixtures[4].2.id, 1, 0, &json!({}))
+        .await
+        .unwrap();
+    sqlx::query("UPDATE agent_tasks SET lease_expires_at = 0 WHERE workspace_id = ?")
+        .bind(&fixtures[0].1.workspace_id)
+        .execute(app.pool())
+        .await
+        .unwrap();
+
+    let worker = builder
+        .build_worker(AgentWorkerOptions {
+            worker_id: Some("reconciler".into()),
+            concurrency: 2,
+            lease_duration: Duration::from_secs(5),
+            heartbeat_interval: Duration::from_secs(1),
+            polling_interval: Duration::from_millis(50),
+            graceful_shutdown_timeout: Duration::from_secs(3),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let running = tokio::spawn(async move { worker.run(shutdown_rx).await });
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let mut all_terminal = true;
+            for (_, task, _) in &fixtures {
+                all_terminal &=
+                    store.get(&task.id).await.unwrap().unwrap().status == AgentTaskStatus::Terminal;
+            }
+            if all_terminal {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    shutdown_tx.send(true).unwrap();
+    running.await.unwrap().unwrap();
+
+    let expected = [
+        TaskSchedulingReason::RunStopped,
+        TaskSchedulingReason::RunStopped,
+        TaskSchedulingReason::RestartRequired,
+        TaskSchedulingReason::ReconciliationRequired,
+        TaskSchedulingReason::RestartRequired,
+    ];
+    for ((_, task, original_run), reason) in fixtures.iter().zip(expected) {
+        let current = store.get(&task.id).await.unwrap().unwrap();
+        assert_eq!(current.scheduling_reason_kind(), Some(reason));
+        assert_eq!(current.run_id.as_deref(), Some(original_run.id.as_str()));
+    }
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM agent_runs")
+            .fetch_one(app.pool())
+            .await
+            .unwrap(),
+        5
+    );
+    assert!(builds.load(Ordering::SeqCst) >= 1);
 }
 
 #[tokio::test]
