@@ -476,6 +476,46 @@ enum AgentAction {
         #[arg(long)]
         non_interactive: bool,
     },
+    /// Submit durable work for an explicitly started agent worker.
+    Enqueue {
+        name: String,
+        input: String,
+        #[arg(long)]
+        request_key: String,
+        #[arg(long, default_value_t = 1000, value_parser = clap::value_parser!(u32).range(1..=10_000))]
+        queue_limit: u32,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Run a foreground worker until interrupted.
+    Worker {
+        #[arg(long)]
+        worker_id: Option<String>,
+        #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..=32))]
+        max_concurrency: u32,
+        #[arg(long, default_value_t = 60, value_parser = clap::value_parser!(u64).range(5..=3600))]
+        lease_seconds: u64,
+        #[arg(long, default_value_t = 20, value_parser = clap::value_parser!(u64).range(1..=3599))]
+        heartbeat_seconds: u64,
+        #[arg(long, default_value_t = 500, value_parser = clap::value_parser!(u64).range(50..=60_000))]
+        poll_ms: u64,
+        #[arg(long, default_value_t = 3, value_parser = clap::value_parser!(u32).range(1..=100))]
+        max_attempts: u32,
+        #[arg(long, default_value_t = 30, value_parser = clap::value_parser!(u64).range(1..=3600))]
+        shutdown_seconds: u64,
+    },
+    /// List this workspace's durable agent jobs.
+    Jobs {
+        #[arg(long, default_value_t = 20, value_parser = clap::value_parser!(u32).range(1..=1000))]
+        limit: u32,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Inspect or cancel one durable agent job.
+    Job {
+        #[command(subcommand)]
+        action: AgentJobAction,
+    },
     /// List this workspace's durable run history.
     History {
         #[arg(long, default_value_t = 20, value_parser = clap::value_parser!(u32).range(1..=1000))]
@@ -516,6 +556,26 @@ enum AgentAction {
     /// Deprecated alias for `ctx profile init`.
     #[command(hide = true)]
     Init { name: String },
+}
+
+#[derive(Subcommand)]
+enum AgentJobAction {
+    /// Inspect a job and an ordered page of task events.
+    Inspect {
+        task_id: String,
+        #[arg(long, default_value_t = 0, value_parser = clap::value_parser!(i64).range(0..))]
+        after_sequence: i64,
+        #[arg(long, default_value_t = 200, value_parser = clap::value_parser!(u32).range(1..=1000))]
+        limit: u32,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Request cancellation of a queued or running job.
+    Cancel {
+        task_id: String,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Prompt profile management subcommands.
@@ -817,7 +877,10 @@ async fn main() -> anyhow::Result<()> {
         Commands::Tool {
             action: ToolAction::Bindings { .. }
         } | Commands::Agent {
-            action: AgentAction::Run { .. } | AgentAction::Resume { .. }
+            action: AgentAction::Run { .. }
+                | AgentAction::Resume { .. }
+                | AgentAction::Enqueue { .. }
+                | AgentAction::Worker { .. }
         }
     ) {
         tool_binding::cli_resource_directories(&resolved_config)?
@@ -1159,6 +1222,65 @@ async fn main() -> anyhow::Result<()> {
                 )
                 .await?;
             }
+            AgentAction::Enqueue {
+                name,
+                input,
+                request_key,
+                queue_limit,
+                json,
+            } => {
+                agent_runtime::cli::enqueue(
+                    cfg,
+                    &agent_resource_dirs,
+                    &tool_resource_dirs,
+                    &name,
+                    &input,
+                    &request_key,
+                    queue_limit,
+                    json,
+                )
+                .await?;
+            }
+            AgentAction::Worker {
+                worker_id,
+                max_concurrency,
+                lease_seconds,
+                heartbeat_seconds,
+                poll_ms,
+                max_attempts,
+                shutdown_seconds,
+            } => {
+                agent_runtime::cli::worker(
+                    cfg,
+                    &agent_resource_dirs,
+                    &tool_resource_dirs,
+                    worker_id,
+                    max_concurrency,
+                    lease_seconds,
+                    heartbeat_seconds,
+                    poll_ms,
+                    max_attempts,
+                    shutdown_seconds,
+                )
+                .await?;
+            }
+            AgentAction::Jobs { limit, json } => {
+                agent_runtime::cli::jobs(cfg, limit, json).await?;
+            }
+            AgentAction::Job { action } => match action {
+                AgentJobAction::Inspect {
+                    task_id,
+                    after_sequence,
+                    limit,
+                    json,
+                } => {
+                    agent_runtime::cli::job_inspect(cfg, &task_id, after_sequence, limit, json)
+                        .await?;
+                }
+                AgentJobAction::Cancel { task_id, json } => {
+                    agent_runtime::cli::job_cancel(cfg, &task_id, json).await?;
+                }
+            },
             AgentAction::History { limit, json } => {
                 agent_runtime::cli::history(cfg, limit, json).await?;
             }

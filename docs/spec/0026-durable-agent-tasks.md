@@ -297,6 +297,37 @@ cancel commands, if shipped, SHALL be a later Phase 4D slice against this contra
 `ctx serve`, sync, list/show/validate and ordinary direct-run commands SHALL never
 start a worker implicitly.
 
+### CLI and operational contract
+
+The Phase 4D command surface SHALL be:
+
+```text
+ctx agent enqueue <agent> <input> --request-key <key> [--queue-limit <count>] [--json]
+ctx agent worker [worker-bound flags]
+ctx agent jobs [--limit <count>] [--json]
+ctx agent job inspect <task-id> [--after-sequence <sequence>] [--limit <count>] [--json]
+ctx agent job cancel <task-id> [--json]
+```
+
+Worker-bound flags SHALL map directly to every bounded worker option: worker ID,
+maximum concurrency, lease seconds, heartbeat seconds, polling milliseconds, maximum
+pre-run attempts and graceful-shutdown seconds. CLI workers SHALL use the ordinary CLI
+read-only host authority and SHALL deny approval-requiring calls non-interactively;
+they SHALL NOT prompt on an unattended terminal. SIGINT SHALL request graceful worker
+shutdown through the normal worker cancellation path.
+
+Enqueue SHALL use an empty host payload identity in the initial CLI surface; trusted
+embedding hosts retain the public Rust API for nonempty identities. Created and
+existing-identical results SHALL exit successfully. `request_conflict` and
+`queue_full` SHALL print their typed result and exit nonzero. Enqueue and worker SHALL
+initialize additive migrations. Jobs, inspect and cancel SHALL require an existing
+database and task schema; list and inspect SHALL open it read-only. CLI output SHALL
+never print claim tokens, credential values or raw provider/tool errors.
+
+Worker operation remains foreground-first. Operational documentation MAY provide
+service-manager-neutral systemd and launchd examples, but the CLI SHALL NOT install,
+enable or start a service and no other command SHALL start a worker implicitly.
+
 Read-only task inspection SHALL access only the existing database. Static agent/tool
 inspection remains database-free. Neither path may construct a provider, resolve a
 secret, invoke a model/tool, access the network, evaluate Lua, start MCP or spawn a

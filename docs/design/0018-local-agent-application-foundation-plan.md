@@ -466,6 +466,13 @@ worker foreground-first; add service-manager-neutral runbook examples afterward.
 task; duplicates and conflicts are transactional; crash injection never duplicates an
 uncertain effect; direct `ctx agent run` remains unchanged.
 
+**Slice status (2026-10-05): Implemented.** The CLI now exposes explicit enqueue,
+foreground worker, bounded job list/inspection, and cancellation commands over the
+existing task APIs. Worker execution is non-interactive and shuts down gracefully on
+SIGINT; inspection remains read-only and credential-independent; JSON projections omit
+claim tokens; and typed request conflicts and queue saturation return nonzero. RUNBOOK-0020
+documents foreground verification and service-manager-neutral systemd/launchd examples.
+
 ### Phase 5: Extend long-running run quality
 
 These 0014 slices can proceed after the task layer because they refine execution
