@@ -129,6 +129,77 @@ pub struct AgentEvent {
     pub payload: sqlx::types::Json<Value>,
 }
 
+pub const WORKING_STATE_VERSION: i64 = 1;
+const MAX_WORKING_STATE_BYTES: usize = 256 * 1024;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkingStateStatus {
+    Current,
+    Stale,
+    Unavailable,
+    Unsupported,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorkingStateSnapshot {
+    pub objective: WorkingStateObjective,
+    pub run: WorkingStateRun,
+    pub usage: RunUsage,
+    pub latest_event: WorkingStateEventReference,
+    pub artifacts: WorkingStateArtifacts,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorkingStateObjective {
+    pub kind: String,
+    pub run_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorkingStateRun {
+    pub lifecycle: RunLifecycle,
+    pub outcome: Option<RunOutcomeKind>,
+    pub reason_code: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorkingStateEventReference {
+    pub sequence: i64,
+    pub event_type: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorkingStateArtifacts {
+    pub items: Vec<ArtifactMetadata>,
+    pub total: i64,
+    pub omitted: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct WorkingStateInspection {
+    pub status: WorkingStateStatus,
+    pub projection_version: Option<i64>,
+    pub revision: Option<i64>,
+    pub event_cursor: Option<i64>,
+    pub updated_at: Option<i64>,
+    pub snapshot: Option<WorkingStateSnapshot>,
+}
+
+#[derive(FromRow)]
+struct WorkingStateRow {
+    projection_version: i64,
+    revision: i64,
+    event_cursor: i64,
+    updated_at: i64,
+    snapshot: sqlx::types::Json<Value>,
+}
+
 /// Versioned execution snapshot. Runtime code owns the state schema; it must
 /// include resolved resource/model, conversation, workspace and policy context.
 #[derive(Debug, Serialize, FromRow)]
@@ -389,7 +460,8 @@ pub enum ToolOutcome {
 }
 
 /// Metadata for an immutable file stored beneath a run's artifact directory.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ArtifactMetadata {
     pub sequence: i64,
     pub relative_path: String,
@@ -790,6 +862,9 @@ impl AgentRunStore {
             let mut usage = row.usage.0.clone();
             usage.model_turns = usage.model_turns.checked_add(1).ok_or(AccountingOverflow)?;
             Self::save_usage(&mut tx, row, &usage).await?;
+            if row.id != id {
+                Self::refresh_working_state(&mut tx, &row.id).await?;
+            }
         }
         self.append_in(&mut tx, id, "model.requested", payload)
             .await?;
@@ -860,6 +935,9 @@ impl AgentRunStore {
                 decision = BudgetDecision::Exceeded(LimitReason::TotalTokens);
             }
             Self::save_usage(&mut tx, row, &next).await?;
+            if row.id != id {
+                Self::refresh_working_state(&mut tx, &row.id).await?;
+            }
         }
         self.append_in(&mut tx, id, "model.responded", payload)
             .await?;
@@ -1330,6 +1408,9 @@ impl AgentRunStore {
             let mut usage = row.usage.0.clone();
             usage.tool_calls = usage.tool_calls.checked_add(1).ok_or(AccountingOverflow)?;
             Self::save_usage(&mut tx, row, &usage).await?;
+            if row.id != id {
+                Self::refresh_working_state(&mut tx, &row.id).await?;
+            }
         }
         self.append_in(&mut tx, id, "tool.started", &json!({"call_id": call_id}))
             .await?;
@@ -1373,6 +1454,244 @@ impl AgentRunStore {
             .bind(id).bind(&self.workspace_id).fetch_all(&self.pool).await?)
     }
 
+    async fn project_working_state(
+        tx: &mut Transaction<'_, Sqlite>,
+        id: &str,
+        event_type: &str,
+        payload: &Value,
+    ) -> Result<()> {
+        let (lifecycle, outcome, reason_code, usage, cursor): (RunLifecycle, Option<RunOutcomeKind>, Option<String>, sqlx::types::Json<RunUsage>, i64) =
+            sqlx::query_as("SELECT lifecycle, outcome, reason_code, usage, last_sequence FROM agent_runs WHERE id = ?")
+                .bind(id).fetch_one(&mut **tx).await?;
+        let projected_run = if event_type.starts_with("run.") && payload.get("lifecycle").is_some()
+        {
+            WorkingStateRun {
+                lifecycle: serde_json::from_value(payload["lifecycle"].clone())?,
+                outcome: serde_json::from_value(payload["outcome"].clone())?,
+                reason_code: serde_json::from_value(payload["reason_code"].clone())?,
+            }
+        } else {
+            WorkingStateRun {
+                lifecycle,
+                outcome,
+                reason_code,
+            }
+        };
+        let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agent_events WHERE run_id = ? AND event_type = 'artifact.created' AND sequence <= ?")
+            .bind(id).bind(cursor).fetch_one(&mut **tx).await?;
+        let rows: Vec<(i64, sqlx::types::Json<Value>)> = sqlx::query_as("SELECT sequence, payload FROM agent_events WHERE run_id = ? AND event_type = 'artifact.created' AND sequence <= ? ORDER BY sequence DESC LIMIT 128")
+            .bind(id).bind(cursor).fetch_all(&mut **tx).await?;
+        let mut items: Vec<ArtifactMetadata> = rows
+            .into_iter()
+            .rev()
+            .map(|(sequence, mut value)| {
+                value.0["sequence"] = json!(sequence);
+                serde_json::from_value(value.0).context("invalid artifact metadata")
+            })
+            .collect::<Result<_>>()?;
+        items.sort_by(|a, b| {
+            a.sequence
+                .cmp(&b.sequence)
+                .then_with(|| a.relative_path.cmp(&b.relative_path))
+        });
+        let retained = i64::try_from(items.len())?;
+        let snapshot = WorkingStateSnapshot {
+            objective: WorkingStateObjective {
+                kind: "run_input".into(),
+                run_id: id.into(),
+            },
+            run: projected_run,
+            usage: usage.0,
+            latest_event: WorkingStateEventReference {
+                sequence: cursor,
+                event_type: event_type.into(),
+            },
+            artifacts: WorkingStateArtifacts {
+                items,
+                total,
+                omitted: total - retained,
+            },
+        };
+        let snapshot_json = serde_json::to_value(&snapshot)?;
+        ensure!(
+            serde_json::to_vec(&snapshot_json)?.len() <= MAX_WORKING_STATE_BYTES,
+            "working state exceeds 256 KiB"
+        );
+        let previous_revision: Option<i64> =
+            sqlx::query_scalar("SELECT revision FROM agent_run_working_state WHERE run_id = ?")
+                .bind(id)
+                .fetch_optional(&mut **tx)
+                .await?;
+        let revision = previous_revision.map_or(Ok(1), |value| {
+            value
+                .checked_add(1)
+                .context("working state revision overflow")
+        })?;
+        sqlx::query("INSERT INTO agent_run_working_state (run_id, projection_version, revision, event_cursor, updated_at, snapshot) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(run_id) DO UPDATE SET projection_version = excluded.projection_version, revision = excluded.revision, event_cursor = excluded.event_cursor, updated_at = excluded.updated_at, snapshot = excluded.snapshot")
+            .bind(id).bind(WORKING_STATE_VERSION).bind(revision).bind(cursor).bind(Utc::now().timestamp_millis()).bind(sqlx::types::Json(snapshot_json)).execute(&mut **tx).await?;
+        Ok(())
+    }
+
+    async fn refresh_working_state(tx: &mut Transaction<'_, Sqlite>, id: &str) -> Result<()> {
+        let (event_type, payload): (String, sqlx::types::Json<Value>) = sqlx::query_as(
+            "SELECT event_type, payload FROM agent_events WHERE run_id = ? ORDER BY sequence DESC LIMIT 1",
+        ).bind(id).fetch_one(&mut **tx).await?;
+        Self::project_working_state(tx, id, &event_type, &payload.0).await
+    }
+
+    pub async fn working_state(&self, id: &str) -> Result<WorkingStateInspection> {
+        let run = self
+            .get_run_raw(id)
+            .await?
+            .context("run not found in workspace")?;
+        let row: Option<WorkingStateRow> = sqlx::query_as("SELECT s.projection_version, s.revision, s.event_cursor, s.updated_at, s.snapshot FROM agent_run_working_state s JOIN agent_runs r ON r.id = s.run_id WHERE s.run_id = ? AND r.workspace_id = ?")
+            .bind(id).bind(&self.workspace_id).fetch_optional(&self.pool).await?;
+        let Some(row) = row else {
+            return Ok(WorkingStateInspection {
+                status: WorkingStateStatus::Unavailable,
+                projection_version: None,
+                revision: None,
+                event_cursor: None,
+                updated_at: None,
+                snapshot: None,
+            });
+        };
+        let status = if row.projection_version != WORKING_STATE_VERSION {
+            WorkingStateStatus::Unsupported
+        } else if row.revision <= 0 || row.event_cursor < 0 || row.event_cursor > run.last_sequence
+        {
+            WorkingStateStatus::Unavailable
+        } else if row.event_cursor < run.last_sequence {
+            WorkingStateStatus::Stale
+        } else {
+            WorkingStateStatus::Current
+        };
+        let snapshot: Option<WorkingStateSnapshot> = if matches!(
+            status,
+            WorkingStateStatus::Current | WorkingStateStatus::Stale
+        ) {
+            serde_json::from_value(row.snapshot.0).ok()
+        } else {
+            None
+        };
+        let canonical_event_type: Option<String> = if matches!(
+            status,
+            WorkingStateStatus::Current | WorkingStateStatus::Stale
+        ) {
+            sqlx::query_scalar(
+                "SELECT event_type FROM agent_events WHERE run_id = ? AND sequence = ?",
+            )
+            .bind(id)
+            .bind(row.event_cursor)
+            .fetch_optional(&self.pool)
+            .await?
+        } else {
+            None
+        };
+        let canonical_artifacts: Option<WorkingStateArtifacts> = if matches!(
+            status,
+            WorkingStateStatus::Current | WorkingStateStatus::Stale
+        ) {
+            let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agent_events WHERE run_id = ? AND event_type = 'artifact.created' AND sequence <= ?")
+                .bind(id).bind(row.event_cursor).fetch_one(&self.pool).await?;
+            let rows: Vec<(i64, sqlx::types::Json<Value>)> = sqlx::query_as("SELECT sequence, payload FROM agent_events WHERE run_id = ? AND event_type = 'artifact.created' AND sequence <= ? ORDER BY sequence DESC LIMIT 128")
+                .bind(id).bind(row.event_cursor).fetch_all(&self.pool).await?;
+            let mut items = rows
+                .into_iter()
+                .map(|(sequence, mut value)| {
+                    value.0["sequence"] = json!(sequence);
+                    serde_json::from_value(value.0)
+                })
+                .collect::<std::result::Result<Vec<ArtifactMetadata>, _>>()
+                .ok();
+            items.as_mut().map(|items| {
+                items.sort_by(|a, b| {
+                    a.sequence
+                        .cmp(&b.sequence)
+                        .then_with(|| a.relative_path.cmp(&b.relative_path))
+                });
+                WorkingStateArtifacts {
+                    omitted: total - i64::try_from(items.len()).unwrap_or(i64::MAX),
+                    total,
+                    items: std::mem::take(items),
+                }
+            })
+        } else {
+            None
+        };
+        let structurally_valid = snapshot.as_ref().is_some_and(|snapshot| {
+            snapshot.objective.kind == "run_input"
+                && snapshot.objective.run_id == id
+                && snapshot.latest_event.sequence == row.event_cursor
+                && canonical_event_type.as_deref()
+                    == Some(snapshot.latest_event.event_type.as_str())
+                && snapshot.artifacts.total >= 0
+                && snapshot.artifacts.omitted >= 0
+                && snapshot.artifacts.items.len() <= 128
+                && canonical_artifacts.as_ref() == Some(&snapshot.artifacts)
+                && snapshot
+                    .artifacts
+                    .items
+                    .iter()
+                    .all(|item| item.sequence <= row.event_cursor)
+                && snapshot.artifacts.total
+                    == snapshot.artifacts.omitted
+                        + i64::try_from(snapshot.artifacts.items.len()).unwrap_or(i64::MAX)
+                && snapshot
+                    .artifacts
+                    .items
+                    .windows(2)
+                    .all(|pair| pair[0].sequence <= pair[1].sequence)
+        });
+        let current_values_match = snapshot.as_ref().is_some_and(|snapshot| {
+            row.event_cursor != run.last_sequence
+                || (snapshot.run.lifecycle == run.lifecycle
+                    && snapshot.run.outcome == run.outcome
+                    && snapshot.run.reason_code == run.reason_code
+                    && snapshot.usage == run.usage.0)
+        });
+        let status = if (!structurally_valid || !current_values_match)
+            && matches!(
+                status,
+                WorkingStateStatus::Current | WorkingStateStatus::Stale
+            ) {
+            WorkingStateStatus::Unavailable
+        } else {
+            status
+        };
+        let snapshot = if matches!(
+            status,
+            WorkingStateStatus::Current | WorkingStateStatus::Stale
+        ) {
+            snapshot
+        } else {
+            None
+        };
+        Ok(WorkingStateInspection {
+            status,
+            projection_version: Some(row.projection_version),
+            revision: Some(row.revision),
+            event_cursor: Some(row.event_cursor),
+            updated_at: Some(row.updated_at),
+            snapshot,
+        })
+    }
+
+    pub async fn rebuild_working_state(&self, id: &str) -> Result<WorkingStateInspection> {
+        let mut tx = self.pool.begin().await?;
+        let found: Option<String> = sqlx::query_scalar(
+            "UPDATE agent_runs SET updated_at = updated_at WHERE id = ? AND workspace_id = ? RETURNING id",
+        )
+        .bind(id)
+        .bind(&self.workspace_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        ensure!(found.is_some(), "run not found in workspace");
+        Self::refresh_working_state(&mut tx, id).await?;
+        tx.commit().await?;
+        self.working_state(id).await
+    }
+
     async fn append_in(
         &self,
         tx: &mut Transaction<'_, Sqlite>,
@@ -1386,6 +1705,7 @@ impl AgentRunStore {
             .context("run not found in workspace or already terminal")?;
         sqlx::query("INSERT INTO agent_events (run_id, sequence, timestamp, event_type, payload) VALUES (?, ?, ?, ?, ?)")
             .bind(id).bind(sequence).bind(now).bind(event_type).bind(sqlx::types::Json(payload)).execute(&mut **tx).await?;
+        Self::project_working_state(tx, id, event_type, payload).await?;
         Ok(sequence)
     }
 }

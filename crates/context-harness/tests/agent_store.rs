@@ -1,4 +1,7 @@
-use context_harness::agent_store::{BlockedReason, RunLifecycle, RunOutcome, RunOutcomeKind};
+use context_harness::agent_store::{
+    BlockedReason, RunLifecycle, RunOutcome, RunOutcomeKind, WorkingStateStatus,
+    WORKING_STATE_VERSION,
+};
 use context_harness::app_store::SqliteAppStore;
 use context_harness::config::Config;
 use context_harness::{db, migrate};
@@ -51,6 +54,10 @@ async fn legacy_run_rows_receive_deterministic_typed_state() {
     assert_eq!(active.budgets.max_turns, None);
     assert_eq!(active.usage.model_turns, 0);
     assert_eq!(active.usage.total_tokens, None);
+    assert_eq!(
+        runs.working_state("active").await.unwrap().status,
+        WorkingStateStatus::Unavailable
+    );
 
     for (id, outcome, reason) in [
         ("done", RunOutcomeKind::Completed, "legacy_completed"),
@@ -80,6 +87,10 @@ async fn history_and_checkpoints_survive_reopen_and_repeated_migration() {
     assert_eq!(run.lifecycle, RunLifecycle::Active);
     assert_eq!(run.outcome, None);
     assert_eq!(run.last_sequence, 1);
+    let working = runs.working_state(&run.id).await.unwrap();
+    assert_eq!(working.revision, Some(1));
+    assert_eq!(working.event_cursor, Some(1));
+    assert_eq!(working.snapshot.unwrap().objective.kind, "run_input");
     assert!(runs.latest_checkpoint(&run.id).await.unwrap().is_none());
     runs.append_event(&run.id, "model.responded", &json!({"text": "answer"}))
         .await
@@ -104,6 +115,12 @@ async fn history_and_checkpoints_survive_reopen_and_repeated_migration() {
     assert_eq!(persisted.reason_code.as_deref(), Some("final_response"));
     assert_eq!(persisted.output.as_deref(), Some("answer"));
     assert_eq!(persisted.completed_at, Some(persisted.updated_at));
+    let working = runs.working_state(&run.id).await.unwrap();
+    assert_eq!(working.event_cursor, Some(persisted.last_sequence));
+    assert_eq!(
+        working.snapshot.unwrap().run.outcome,
+        Some(RunOutcomeKind::Completed)
+    );
     assert_eq!(runs.history(10).await.unwrap().len(), 1);
     let checkpoint = runs.latest_checkpoint(&run.id).await.unwrap().unwrap();
     assert_eq!(checkpoint.sequence, checkpoint_sequence);
@@ -272,6 +289,134 @@ async fn concurrent_appends_allocate_gapless_run_local_sequences() {
         .await
         .unwrap();
     assert_eq!(second.last_sequence, 1);
+    let working = runs.working_state(&run.id).await.unwrap();
+    assert_eq!(working.status, WorkingStateStatus::Current);
+    assert_eq!(working.revision, Some(21));
+    assert_eq!(working.event_cursor, Some(21));
+}
+
+#[tokio::test]
+async fn working_state_inspection_and_rebuild_handle_compatibility_states() {
+    let tmp = TempDir::new().unwrap();
+    let config = config(&tmp);
+    SqliteAppStore::initialize_config(&config).await.unwrap();
+    let app = SqliteAppStore::connect(&config).await.unwrap();
+    let runs = app.agent_runs("project").unwrap();
+    let foreign = app.agent_runs("other").unwrap();
+    let run = runs
+        .create_run("agent", "v1", "fake", "input")
+        .await
+        .unwrap();
+    let initial: String =
+        sqlx::query_scalar("SELECT snapshot FROM agent_run_working_state WHERE run_id = ?")
+            .bind(&run.id)
+            .fetch_one(app.pool())
+            .await
+            .unwrap();
+
+    runs.append_event(&run.id, "model.requested", &json!({}))
+        .await
+        .unwrap();
+    let expected = runs.working_state(&run.id).await.unwrap().snapshot.unwrap();
+    sqlx::query("UPDATE agent_run_working_state SET revision = 1, event_cursor = 1, snapshot = ? WHERE run_id = ?")
+        .bind(initial)
+        .bind(&run.id)
+        .execute(app.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        runs.working_state(&run.id).await.unwrap().status,
+        WorkingStateStatus::Stale
+    );
+
+    sqlx::query("UPDATE agent_run_working_state SET revision = 2, event_cursor = 2, snapshot = '{}' WHERE run_id = ?")
+        .bind(&run.id)
+        .execute(app.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        runs.working_state(&run.id).await.unwrap().status,
+        WorkingStateStatus::Unavailable
+    );
+    let before = runs.get_run(&run.id).await.unwrap().unwrap().last_sequence;
+    let rebuilt = runs.rebuild_working_state(&run.id).await.unwrap();
+    assert_eq!(rebuilt.status, WorkingStateStatus::Current);
+    assert_eq!(rebuilt.revision, Some(3));
+    assert_eq!(rebuilt.event_cursor, Some(before));
+    assert_eq!(rebuilt.snapshot, Some(expected));
+    assert_eq!(
+        runs.get_run(&run.id).await.unwrap().unwrap().last_sequence,
+        before
+    );
+
+    sqlx::query("UPDATE agent_run_working_state SET projection_version = 99 WHERE run_id = ?")
+        .bind(&run.id)
+        .execute(app.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        runs.working_state(&run.id).await.unwrap().status,
+        WorkingStateStatus::Unsupported
+    );
+    let rebuilt = runs.rebuild_working_state(&run.id).await.unwrap();
+    assert_eq!(rebuilt.projection_version, Some(WORKING_STATE_VERSION));
+    assert_eq!(rebuilt.revision, Some(4));
+
+    sqlx::query("DELETE FROM agent_run_working_state WHERE run_id = ?")
+        .bind(&run.id)
+        .execute(app.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        runs.working_state(&run.id).await.unwrap().status,
+        WorkingStateStatus::Unavailable
+    );
+    assert_eq!(
+        runs.rebuild_working_state(&run.id).await.unwrap().revision,
+        Some(1)
+    );
+    sqlx::query("UPDATE agent_run_working_state SET revision = ? WHERE run_id = ?")
+        .bind(i64::MAX)
+        .bind(&run.id)
+        .execute(app.pool())
+        .await
+        .unwrap();
+    assert!(runs.rebuild_working_state(&run.id).await.is_err());
+    assert_eq!(
+        runs.working_state(&run.id).await.unwrap().revision,
+        Some(i64::MAX)
+    );
+    assert!(foreign.working_state(&run.id).await.is_err());
+    assert!(foreign.rebuild_working_state(&run.id).await.is_err());
+}
+
+#[tokio::test]
+async fn working_state_bounds_artifact_references_without_hiding_omissions() {
+    let tmp = TempDir::new().unwrap();
+    let config = config(&tmp);
+    SqliteAppStore::initialize_config(&config).await.unwrap();
+    let app = SqliteAppStore::connect(&config).await.unwrap();
+    let runs = app.agent_runs("project").unwrap();
+    let run = runs
+        .create_run("agent", "v1", "fake", "input")
+        .await
+        .unwrap();
+    for index in 0..129 {
+        runs.record_artifact(
+            &run.id,
+            &format!("out/{index:03}.txt"),
+            &format!("{index:064x}"),
+            1,
+        )
+        .await
+        .unwrap();
+    }
+    let snapshot = runs.working_state(&run.id).await.unwrap().snapshot.unwrap();
+    assert_eq!(snapshot.artifacts.total, 129);
+    assert_eq!(snapshot.artifacts.omitted, 1);
+    assert_eq!(snapshot.artifacts.items.len(), 128);
+    assert_eq!(snapshot.artifacts.items[0].relative_path, "out/001.txt");
+    assert_eq!(snapshot.artifacts.items[127].relative_path, "out/128.txt");
 }
 
 #[tokio::test]
@@ -318,6 +463,18 @@ async fn failed_event_insert_rolls_back_run_state() {
     );
     assert_eq!(runs.events(&run.id, 0, 100).await.unwrap().len(), 1);
     sqlx::query("DROP TRIGGER reject_checkpoint")
+        .execute(app.pool())
+        .await
+        .unwrap();
+    sqlx::query("CREATE TRIGGER reject_working_state BEFORE UPDATE ON agent_run_working_state BEGIN SELECT RAISE(ABORT, 'injected failure'); END")
+        .execute(app.pool()).await.unwrap();
+    assert!(runs
+        .append_event(&run.id, "model.requested", &json!({}))
+        .await
+        .is_err());
+    assert_eq!(runs.events(&run.id, 0, 100).await.unwrap().len(), 1);
+    assert_eq!(runs.working_state(&run.id).await.unwrap().revision, Some(1));
+    sqlx::query("DROP TRIGGER reject_working_state")
         .execute(app.pool())
         .await
         .unwrap();
