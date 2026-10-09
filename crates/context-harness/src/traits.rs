@@ -142,6 +142,109 @@ pub trait Connector: Send + Sync {
     async fn scan(&self) -> Result<Vec<SourceItem>>;
 }
 
+/// Trusted classification for a tool execution that has already started.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolExecutionErrorClass {
+    RecoverableError,
+    TerminalError,
+    UncertainSideEffect,
+}
+
+impl ToolExecutionErrorClass {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::RecoverableError => "recoverable_error",
+            Self::TerminalError => "terminal_error",
+            Self::UncertainSideEffect => "uncertain_side_effect",
+        }
+    }
+}
+
+/// A validated, model-safe error returned by trusted compiled tool code.
+///
+/// Formatting intentionally omits the public message so ordinary error logging
+/// cannot accidentally turn model-visible prose into an implementation error.
+pub struct ToolExecutionError {
+    class: ToolExecutionErrorClass,
+    code: String,
+    message: String,
+}
+
+impl ToolExecutionError {
+    pub fn recoverable(code: impl Into<String>, message: impl Into<String>) -> Result<Self> {
+        Self::new(ToolExecutionErrorClass::RecoverableError, code, message)
+    }
+
+    pub fn terminal(code: impl Into<String>, message: impl Into<String>) -> Result<Self> {
+        Self::new(ToolExecutionErrorClass::TerminalError, code, message)
+    }
+
+    pub fn uncertain_side_effect(
+        code: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Result<Self> {
+        Self::new(ToolExecutionErrorClass::UncertainSideEffect, code, message)
+    }
+
+    fn new(
+        class: ToolExecutionErrorClass,
+        code: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Result<Self> {
+        let code = code.into();
+        let message = message.into();
+        anyhow::ensure!(
+            !code.is_empty()
+                && code.len() <= 64
+                && code.bytes().enumerate().all(|(index, byte)| if index == 0 {
+                    byte.is_ascii_lowercase()
+                } else {
+                    byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_'
+                }),
+            "invalid tool execution error code"
+        );
+        anyhow::ensure!(
+            !message.trim().is_empty() && message.len() <= 4096,
+            "invalid tool execution error message"
+        );
+        Ok(Self {
+            class,
+            code,
+            message,
+        })
+    }
+
+    pub fn class(&self) -> ToolExecutionErrorClass {
+        self.class
+    }
+
+    pub fn code(&self) -> &str {
+        &self.code
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+}
+
+impl std::fmt::Debug for ToolExecutionError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ToolExecutionError")
+            .field("class", &self.class.as_str())
+            .field("code", &self.code)
+            .finish_non_exhaustive()
+    }
+}
+
+impl std::fmt::Display for ToolExecutionError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}:{}", self.class.as_str(), self.code)
+    }
+}
+
+impl std::error::Error for ToolExecutionError {}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Tool Trait
 // ═══════════════════════════════════════════════════════════════════════
@@ -1156,5 +1259,22 @@ mod phase2_tests {
         assert_eq!(entry["workspace"], "beta");
         assert_eq!(entry["code"], "workspace_timeout");
         assert!(entry["message"].as_str().unwrap().contains("5000"));
+    }
+
+    #[test]
+    fn tool_execution_errors_validate_and_redact_public_messages() {
+        let error = ToolExecutionError::recoverable("not_found", "Safe public message").unwrap();
+        assert_eq!(error.class(), ToolExecutionErrorClass::RecoverableError);
+        assert_eq!(error.code(), "not_found");
+        assert_eq!(error.message(), "Safe public message");
+        assert_eq!(error.to_string(), "recoverable_error:not_found");
+        assert!(!format!("{error:?}").contains("Safe public message"));
+
+        for code in ["", "NotFound", "1bad", "bad-code", &"a".repeat(65)] {
+            assert!(ToolExecutionError::terminal(code, "safe").is_err());
+        }
+        for message in ["", "   ", &"x".repeat(4097)] {
+            assert!(ToolExecutionError::uncertain_side_effect("unknown", message).is_err());
+        }
     }
 }

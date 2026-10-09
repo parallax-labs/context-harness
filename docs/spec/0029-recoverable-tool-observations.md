@@ -1,6 +1,6 @@
 # SPEC-0029: Recoverable Tool Observations and Loop Safeguards
 
-**Status:** Authoritative — implementation pending
+**Status:** Authoritative — implemented
 **Date:** 2026-10-09
 **Related:** [PRD-0014](../prd/0014-durable-agent-runs.md),
 [DESIGN-0014](../design/0014-structured-agent-run-state.md),
