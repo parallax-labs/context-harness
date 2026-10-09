@@ -30,6 +30,8 @@ pub struct RunBudgets {
     pub timeout_seconds: Option<u64>,
     pub max_total_tokens: Option<u64>,
     pub max_tool_calls: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_context_bytes: Option<u64>,
 }
 
 impl RunBudgets {
@@ -38,7 +40,8 @@ impl RunBudgets {
             self.max_turns != Some(0)
                 && self.timeout_seconds != Some(0)
                 && self.max_total_tokens != Some(0)
-                && self.max_tool_calls != Some(0),
+                && self.max_tool_calls != Some(0)
+                && self.max_context_bytes != Some(0),
             "run budgets must be positive when configured"
         );
         Ok(())
@@ -276,6 +279,7 @@ pub enum LimitReason {
     ToolCallsPerTurn,
     CheckpointSize,
     OutputSize,
+    ContextBytes,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -416,6 +420,7 @@ fn stopped(outcome: RunOutcome) -> Result<StoppedRun> {
                     LimitReason::ToolCallsPerTurn => "too many tool calls in one turn",
                     LimitReason::CheckpointSize => "checkpoint size limit exceeded",
                     LimitReason::OutputSize => "output size limit exceeded",
+                    LimitReason::ContextBytes => "context byte limit exceeded",
                 }
                 .into(),
             ),

@@ -7,6 +7,7 @@ use serde_json::Value;
 
 const LEGACY_VERSION: i64 = 1;
 const VERSION: i64 = 2;
+const BOUNDED_VERSION: i64 = 3;
 const OUTCOME_SCHEMA_VERSION: u32 = 1;
 const LIMIT: usize = 16 * 1024 * 1024;
 #[derive(Serialize, Deserialize)]
@@ -36,6 +37,31 @@ struct SnapshotV2 {
     projection: context::ProjectionMetadata,
 }
 
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SnapshotV3 {
+    run_id: String,
+    workspace: String,
+    agent_version: String,
+    binding: String,
+    next_turn: u32,
+    request: ModelRequest,
+    budgets: RunBudgets,
+    usage: RunUsage,
+    original_deadline: i64,
+    outcome_schema_version: u32,
+    projection: context::ProjectionMetadata,
+    logical_indexes: Vec<u64>,
+    source_message_count: u64,
+    source_exchange_count: u64,
+}
+
+pub(super) struct CheckpointContext<'a> {
+    pub request: &'a ModelRequest,
+    pub projection: &'a context::ProjectionMetadata,
+    pub logical: Option<(&'a [u64], u64, u64)>,
+}
+
 struct RestoredSnapshot {
     run_id: String,
     workspace: String,
@@ -44,6 +70,7 @@ struct RestoredSnapshot {
     next_turn: u32,
     request: ModelRequest,
     v2: Option<SnapshotV2State>,
+    bounded: Option<(Vec<u64>, u64, u64)>,
 }
 
 struct SnapshotV2State {
@@ -124,7 +151,7 @@ impl AgentRuntime {
         } else {
             let implementation = self.models.implementation_identity(alias)?;
             json!({
-                "runtime_schema": VERSION,
+                "runtime_schema": schema_version,
                 "db":self.config.db.path.canonicalize()?,
                 "candidate_k_keyword":self.config.retrieval.candidate_k_keyword.clamp(1,1000),
                 "provider":provider,"model":model,"definition":self.config.models.get(alias),
@@ -144,8 +171,7 @@ impl AgentRuntime {
         &self,
         id: &str,
         resource: &LoadedAgentResource,
-        request: &ModelRequest,
-        projection: &context::ProjectionMetadata,
+        checkpoint_context: CheckpointContext<'_>,
         turn: u32,
         baseline: Option<&AgentRun>,
     ) -> Result<()> {
@@ -160,7 +186,7 @@ impl AgentRuntime {
         if self.uses_unrecoverable_tool(resource) {
             return Ok(());
         }
-        request.validate()?;
+        checkpoint_context.request.validate()?;
         let current;
         let run = if let Some(run) = baseline {
             run
@@ -184,26 +210,56 @@ impl AgentRuntime {
                     .context("timeout is too large")?,
             )
             .context("timeout is too large")?;
-        let snapshot = SnapshotV2 {
+        let common = SnapshotV2 {
             run_id: id.into(),
             workspace: workspace_id(&self.root)?,
             agent_version: resource.version.clone(),
-            binding: self.binding(resource, VERSION)?,
+            binding: self.binding(
+                resource,
+                if checkpoint_context.logical.is_some() {
+                    BOUNDED_VERSION
+                } else {
+                    VERSION
+                },
+            )?,
             next_turn: turn,
-            request: request.clone(),
+            request: checkpoint_context.request.clone(),
             budgets: run.budgets.0.clone(),
             usage: run.usage.0.clone(),
             original_deadline,
             outcome_schema_version: OUTCOME_SCHEMA_VERSION,
-            projection: projection.clone(),
+            projection: checkpoint_context.projection.clone(),
         };
-        let value = serde_json::to_value(snapshot)?;
+        let (schema_version, value) =
+            if let Some((logical_indexes, source_message_count, source_exchange_count)) =
+                checkpoint_context.logical
+            {
+                let snapshot = SnapshotV3 {
+                    run_id: common.run_id,
+                    workspace: common.workspace,
+                    agent_version: common.agent_version,
+                    binding: common.binding,
+                    next_turn: common.next_turn,
+                    request: common.request,
+                    budgets: common.budgets,
+                    usage: common.usage,
+                    original_deadline: common.original_deadline,
+                    outcome_schema_version: common.outcome_schema_version,
+                    projection: common.projection,
+                    logical_indexes: logical_indexes.to_vec(),
+                    source_message_count,
+                    source_exchange_count,
+                };
+                (BOUNDED_VERSION, serde_json::to_value(snapshot)?)
+            } else {
+                (VERSION, serde_json::to_value(common)?)
+            };
         ensure!(
             serde_json::to_vec(&value)?.len() <= LIMIT,
             "checkpoint exceeds 16 MiB"
         );
         self.store
-            .save_checkpoint(id, VERSION, i64::from(turn), &value)
+            .save_checkpoint(id, schema_version, i64::from(turn), &value)
             .await?;
         Ok(())
     }
@@ -258,7 +314,10 @@ impl AgentRuntime {
             .await?
             .context("run has no recovery checkpoint")?;
         ensure!(
-            matches!(checkpoint.schema_version, LEGACY_VERSION | VERSION),
+            matches!(
+                checkpoint.schema_version,
+                LEGACY_VERSION | VERSION | BOUNDED_VERSION
+            ),
             "unsupported checkpoint version"
         );
         ensure!(
@@ -276,6 +335,7 @@ impl AgentRuntime {
                     next_turn: legacy.next_turn,
                     request: legacy.request,
                     v2: None,
+                    bounded: None,
                 }
             }
             VERSION => {
@@ -287,6 +347,30 @@ impl AgentRuntime {
                     binding: current.binding,
                     next_turn: current.next_turn,
                     request: current.request,
+                    v2: Some(SnapshotV2State {
+                        budgets: current.budgets,
+                        usage: current.usage,
+                        original_deadline: current.original_deadline,
+                        outcome_schema_version: current.outcome_schema_version,
+                        projection: current.projection,
+                    }),
+                    bounded: None,
+                }
+            }
+            BOUNDED_VERSION => {
+                let current: SnapshotV3 = serde_json::from_value(checkpoint.state.0)?;
+                RestoredSnapshot {
+                    run_id: current.run_id,
+                    workspace: current.workspace,
+                    agent_version: current.agent_version,
+                    binding: current.binding,
+                    next_turn: current.next_turn,
+                    request: current.request,
+                    bounded: Some((
+                        current.logical_indexes,
+                        current.source_message_count,
+                        current.source_exchange_count,
+                    )),
                     v2: Some(SnapshotV2State {
                         budgets: current.budgets,
                         usage: current.usage,
@@ -319,15 +403,29 @@ impl AgentRuntime {
                         .context("timeout is too large")?,
                 )
                 .context("timeout is too large")?;
-            ensure!(
-                v2.outcome_schema_version == OUTCOME_SCHEMA_VERSION
-                    && v2.budgets == run.budgets.0
-                    && v2.original_deadline == deadline
-                    && usage_contains(&run.usage, &v2.usage)
-                    && v2.projection.builder == "compatibility_v1"
+            let common_valid = v2.outcome_schema_version == OUTCOME_SCHEMA_VERSION
+                && v2.budgets == run.budgets.0
+                && v2.original_deadline == deadline
+                && usage_contains(&run.usage, &v2.usage);
+            let projection_valid = if checkpoint.schema_version == BOUNDED_VERSION {
+                state
+                    .bounded
+                    .as_ref()
+                    .is_some_and(|(indexes, count, exchanges)| {
+                        v2.projection.builder == "bounded_v1"
+                            && v2.projection.strategy == "bounded_suffix_v1"
+                            && indexes.len() + 1 == state.request.messages.len()
+                            && *count >= indexes.len() as u64
+                            && *exchanges >= v2.projection.included_exchange_count.unwrap_or(0)
+                    })
+            } else {
+                v2.projection.builder == "compatibility_v1"
                     && v2.projection.strategy == "complete_transcript"
-                    && v2.projection.message_count == state.request.messages.len()
-                    && v2.projection.tool_count == state.request.tools.len(),
+                    && v2.projection.message_count == Some(state.request.messages.len())
+                    && v2.projection.tool_count == Some(state.request.tools.len())
+            };
+            ensure!(
+                common_valid && projection_valid,
                 "checkpoint run state changed or is invalid"
             );
         }
@@ -346,12 +444,25 @@ impl AgentRuntime {
             },
         ];
         ensure!(
-            state.request.messages.len() >= 2
-                && serde_json::to_value(&state.request.messages[..2])?
-                    == serde_json::to_value(initial)?,
+            if checkpoint.schema_version == BOUNDED_VERSION {
+                state.request.messages.len() >= 3
+                    && serde_json::to_value([
+                        &state.request.messages[0],
+                        &state.request.messages[2],
+                    ])? == serde_json::to_value(initial)?
+            } else {
+                state.request.messages.len() >= 2
+                    && serde_json::to_value(&state.request.messages[..2])?
+                        == serde_json::to_value(initial)?
+            },
             "checkpoint input changed"
         );
         let invocations = self.store.tool_invocations(id).await?;
+        let omitted_exchanges = state
+            .v2
+            .as_ref()
+            .and_then(|snapshot| snapshot.projection.omitted_exchange_count)
+            .unwrap_or(0);
         let mut restored_results = std::collections::HashMap::new();
         let mut restored_calls = std::collections::HashMap::new();
         for message in &state.request.messages {
@@ -367,26 +478,41 @@ impl AgentRuntime {
                 _ => {}
             }
         }
+        let captured_invocations = invocations
+            .iter()
+            .filter(|invocation| !invocation.tool_name.starts_with("runtime."))
+            .count();
         ensure!(
-            invocations
-                .iter()
-                .filter(|invocation| !invocation.tool_name.starts_with("runtime."))
-                .count()
-                == restored_results.len(),
+            if checkpoint.schema_version == BOUNDED_VERSION {
+                captured_invocations >= restored_results.len()
+            } else {
+                captured_invocations == restored_results.len()
+            },
             "tool history is not captured by checkpoint; manual reconciliation required"
         );
         for invocation in &invocations {
             if invocation.tool_name.starts_with("runtime.") {
                 continue;
             }
+            ensure!(
+                invocation.status == "completed"
+                    && invocation.requested_sequence < checkpoint.sequence,
+                "tool history is unsafe for recovery; manual reconciliation required"
+            );
+            if checkpoint.schema_version == BOUNDED_VERSION
+                && !restored_results.contains_key(invocation.call_id.as_str())
+            {
+                ensure!(
+                    omitted_exchanges > 0,
+                    "tool history omission is not represented by the projection trace"
+                );
+                continue;
+            }
             let call = restored_calls
                 .get(invocation.call_id.as_str())
                 .context("tool call missing from checkpoint; manual reconciliation required")?;
             ensure!(
-                invocation.status == "completed"
-                    && invocation.requested_sequence < checkpoint.sequence
-                    && call.name == invocation.tool_name
-                    && call.arguments == invocation.arguments.0,
+                call.name == invocation.tool_name && call.arguments == invocation.arguments.0,
                 "tool history does not match checkpoint; manual reconciliation required"
             );
             let result = invocation
@@ -414,7 +540,7 @@ impl AgentRuntime {
                     attempts = attempts.checked_add(1).context("too many model attempts")?;
                 }
                 if event.sequence > checkpoint.sequence {
-                    ensure!(matches!(event.event_type.as_str(),"model.requested"|"model.responded"|"model.failed"|"run.failed"|"run.cancelled"|"run.resumed"|"context.resolved"),
+                    ensure!(matches!(event.event_type.as_str(),"model.requested"|"model.responded"|"model.failed"|"run.failed"|"run.cancelled"|"run.resumed"|"context.resolved"|"context.projected"),
                         "run has activity beyond its safe checkpoint; manual reconciliation required");
                 }
             }
@@ -427,7 +553,12 @@ impl AgentRuntime {
         self.drive(
             &resumed,
             resource,
-            Some(state.request),
+            Some(RestoredRequest {
+                request: state.request,
+                logical_indexes: state.bounded.as_ref().map(|value| value.0.clone()),
+                source_message_count: state.bounded.as_ref().map(|value| value.1),
+                source_exchange_count: state.bounded.as_ref().map(|value| value.2),
+            }),
             attempts,
             cancel,
             &files,
