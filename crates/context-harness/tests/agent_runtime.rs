@@ -17,7 +17,7 @@ use std::{
     path::Path,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     time::Duration,
 };
@@ -97,11 +97,147 @@ struct Grounded {
 
 struct OneResponse(ModelResponse);
 
+struct CapturingResponse {
+    requests: Arc<Mutex<Vec<ModelRequest>>>,
+}
+
+#[async_trait]
+impl ModelProvider for CapturingResponse {
+    async fn generate(&self, request: &ModelRequest) -> ModelResult<ModelResponse> {
+        self.requests.lock().unwrap().push(request.clone());
+        Ok(ModelResponse::text("bounded"))
+    }
+}
+
 #[async_trait]
 impl ModelProvider for OneResponse {
     async fn generate(&self, _request: &ModelRequest) -> ModelResult<ModelResponse> {
         Ok(self.0.clone())
     }
+}
+
+#[tokio::test]
+async fn bounded_context_is_projected_and_checkpointed_before_model_call() {
+    let tmp = TempDir::new().unwrap();
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let runtime = AgentRuntime::new(
+        config(tmp.path()),
+        tmp.path(),
+        registry(Arc::new(CapturingResponse {
+            requests: requests.clone(),
+        })),
+    )
+    .await
+    .unwrap();
+    let mut bounded = resource(&[], 2, 10);
+    bounded.definition.agent.execution.max_context_bytes = Some(2 * 1024 * 1024);
+    bounded.version = bounded.definition.version().unwrap();
+    let (_sender, cancel) = watch::channel(false);
+    let run = runtime.run(&bounded, "question", cancel).await.unwrap();
+    assert_eq!(run.output.as_deref(), Some("bounded"));
+    assert_eq!(run.budgets.max_context_bytes, Some(2 * 1024 * 1024));
+    let captured = {
+        let captured = requests.lock().unwrap();
+        assert_eq!(captured.len(), 1);
+        captured[0].clone()
+    };
+    assert!(
+        matches!(&captured.messages[1], ModelMessage::System { content } if content.contains("\"type\":\"working_state\""))
+    );
+    let events = runtime.store().events(&run.id, 0, 50).await.unwrap();
+    let projected = events
+        .iter()
+        .position(|event| event.event_type == "context.projected")
+        .unwrap();
+    let checkpointed = events
+        .iter()
+        .position(|event| event.event_type == "checkpoint.created")
+        .unwrap();
+    let requested = events
+        .iter()
+        .position(|event| event.event_type == "model.requested")
+        .unwrap();
+    assert!(projected < checkpointed && checkpointed < requested);
+    assert_eq!(events[projected].payload["builder"], "bounded_v1");
+    assert_eq!(
+        events[projected].payload["request_bytes"],
+        serde_json::to_vec(&captured).unwrap().len()
+    );
+    assert_eq!(
+        runtime
+            .store()
+            .latest_checkpoint(&run.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .schema_version,
+        3
+    );
+}
+
+#[tokio::test]
+async fn mandatory_bounded_context_overflow_stops_before_provider() {
+    let tmp = TempDir::new().unwrap();
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let runtime = AgentRuntime::new(
+        config(tmp.path()),
+        tmp.path(),
+        registry(Arc::new(CapturingResponse {
+            requests: requests.clone(),
+        })),
+    )
+    .await
+    .unwrap();
+    let mut bounded = resource(&[], 2, 10);
+    bounded.definition.prompt.system = "x".repeat(2 * 1024 * 1024);
+    bounded.definition.agent.execution.max_context_bytes = Some(2 * 1024 * 1024);
+    bounded.version = bounded.definition.version().unwrap();
+    let (_sender, cancel) = watch::channel(false);
+    let run = runtime.run(&bounded, "question", cancel).await.unwrap();
+    assert_eq!(run.outcome, Some(RunOutcomeKind::LimitExceeded));
+    assert_eq!(run.reason_code.as_deref(), Some("context_bytes"));
+    assert!(requests.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn bounded_context_supports_more_than_twenty_five_model_turns() {
+    let tmp = TempDir::new().unwrap();
+    std::fs::write(tmp.path().join("a.txt"), "small context").unwrap();
+    let mut outcomes = (0..25)
+        .map(|index| {
+            Ok(call(
+                "workspace.read",
+                &format!("read-{index}"),
+                json!({"path":"a.txt"}),
+            ))
+        })
+        .collect::<Vec<_>>();
+    outcomes.push(Ok(ModelResponse::text("finished")));
+    let runtime = AgentRuntime::new(
+        config(tmp.path()),
+        tmp.path(),
+        registry(Arc::new(FakeModel::new(outcomes))),
+    )
+    .await
+    .unwrap();
+    let mut bounded = resource(&["workspace.read"], 26, 30);
+    bounded.definition.agent.execution.max_context_bytes = Some(2 * 1024 * 1024);
+    bounded.version = bounded.definition.version().unwrap();
+    let (_sender, cancel) = watch::channel(false);
+    let run = runtime.run(&bounded, "question", cancel).await.unwrap();
+    assert_eq!(run.output.as_deref(), Some("finished"));
+    assert_eq!(run.usage.model_turns, 26);
+    assert_eq!(
+        runtime
+            .store()
+            .events(&run.id, 0, 1000)
+            .await
+            .unwrap()
+            .iter()
+            .filter(|event| event.event_type == "context.projected")
+            .count(),
+        26
+    );
 }
 
 #[tokio::test]

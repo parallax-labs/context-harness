@@ -19,7 +19,7 @@ use crate::{
     agent_resource::{Capability, LoadedAgentResource, ResourceDirectory},
     agent_store::{
         AccountingOverflow, AgentRun, AgentRunStore, BudgetDecision, FailureReason, LimitReason,
-        RunBudgets, RunOutcome, ToolOutcome,
+        RunBudgets, RunOutcome, ToolOutcome, WorkingStateStatus,
     },
     app_store::SqliteAppStore,
     config::Config,
@@ -39,6 +39,13 @@ use tokio::sync::watch;
 
 const MAX_TOOL_RESULT_BYTES: usize = 1024 * 1024;
 
+struct RestoredRequest {
+    request: ModelRequest,
+    logical_indexes: Option<Vec<u64>>,
+    source_message_count: Option<u64>,
+    source_exchange_count: Option<u64>,
+}
+
 pub(crate) fn run_budgets(resource: &LoadedAgentResource) -> RunBudgets {
     let limits = &resource.definition.agent.execution;
     RunBudgets {
@@ -46,6 +53,7 @@ pub(crate) fn run_budgets(resource: &LoadedAgentResource) -> RunBudgets {
         timeout_seconds: Some(limits.timeout_seconds),
         max_total_tokens: limits.max_total_tokens,
         max_tool_calls: limits.max_tool_calls,
+        max_context_bytes: limits.max_context_bytes,
     }
 }
 const MAX_TOOL_CALLS_PER_TURN: usize = 32;
@@ -373,7 +381,7 @@ impl AgentRuntime {
         &self,
         run: &AgentRun,
         resource: &LoadedAgentResource,
-        request: Option<ModelRequest>,
+        request: Option<RestoredRequest>,
         start_turn: u32,
         mut cancel: watch::Receiver<bool>,
         files: &files::RunFiles,
@@ -499,7 +507,7 @@ impl AgentRuntime {
         run: &AgentRun,
         resource: &LoadedAgentResource,
         input: &str,
-        restored: Option<ModelRequest>,
+        restored: Option<RestoredRequest>,
         start_turn: u32,
         files: &files::RunFiles,
     ) -> Result<RunOutcome> {
@@ -517,12 +525,42 @@ impl AgentRuntime {
                 self.prepare_selected_tools(id, resource, &external, &context)
                     .await?;
             }
-            let projected = self.context_builder.project(
+            let restored_indexes = restored.as_ref().and_then(|state| state.logical_indexes.clone());
+            let restored_source_count = restored.as_ref().and_then(|state| state.source_message_count);
+            let restored_exchange_count = restored.as_ref().and_then(|state| state.source_exchange_count);
+            let initial = self.context_builder.project(
                 &resource.definition.prompt.system,
                 input,
                 declarations,
-                restored,
+                restored.map(|state| state.request),
             )?;
+            let bounded = agent.execution.max_context_bytes;
+            let mut source = initial.request;
+            if bounded.is_some()
+                && source.messages.get(1).is_some_and(|message| matches!(message, ModelMessage::System { .. }))
+            {
+                source.messages.remove(1);
+            }
+            let mut logical_indexes = restored_indexes.unwrap_or_else(|| (0..source.messages.len() as u64).collect());
+            let mut source_message_count = restored_source_count.unwrap_or(source.messages.len() as u64);
+            let mut source_exchange_count = restored_exchange_count.unwrap_or_else(|| context::exchange_count(&source));
+            let initial_metadata = if let Some(max_bytes) = bounded {
+                let working = match self.store.working_state(id).await {
+                    Ok(working) => working,
+                    Err(_) => return Ok(RunOutcome::FailedWithReason {
+                        code: FailureReason::StorageError,
+                        error: "working state is unavailable".into(),
+                    }),
+                };
+                if working.status != WorkingStateStatus::Current {
+                    return Ok(RunOutcome::FailedWithReason { code: FailureReason::StorageError, error: "working state is not current".into() });
+                }
+                match context::bounded_project(&source, max_bytes, &working, &logical_indexes, source_message_count, source_exchange_count) {
+                    Ok(projected) => projected.metadata,
+                    Err(error) if error.to_string() == "context_bytes" => return Ok(RunOutcome::LimitExceeded { code: LimitReason::ContextBytes }),
+                    Err(error) => return Err(error),
+                }
+            } else { self.context_builder.describe(&source) };
             self.store
                 .append_event(
                     id,
@@ -530,20 +568,45 @@ impl AgentRuntime {
                     &json!({
                         "workspace_root": self.root, "agent_version": resource.version,
                         "tools": agent.tools, "retrieval": "keyword",
-                        "projection": projected.metadata,
+                        "projection": initial_metadata,
                         "tool_binding_contract": tool_binding::CATALOG_CONTRACT_VERSION,
                         "tool_bindings": self.selected_binding_metadata_with(resource, Some(&external))?,
                         "host_policy": {"allow":self.policy.allow, "require_approval":self.policy.require_approval}
                     }),
                 )
                 .await?;
-            let mut request = projected.request;
             for turn in start_turn..agent.execution.max_turns {
+                let (mut request, projection) = if let Some(max_bytes) = bounded {
+                    let working = match self.store.working_state(id).await {
+                        Ok(working) => working,
+                        Err(_) => return Ok(RunOutcome::FailedWithReason {
+                            code: FailureReason::StorageError,
+                            error: "working state is unavailable".into(),
+                        }),
+                    };
+                    if working.status != WorkingStateStatus::Current {
+                        return Ok(RunOutcome::FailedWithReason { code: FailureReason::StorageError, error: "working state is not current".into() });
+                    }
+                    let projected = match context::bounded_project(&source, max_bytes, &working, &logical_indexes, source_message_count, source_exchange_count) {
+                        Ok(projected) => projected,
+                        Err(error) if error.to_string() == "context_bytes" => return Ok(RunOutcome::LimitExceeded { code: LimitReason::ContextBytes }),
+                        Err(error) => return Err(error),
+                    };
+                    source = projected.retained_source.context("bounded projection omitted retained source")?;
+                    logical_indexes = projected.retained_indexes.context("bounded projection omitted logical indexes")?;
+                    self.store.append_event(id, "context.projected", &serde_json::to_value(&projected.metadata)?).await?;
+                    (projected.request, projected.metadata)
+                } else {
+                    (source.clone(), self.context_builder.describe(&source))
+                };
                 self.checkpoint(
                     id,
                     resource,
-                    &request,
-                    &self.context_builder.describe(&request),
+                    checkpoint::CheckpointContext {
+                        request: &request,
+                        projection: &projection,
+                        logical: bounded.map(|_| (logical_indexes.as_slice(), source_message_count, source_exchange_count)),
+                    },
                     turn,
                     (turn == start_turn).then_some(run),
                 )
@@ -660,7 +723,12 @@ impl AgentRuntime {
                         code: LimitReason::ToolCalls,
                     });
                 }
-                request.messages.push(response.message());
+                let assistant = response.message();
+                request.messages.push(assistant.clone());
+                source.messages.push(assistant);
+                logical_indexes.push(source_message_count);
+                source_message_count += 1;
+                source_exchange_count += 1;
                 for call in response.tool_calls {
                     ensure!(
                         matches!(
@@ -728,10 +796,14 @@ impl AgentRuntime {
                             self.store
                                 .finish_tool(id, &call.id, ToolOutcome::Completed(result))
                                 .await?;
-                            request.messages.push(ModelMessage::Tool {
+                            let message = ModelMessage::Tool {
                                 call_id: call.id,
                                 content,
-                            });
+                            };
+                            request.messages.push(message.clone());
+                            source.messages.push(message);
+                            logical_indexes.push(source_message_count);
+                            source_message_count += 1;
                         }
                         Err(_) => {
                             // Tool errors may contain indexed data. Persist a category,

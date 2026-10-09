@@ -111,6 +111,17 @@ impl ModelProvider for VerifyConversation {
         Ok(ModelResponse::text("recovered"))
     }
 }
+struct VerifyBounded;
+#[async_trait]
+impl ModelProvider for VerifyBounded {
+    async fn generate(&self, request: &ModelRequest) -> ModelResult<ModelResponse> {
+        assert_eq!(request.messages.len(), 3);
+        assert!(
+            matches!(&request.messages[1], ModelMessage::System { content } if content.contains("\"type\":\"working_state\""))
+        );
+        Ok(ModelResponse::text("bounded recovered"))
+    }
+}
 async fn wait_event(runtime: &AgentRuntime, kind: &str, count: usize) -> String {
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
@@ -442,6 +453,35 @@ async fn cli_resumes_cancelled_run_and_inspects_checkpoint_history() {
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(value["id"], id);
     assert_eq!(value["status"], "completed");
+}
+
+#[tokio::test]
+async fn bounded_v3_checkpoint_resumes_with_fresh_working_state_capsule() {
+    let tmp = TempDir::new().unwrap();
+    let rt = Arc::new(runtime(&tmp, Arc::new(Block)).await);
+    let mut res = resource(&[]);
+    res.definition.agent.execution.max_context_bytes = Some(2 * 1024 * 1024);
+    res.version = res.definition.version().unwrap();
+    let copy = res.clone();
+    let rt2 = rt.clone();
+    let (tx, rx) = watch::channel(false);
+    let task = tokio::spawn(async move { rt2.run(&copy, "question", rx).await });
+    let id = wait_event(&rt, "model.requested", 1).await;
+    tx.send(true).unwrap();
+    assert_eq!(task.await.unwrap().unwrap().status, "cancelled");
+    assert_eq!(
+        rt.store()
+            .latest_checkpoint(&id)
+            .await
+            .unwrap()
+            .unwrap()
+            .schema_version,
+        3
+    );
+    let resumed_runtime = runtime(&tmp, Arc::new(VerifyBounded)).await;
+    let (_tx, rx) = watch::channel(false);
+    let resumed = resumed_runtime.resume(&id, &res, rx).await.unwrap();
+    assert_eq!(resumed.output.as_deref(), Some("bounded recovered"));
 }
 
 #[cfg(unix)]

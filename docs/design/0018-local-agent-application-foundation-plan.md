@@ -502,12 +502,16 @@ Add measured recent/history selection and traceable compaction over the compatib
 builder. Preserve objective, newest observation, tool-call validity, active blockers,
 validation and artifact references. Treat summaries as derived state with provenance.
 
-**Contract status (2026-10-09): Ready for implementation.** ADR-0031 selects
-explicit byte-bounded deterministic suffix projection without model-authored
-summaries. SPEC-0028 defines the optional resource bound, whole-exchange selection,
-runtime-owned working-state capsule, opaque-continuation handling, trace metadata,
-typed context-size outcome and checkpoint schema version 3. Semantic retrieval,
-summarization, recoverable observations and suspended continuation remain outside 5B.
+**Slice status (2026-10-09): Implemented.** An optional validated
+`max_context_bytes` run budget now selects deterministic whole-exchange suffixes,
+injects the current runtime-owned working-state capsule and measures the exact compact
+JSON provider request before every call. Durable `context.projected` events record
+cumulative logical ranges and omission counts before schema-v3 checkpoints; v3 resume
+refreshes the capsule while v1/v2 compatibility remains unchanged. Focused fixtures
+cover static validation, byte accounting, newest-exchange retention, typed mandatory
+overflow, event ordering, v3 recovery and a 26-turn run. Semantic retrieval,
+model-authored summaries, recoverable observations and suspended continuation remain
+outside 5B.
 
 #### 5C. Recoverable observations and loop safeguards
 

@@ -129,6 +129,8 @@ pub struct ExecutionLimits {
     pub max_total_tokens: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_tool_calls: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_context_bytes: Option<u64>,
 }
 
 impl Default for ExecutionLimits {
@@ -138,6 +140,7 @@ impl Default for ExecutionLimits {
             timeout_seconds: 300,
             max_total_tokens: None,
             max_tool_calls: None,
+            max_context_bytes: None,
         }
     }
 }
@@ -232,6 +235,14 @@ impl AgentResource {
         ensure!(
             resource.agent.execution.max_tool_calls != Some(0),
             "max_tool_calls must be greater than zero"
+        );
+        ensure!(
+            resource
+                .agent
+                .execution
+                .max_context_bytes
+                .is_none_or(|bytes| { (2 * 1024 * 1024..=8 * 1024 * 1024).contains(&bytes) }),
+            "max_context_bytes must be between 2097152 and 8388608 bytes"
         );
         let tools = &resource.agent.tools;
         ensure!(tools.iter().all(|t| identifier(t)), "invalid tool name");

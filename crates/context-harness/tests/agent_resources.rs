@@ -76,6 +76,7 @@ fn resource_defaults_hashes_and_explicit_permissions() {
     assert_eq!(resource.agent.execution.timeout_seconds, 300);
     assert_eq!(resource.agent.execution.max_total_tokens, None);
     assert_eq!(resource.agent.execution.max_tool_calls, None);
+    assert_eq!(resource.agent.execution.max_context_bytes, None);
     assert_eq!(
         resource.agent.permissions.allowed(),
         vec![Capability::ReadOnly]
@@ -97,6 +98,28 @@ fn resource_defaults_hashes_and_explicit_permissions() {
 }
 
 #[test]
+fn bounded_context_limits_are_explicit_and_versioned() {
+    let minimum = AgentResource::parse(&format!(
+        "{RESOURCE}\n[agent.execution]\nmax_context_bytes = 2097152"
+    ))
+    .unwrap();
+    let maximum = AgentResource::parse(&format!(
+        "{RESOURCE}\n[agent.execution]\nmax_context_bytes = 8388608"
+    ))
+    .unwrap();
+    let compatibility = AgentResource::parse(RESOURCE).unwrap();
+    assert_eq!(
+        minimum.agent.execution.max_context_bytes,
+        Some(2 * 1024 * 1024)
+    );
+    assert_eq!(
+        maximum.agent.execution.max_context_bytes,
+        Some(8 * 1024 * 1024)
+    );
+    assert_ne!(minimum.version().unwrap(), compatibility.version().unwrap());
+}
+
+#[test]
 fn invalid_or_unknown_fields_fail_instead_of_silently_weakening_policy() {
     for input in [
         RESOURCE.replace("tools =", "toools ="),
@@ -110,6 +133,8 @@ fn invalid_or_unknown_fields_fail_instead_of_silently_weakening_policy() {
         format!("{RESOURCE}\n[agent.execution]\ntimeout_seconds = 0"),
         format!("{RESOURCE}\n[agent.execution]\nmax_total_tokens = 0"),
         format!("{RESOURCE}\n[agent.execution]\nmax_tool_calls = 0"),
+        format!("{RESOURCE}\n[agent.execution]\nmax_context_bytes = 2097151"),
+        format!("{RESOURCE}\n[agent.execution]\nmax_context_bytes = 8388609"),
         format!("{RESOURCE}\n[agent.execution]\ntimeout = 12"),
         RESOURCE.replace("[\"search\", \"get\"]", "[\"search\", \"search\"]"),
         RESOURCE.replace("researcher", "bad/name"),
