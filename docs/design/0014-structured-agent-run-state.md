@@ -3,7 +3,7 @@
 **Status:** Planning
 **Date:** 2026-10-01
 **Author:** Context Harness contributors
-**Related:** [PRD-0014](../prd/0014-durable-agent-runs.md), [ADR-0024](../adr/0024-local-agent-runtime.md), [ADR-0030](../adr/0030-runtime-owned-materialized-working-state.md), [SPEC-0017](../spec/0017-local-agent-execution.md), [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md), [SPEC-0027](../spec/0027-structured-agent-working-state.md)
+**Related:** [PRD-0014](../prd/0014-durable-agent-runs.md), [ADR-0024](../adr/0024-local-agent-runtime.md), [ADR-0030](../adr/0030-runtime-owned-materialized-working-state.md), [ADR-0031](../adr/0031-deterministic-bounded-context-projection.md), [SPEC-0017](../spec/0017-local-agent-execution.md), [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md), [SPEC-0027](../spec/0027-structured-agent-working-state.md), [SPEC-0028](../spec/0028-bounded-agent-context-projection.md)
 
 ## Context
 
@@ -318,6 +318,15 @@ transactionally with canonical events and containing only deterministic facts an
 references. Model-authored state and selective context projection remain unresolved
 later Phase 5 work and are not implied by that contract.
 
+[ADR-0031](../adr/0031-deterministic-bounded-context-projection.md) and
+[SPEC-0028](../spec/0028-bounded-agent-context-projection.md) resolve the Phase 5B
+boundary. The first bounded policy is explicit resource opt-in, uses deterministic
+whole-exchange suffix selection under a provider-neutral byte bound, injects the
+current runtime-owned working-state capsule, keeps opaque continuation data attached
+to its exchange and persists trace metadata in checkpoint schema version 3. It does
+not introduce summaries, semantic retrieval, model-authored state or recoverable
+tool errors.
+
 ## Implementation Plan
 
 With the minimum lifecycle contract accepted, the smallest staged path is:
@@ -374,9 +383,11 @@ as the compatibility baseline until its replacement has acceptance coverage.
    snapshot of deterministic facts and canonical-record references per run.
 2. **Resolved for Phase 5A by ADR-0030/SPEC-0027:** only the runtime writes the
    snapshot. Model-authored fields require a later constrained contract.
-3. What context-compaction algorithm ships first, and how is loss measured?
-4. How should OpenAI encrypted reasoning continuation items behave when older
-   conversation is summarized or omitted?
+3. **Resolved by ADR-0031/SPEC-0028:** the first compaction policy is opt-in,
+   byte-bounded, deterministic whole-exchange suffix selection with explicit source,
+   retained and omitted counts and ranges.
+4. **Resolved by ADR-0031/SPEC-0028:** opaque continuation items remain attached to
+   their assistant exchange and are retained or omitted only with that whole exchange.
 5. Which tool errors are safe observations, and what exact repetition key prevents
    loops without blocking legitimate retries?
 6. Does user input resume the same run or create a linked run under the existing

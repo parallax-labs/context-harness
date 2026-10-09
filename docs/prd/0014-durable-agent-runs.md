@@ -162,8 +162,10 @@ its named Phase 5 contract before implementation.
   dispositions, opt-in runtime control tools, and the legacy-row/CLI mapping.
 - Initial cumulative controls are turns, duration, reported tokens, and tool calls.
   Monetary budgets remain a non-goal until pricing can be versioned reliably.
-- Working-state ownership and context evidence/compaction remain deferred to Phase 5;
-  the compatibility context builder continues complete valid transcript projection.
+- ADR-0030/SPEC-0027 define runtime-owned structured working state. ADR-0031/SPEC-0028
+  define opt-in byte-bounded deterministic suffix projection, a working-state capsule,
+  trace metadata and checkpoint compatibility while preserving complete-transcript
+  behavior for unconfigured agents.
 - Recoverable tool observations and loop detection remain fail-closed until the Phase
   5 contract classifies safe errors and repetition identity.
 - Suspended continuation remains deferred; the first lifecycle slice records and
@@ -195,5 +197,9 @@ its named Phase 5 contract before implementation.
   versioned materialized working-state projection.
 - [SPEC-0027](../spec/0027-structured-agent-working-state.md): authoritative Phase 5A
   persistence, derivation, inspection and compatibility contract.
-- Future contracts remain required before context compaction, recoverable tool
-  observations, or suspended continuation changes runtime behavior.
+- [ADR-0031](../adr/0031-deterministic-bounded-context-projection.md): deterministic
+  opt-in byte-bounded context selection and opaque-continuation architecture.
+- [SPEC-0028](../spec/0028-bounded-agent-context-projection.md): authoritative Phase
+  5B selection, tracing, limit and checkpoint contract.
+- Future contracts remain required before recoverable tool observations or suspended
+  continuation changes runtime behavior.

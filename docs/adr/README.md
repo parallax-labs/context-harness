@@ -39,6 +39,7 @@ including the context, alternatives considered, and consequences of each decisio
 | [0028](0028-typed-run-outcomes-and-compatibility.md) | Typed Run Outcomes with a Legacy Status Projection | Accepted |
 | [0029](0029-durable-agent-task-ownership.md) | Durable Agent Tasks Own Scheduling, Not Execution Outcomes | Accepted |
 | [0030](0030-runtime-owned-materialized-working-state.md) | Runtime-Owned Materialized Working State | Accepted |
+| [0031](0031-deterministic-bounded-context-projection.md) | Deterministic Bounded Context Projection | Accepted |
 
 ## Creating a New ADR
 
