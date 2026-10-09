@@ -3,7 +3,7 @@
 **Status:** Draft
 **Date:** 2026-10-02
 **Author:** Context Harness contributors
-**Related:** [PRD-0014](../prd/0014-durable-agent-runs.md), [DESIGN-0014](0014-structured-agent-run-state.md), [PRD-0015](../prd/0015-local-generation-providers.md), [DESIGN-0015](0015-local-generation-providers.md), [PRD-0016](../prd/0016-durable-background-agent-tasks.md), [DESIGN-0016](0016-durable-background-agent-tasks.md), [PRD-0017](../prd/0017-targeted-document-refresh.md), [DESIGN-0017](0017-targeted-document-refresh.md), [ADR-0024](../adr/0024-local-agent-runtime.md), [ADR-0026](../adr/0026-native-ollama-local-generation.md), [ADR-0028](../adr/0028-typed-run-outcomes-and-compatibility.md), [ADR-0030](../adr/0030-runtime-owned-materialized-working-state.md), [SPEC-0016](../spec/0016-model-runtime.md), [SPEC-0017](../spec/0017-local-agent-execution.md), [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md), [SPEC-0023](../spec/0023-declarative-tool-bindings.md), [SPEC-0025](../spec/0025-durable-run-lifecycle-and-budgets.md), [SPEC-0027](../spec/0027-structured-agent-working-state.md)
+**Related:** [PRD-0014](../prd/0014-durable-agent-runs.md), [DESIGN-0014](0014-structured-agent-run-state.md), [PRD-0015](../prd/0015-local-generation-providers.md), [DESIGN-0015](0015-local-generation-providers.md), [PRD-0016](../prd/0016-durable-background-agent-tasks.md), [DESIGN-0016](0016-durable-background-agent-tasks.md), [PRD-0017](../prd/0017-targeted-document-refresh.md), [DESIGN-0017](0017-targeted-document-refresh.md), [ADR-0024](../adr/0024-local-agent-runtime.md), [ADR-0026](../adr/0026-native-ollama-local-generation.md), [ADR-0028](../adr/0028-typed-run-outcomes-and-compatibility.md), [ADR-0030](../adr/0030-runtime-owned-materialized-working-state.md), [ADR-0031](../adr/0031-deterministic-bounded-context-projection.md), [SPEC-0016](../spec/0016-model-runtime.md), [SPEC-0017](../spec/0017-local-agent-execution.md), [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md), [SPEC-0023](../spec/0023-declarative-tool-bindings.md), [SPEC-0025](../spec/0025-durable-run-lifecycle-and-budgets.md), [SPEC-0027](../spec/0027-structured-agent-working-state.md), [SPEC-0028](../spec/0028-bounded-agent-context-projection.md)
 
 ## Context
 
@@ -501,6 +501,13 @@ Context selection, compaction and model-authored state remain outside 5A.
 Add measured recent/history selection and traceable compaction over the compatibility
 builder. Preserve objective, newest observation, tool-call validity, active blockers,
 validation and artifact references. Treat summaries as derived state with provenance.
+
+**Contract status (2026-10-09): Ready for implementation.** ADR-0031 selects
+explicit byte-bounded deterministic suffix projection without model-authored
+summaries. SPEC-0028 defines the optional resource bound, whole-exchange selection,
+runtime-owned working-state capsule, opaque-continuation handling, trace metadata,
+typed context-size outcome and checkpoint schema version 3. Semantic retrieval,
+summarization, recoverable observations and suspended continuation remain outside 5B.
 
 #### 5C. Recoverable observations and loop safeguards
 
