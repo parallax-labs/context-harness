@@ -24,7 +24,9 @@ use crate::{
     app_store::SqliteAppStore,
     config::Config,
     tool_binding::{self, HostToolAuthority, ResolvedToolResource},
-    traits::{ToolContext, ToolRegistry, ToolRuntimeDispatch},
+    traits::{
+        ToolContext, ToolExecutionError, ToolExecutionErrorClass, ToolRegistry, ToolRuntimeDispatch,
+    },
 };
 use anyhow::{ensure, Context, Result};
 use serde_json::{json, Value};
@@ -38,6 +40,71 @@ use std::{
 use tokio::sync::watch;
 
 const MAX_TOOL_RESULT_BYTES: usize = 1024 * 1024;
+
+fn canonical_json(value: Value) -> Value {
+    match value {
+        Value::Object(object) => Value::Object(
+            object
+                .into_iter()
+                .map(|(key, value)| (key, canonical_json(value)))
+                .collect(),
+        ),
+        Value::Array(values) => Value::Array(values.into_iter().map(canonical_json).collect()),
+        value => value,
+    }
+}
+
+fn recoverable_observation(error: &ToolExecutionError) -> Result<(Value, String)> {
+    let code = serde_json::to_string(error.code())?;
+    let message = serde_json::to_string(error.message())?;
+    let content = format!(
+        "{{\"ok\":false,\"error\":{{\"type\":\"recoverable_tool_error\",\"code\":{code},\"message\":{message}}}}}"
+    );
+    Ok((serde_json::from_str(&content)?, content))
+}
+
+fn repetition_key(
+    tool: &dyn crate::traits::Tool,
+    effective_arguments: Value,
+    code: &str,
+) -> Result<String> {
+    let metadata = tool
+        .binding_metadata()
+        .context("recoverable tool identity is unavailable")?;
+    let implementation_id = metadata
+        .get("implementation_id")
+        .and_then(Value::as_str)
+        .context("recoverable tool implementation identity is unavailable")?;
+    let implementation_version = metadata
+        .get("implementation_version")
+        .and_then(Value::as_str)
+        .context("recoverable tool implementation version is unavailable")?;
+    let identity = canonical_json(json!({
+        "version": 1,
+        "tool_identity": {
+            "name": tool.name(),
+            "implementation_id": implementation_id,
+            "implementation_version": implementation_version,
+            "resource_version": metadata
+                .get("resource_version")
+                .or_else(|| metadata.get("binding_version"))
+                .cloned()
+                .unwrap_or(Value::Null),
+        },
+        "effective_arguments": effective_arguments,
+        "error_code": code,
+    }));
+    Ok(format!(
+        "{:x}",
+        Sha256::digest(serde_json::to_vec(&identity)?)
+    ))
+}
+
+fn classified_tool_error(error: &anyhow::Error) -> Option<&ToolExecutionError> {
+    error
+        .chain()
+        .find_map(|source| source.downcast_ref::<ToolExecutionError>())
+}
 
 struct RestoredRequest {
     request: ModelRequest,
@@ -805,7 +872,104 @@ impl AgentRuntime {
                             logical_indexes.push(source_message_count);
                             source_message_count += 1;
                         }
-                        Err(_) => {
+                        Err(error) => {
+                            if matches!(dispatch, ToolRuntimeDispatch::Direct) {
+                                if let Some(classified) = classified_tool_error(&error) {
+                                    match classified.class() {
+                                        ToolExecutionErrorClass::RecoverableError => {
+                                            let (observation, content) =
+                                                recoverable_observation(classified)?;
+                                            if content.len() > MAX_TOOL_RESULT_BYTES {
+                                                self.store
+                                                    .finish_tool(
+                                                        id,
+                                                        &call.id,
+                                                        ToolOutcome::Failed(
+                                                            "tool result exceeds 1 MiB".into(),
+                                                        ),
+                                                    )
+                                                    .await?;
+                                                anyhow::bail!("tool result exceeds 1 MiB");
+                                            }
+                                            let key = repetition_key(
+                                                tool,
+                                                approval_arguments,
+                                                classified.code(),
+                                            )?;
+                                            let count = self
+                                                .store
+                                                .finish_tool_with_count(
+                                                    id,
+                                                    &call.id,
+                                                    ToolOutcome::Recoverable {
+                                                        code: classified.code().into(),
+                                                        message: classified.message().into(),
+                                                        observation,
+                                                        observation_content: content.clone(),
+                                                        repetition_key: key.clone(),
+                                                    },
+                                                )
+                                                .await?
+                                                .context("recoverable repetition count missing")?;
+                                            if count >= 3 {
+                                                return Ok(RunOutcome::FailedWithDetail {
+                                                    code: FailureReason::ToolLoopDetected,
+                                                    error: "repeated recoverable tool error".into(),
+                                                    detail: json!({
+                                                        "repetition_key": key,
+                                                        "consecutive_count": count,
+                                                        "tool": call.name,
+                                                        "error_code": classified.code(),
+                                                    }),
+                                                });
+                                            }
+                                            let message = ModelMessage::Tool {
+                                                call_id: call.id,
+                                                content,
+                                            };
+                                            request.messages.push(message.clone());
+                                            source.messages.push(message);
+                                            logical_indexes.push(source_message_count);
+                                            source_message_count += 1;
+                                            continue;
+                                        }
+                                        ToolExecutionErrorClass::TerminalError => {
+                                            self.store
+                                                .finish_tool(
+                                                    id,
+                                                    &call.id,
+                                                    ToolOutcome::Terminal {
+                                                        code: classified.code().into(),
+                                                        message: classified.message().into(),
+                                                    },
+                                                )
+                                                .await?;
+                                            return Ok(RunOutcome::FailedWithDetail {
+                                                code: FailureReason::ToolError,
+                                                error: classified.message().into(),
+                                                detail: json!({"code": classified.code(), "message": classified.message()}),
+                                            });
+                                        }
+                                        ToolExecutionErrorClass::UncertainSideEffect => {
+                                            self.store
+                                                .finish_tool(
+                                                    id,
+                                                    &call.id,
+                                                    ToolOutcome::UncertainSideEffect {
+                                                        code: classified.code().into(),
+                                                        message: classified.message().into(),
+                                                    },
+                                                )
+                                                .await?;
+                                            return Ok(RunOutcome::FailedWithDetail {
+                                                code: FailureReason::ToolError,
+                                                error: classified.message().into(),
+                                                detail: json!({"code": classified.code(), "message": classified.message()}),
+                                            });
+                                        }
+                                    }
+                                }
+                            }
                             // Tool errors may contain indexed data. Persist a category,
                             // not arbitrary error strings from tool implementations.
                             self.store
