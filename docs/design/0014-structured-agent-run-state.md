@@ -3,7 +3,7 @@
 **Status:** Planning
 **Date:** 2026-10-01
 **Author:** Context Harness contributors
-**Related:** [PRD-0014](../prd/0014-durable-agent-runs.md), [ADR-0024](../adr/0024-local-agent-runtime.md), [ADR-0030](../adr/0030-runtime-owned-materialized-working-state.md), [ADR-0031](../adr/0031-deterministic-bounded-context-projection.md), [SPEC-0017](../spec/0017-local-agent-execution.md), [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md), [SPEC-0027](../spec/0027-structured-agent-working-state.md), [SPEC-0028](../spec/0028-bounded-agent-context-projection.md)
+**Related:** [PRD-0014](../prd/0014-durable-agent-runs.md), [ADR-0024](../adr/0024-local-agent-runtime.md), [ADR-0030](../adr/0030-runtime-owned-materialized-working-state.md), [ADR-0031](../adr/0031-deterministic-bounded-context-projection.md), [ADR-0032](../adr/0032-explicit-recoverable-tool-observations.md), [SPEC-0017](../spec/0017-local-agent-execution.md), [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md), [SPEC-0027](../spec/0027-structured-agent-working-state.md), [SPEC-0028](../spec/0028-bounded-agent-context-projection.md), [SPEC-0029](../spec/0029-recoverable-tool-observations.md)
 
 ## Context
 
@@ -388,8 +388,10 @@ as the compatibility baseline until its replacement has acceptance coverage.
    retained and omitted counts and ranges.
 4. **Resolved by ADR-0031/SPEC-0028:** opaque continuation items remain attached to
    their assistant exchange and are retained or omitted only with that whole exchange.
-5. Which tool errors are safe observations, and what exact repetition key prevents
-   loops without blocking legitimate retries?
+5. **Resolved by ADR-0032/SPEC-0029:** only an explicit trusted typed error asserting
+   no effect becomes a recoverable observation. Repetition identity hashes stable
+   resolved tool identity, canonical effective arguments and public error code; the
+   third consecutive identical failure terminates before another model call.
 6. Does user input resume the same run or create a linked run under the existing
    run-lineage model?
 7. Does a concrete future workflow require a Session abstraction, or can the

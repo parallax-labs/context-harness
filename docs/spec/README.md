@@ -47,6 +47,7 @@ See [SPEC-0000](0000-spec-policy.md) for the full policy.
 | [0026](0026-durable-agent-tasks.md) | Durable Agent Tasks | Authoritative — implementation pending |
 | [0027](0027-structured-agent-working-state.md) | Structured Agent Working State | Implemented |
 | [0028](0028-bounded-agent-context-projection.md) | Bounded Agent Context Projection | Authoritative — implementation pending |
+| [0029](0029-recoverable-tool-observations.md) | Recoverable Tool Observations and Loop Safeguards | Authoritative — implementation pending |
 
 ## Creating a New Spec
 
