@@ -166,8 +166,9 @@ its named Phase 5 contract before implementation.
   define opt-in byte-bounded deterministic suffix projection, a working-state capsule,
   trace metadata and checkpoint compatibility while preserving complete-transcript
   behavior for unconfigured agents.
-- Recoverable tool observations and loop detection remain fail-closed until the Phase
-  5 contract classifies safe errors and repetition identity.
+- ADR-0032/SPEC-0029 define explicit trusted no-effect recoverable tool observations,
+  sanitized model-visible errors and deterministic identical-failure loop detection.
+  Runtime behavior remains fail-closed until that contract is implemented.
 - Suspended continuation remains deferred; the first lifecycle slice records and
   exposes suspension but does not synthesize user input into provider conversation.
 - No Session is introduced. Root/child lineage and resumable runs remain the product
@@ -201,5 +202,9 @@ its named Phase 5 contract before implementation.
   opt-in byte-bounded context selection and opaque-continuation architecture.
 - [SPEC-0028](../spec/0028-bounded-agent-context-projection.md): authoritative Phase
   5B selection, tracing, limit and checkpoint contract.
-- Future contracts remain required before recoverable tool observations or suspended
-  continuation changes runtime behavior.
+- [ADR-0032](../adr/0032-explicit-recoverable-tool-observations.md): trusted explicit
+  classification and deterministic repetition-key architecture.
+- [SPEC-0029](../spec/0029-recoverable-tool-observations.md): authoritative Phase 5C
+  outcome, observation, loop and recovery contract.
+- A future contract remains required before suspended continuation changes runtime
+  behavior.

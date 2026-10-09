@@ -3,7 +3,7 @@
 **Status:** Draft
 **Date:** 2026-10-02
 **Author:** Context Harness contributors
-**Related:** [PRD-0014](../prd/0014-durable-agent-runs.md), [DESIGN-0014](0014-structured-agent-run-state.md), [PRD-0015](../prd/0015-local-generation-providers.md), [DESIGN-0015](0015-local-generation-providers.md), [PRD-0016](../prd/0016-durable-background-agent-tasks.md), [DESIGN-0016](0016-durable-background-agent-tasks.md), [PRD-0017](../prd/0017-targeted-document-refresh.md), [DESIGN-0017](0017-targeted-document-refresh.md), [ADR-0024](../adr/0024-local-agent-runtime.md), [ADR-0026](../adr/0026-native-ollama-local-generation.md), [ADR-0028](../adr/0028-typed-run-outcomes-and-compatibility.md), [ADR-0030](../adr/0030-runtime-owned-materialized-working-state.md), [ADR-0031](../adr/0031-deterministic-bounded-context-projection.md), [SPEC-0016](../spec/0016-model-runtime.md), [SPEC-0017](../spec/0017-local-agent-execution.md), [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md), [SPEC-0023](../spec/0023-declarative-tool-bindings.md), [SPEC-0025](../spec/0025-durable-run-lifecycle-and-budgets.md), [SPEC-0027](../spec/0027-structured-agent-working-state.md), [SPEC-0028](../spec/0028-bounded-agent-context-projection.md)
+**Related:** [PRD-0014](../prd/0014-durable-agent-runs.md), [DESIGN-0014](0014-structured-agent-run-state.md), [PRD-0015](../prd/0015-local-generation-providers.md), [DESIGN-0015](0015-local-generation-providers.md), [PRD-0016](../prd/0016-durable-background-agent-tasks.md), [DESIGN-0016](0016-durable-background-agent-tasks.md), [PRD-0017](../prd/0017-targeted-document-refresh.md), [DESIGN-0017](0017-targeted-document-refresh.md), [ADR-0024](../adr/0024-local-agent-runtime.md), [ADR-0026](../adr/0026-native-ollama-local-generation.md), [ADR-0028](../adr/0028-typed-run-outcomes-and-compatibility.md), [ADR-0030](../adr/0030-runtime-owned-materialized-working-state.md), [ADR-0031](../adr/0031-deterministic-bounded-context-projection.md), [ADR-0032](../adr/0032-explicit-recoverable-tool-observations.md), [SPEC-0016](../spec/0016-model-runtime.md), [SPEC-0017](../spec/0017-local-agent-execution.md), [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md), [SPEC-0023](../spec/0023-declarative-tool-bindings.md), [SPEC-0025](../spec/0025-durable-run-lifecycle-and-budgets.md), [SPEC-0027](../spec/0027-structured-agent-working-state.md), [SPEC-0028](../spec/0028-bounded-agent-context-projection.md), [SPEC-0029](../spec/0029-recoverable-tool-observations.md)
 
 ## Context
 
@@ -518,6 +518,14 @@ outside 5B.
 Implement the specified tool outcome taxonomy and allow only approved recoverable
 errors back into the model loop. Bound identical-call/failure repetition without
 weakening permission or uncertain-effect failures.
+
+**Contract status (2026-10-09): Ready for implementation.** ADR-0032 requires
+recoverability to be an explicit trusted-code assertion rather than an inference from
+error strings, capabilities or transports. SPEC-0029 defines the additive typed error
+API, exact sanitized model observation, durable outcome classification, canonical
+repetition identity and third-identical-failure stop rule. Untyped, denied, invalid,
+cancelled, oversized, Lua, MCP and uncertain-effect failures remain fail-closed.
+Automatic retries, backoff and suspended continuation remain outside 5C.
 
 #### 5D. Suspended continuation
 

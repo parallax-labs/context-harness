@@ -40,6 +40,7 @@ including the context, alternatives considered, and consequences of each decisio
 | [0029](0029-durable-agent-task-ownership.md) | Durable Agent Tasks Own Scheduling, Not Execution Outcomes | Accepted |
 | [0030](0030-runtime-owned-materialized-working-state.md) | Runtime-Owned Materialized Working State | Accepted |
 | [0031](0031-deterministic-bounded-context-projection.md) | Deterministic Bounded Context Projection | Accepted |
+| [0032](0032-explicit-recoverable-tool-observations.md) | Explicit Recoverable Tool Observations | Accepted |
 
 ## Creating a New ADR
 
