@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS agent_runs (
     error TEXT,
     last_sequence INTEGER NOT NULL DEFAULT 0 CHECK (last_sequence >= 0),
     budgets TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(budgets)),
-    usage TEXT NOT NULL DEFAULT '{"model_turns":0,"input_tokens":null,"output_tokens":null,"total_tokens":null,"responses_with_usage":0,"responses_without_usage":0,"tool_calls":0,"token_accounting":"unavailable"}' CHECK (json_valid(usage))
+    usage TEXT NOT NULL DEFAULT '{"model_turns":0,"input_tokens":null,"output_tokens":null,"total_tokens":null,"responses_with_usage":0,"responses_without_usage":0,"tool_calls":0,"token_accounting":"unavailable"}' CHECK (json_valid(usage)),
+    suspended_ms INTEGER NOT NULL DEFAULT 0 CHECK (suspended_ms >= 0)
 );
 CREATE INDEX IF NOT EXISTS idx_agent_runs_workspace
     ON agent_runs(workspace_id, created_at DESC, id);
@@ -67,6 +68,20 @@ CREATE TABLE IF NOT EXISTS agent_checkpoints (
     state TEXT NOT NULL CHECK (json_valid(state)),
     PRIMARY KEY (run_id, sequence),
     FOREIGN KEY (run_id, sequence) REFERENCES agent_events(run_id, sequence)
+);
+CREATE TABLE IF NOT EXISTS agent_run_suspensions (
+    run_id TEXT NOT NULL REFERENCES agent_runs(id),
+    suspension_sequence INTEGER NOT NULL,
+    outcome TEXT NOT NULL CHECK (outcome IN ('blocked', 'needs_user_input')),
+    reason_code TEXT NOT NULL,
+    prompt TEXT NOT NULL,
+    assistant_message TEXT CHECK (assistant_message IS NULL OR json_valid(assistant_message)),
+    continuation_input TEXT,
+    continued_at INTEGER,
+    PRIMARY KEY (run_id, suspension_sequence),
+    FOREIGN KEY (run_id, suspension_sequence) REFERENCES agent_events(run_id, sequence),
+    CHECK ((continuation_input IS NULL AND continued_at IS NULL)
+        OR (continuation_input IS NOT NULL AND continued_at IS NOT NULL))
 );
 
 CREATE TABLE IF NOT EXISTS agent_run_lineage (

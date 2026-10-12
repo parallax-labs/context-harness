@@ -547,6 +547,17 @@ accounting, safety validation and compatibility contract. Implementation remains
 separate slice; automatic worker continuation, delegated/MCP recovery and a Session
 abstraction remain deferred.
 
+**Slice status (2026-10-12): Implemented.** Suspended standalone runs now retain
+their exact pending runtime-control response and continue through additive public
+host and CLI APIs under the same run ID. One guarded transaction persists the
+trusted input, resolved control exchange, checkpoint, suspended-duration accounting,
+active transition and audit event before another provider call. Model, token and
+ordinary-tool usage remain cumulative; only committed suspended intervals extend the
+effective deadline. Crash recovery resumes the resolved exchange without duplicating
+input. Historical, delegated, MCP-backed, drifted, exhausted and unsafe runs reject
+without mutation. Workers remain non-continuing and linked tasks retain their
+terminal scheduling history.
+
 **Acceptance:** a 25-plus-turn fixture remains bounded and inspectable; compaction
 retains required evidence; typed suspension and continuation preserve budgets and
 recovery identity.

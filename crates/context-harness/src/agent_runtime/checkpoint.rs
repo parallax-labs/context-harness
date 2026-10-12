@@ -33,6 +33,8 @@ struct SnapshotV2 {
     budgets: RunBudgets,
     usage: RunUsage,
     original_deadline: i64,
+    #[serde(default)]
+    suspended_ms: i64,
     outcome_schema_version: u32,
     projection: context::ProjectionMetadata,
 }
@@ -49,6 +51,8 @@ struct SnapshotV3 {
     budgets: RunBudgets,
     usage: RunUsage,
     original_deadline: i64,
+    #[serde(default)]
+    suspended_ms: i64,
     outcome_schema_version: u32,
     projection: context::ProjectionMetadata,
     logical_indexes: Vec<u64>,
@@ -77,6 +81,7 @@ struct SnapshotV2State {
     budgets: RunBudgets,
     usage: RunUsage,
     original_deadline: i64,
+    suspended_ms: i64,
     outcome_schema_version: u32,
     projection: context::ProjectionMetadata,
 }
@@ -209,6 +214,7 @@ impl AgentRuntime {
                     .checked_mul(1000)
                     .context("timeout is too large")?,
             )
+            .and_then(|value| value.checked_add(run.suspended_ms))
             .context("timeout is too large")?;
         let common = SnapshotV2 {
             run_id: id.into(),
@@ -227,6 +233,7 @@ impl AgentRuntime {
             budgets: run.budgets.0.clone(),
             usage: run.usage.0.clone(),
             original_deadline,
+            suspended_ms: run.suspended_ms,
             outcome_schema_version: OUTCOME_SCHEMA_VERSION,
             projection: checkpoint_context.projection.clone(),
         };
@@ -244,6 +251,7 @@ impl AgentRuntime {
                     budgets: common.budgets,
                     usage: common.usage,
                     original_deadline: common.original_deadline,
+                    suspended_ms: common.suspended_ms,
                     outcome_schema_version: common.outcome_schema_version,
                     projection: common.projection,
                     logical_indexes: logical_indexes.to_vec(),
@@ -262,6 +270,413 @@ impl AgentRuntime {
             .save_checkpoint(id, schema_version, i64::from(turn), &value)
             .await?;
         Ok(())
+    }
+
+    /// Continue one exact suspended control exchange without creating a new run.
+    pub async fn continue_run(
+        &self,
+        id: &str,
+        resource: &LoadedAgentResource,
+        input: &str,
+        cancel: watch::Receiver<bool>,
+    ) -> Result<AgentRun> {
+        ensure!(
+            !input.trim().is_empty() && input.len() <= 8192,
+            "continuation input must contain 1–8192 bytes"
+        );
+        self.store
+            .get_run(id)
+            .await?
+            .context("run not found in workspace")?;
+        ensure!(
+            !self.uses_unrecoverable_tool(resource),
+            "MCP-backed or delegating runs cannot continue"
+        );
+        ensure!(
+            self.store.lineage(id).await?.parent_run_id.is_none(),
+            "delegated child runs cannot continue independently"
+        );
+        let files = files::acquire(&self.root, id)?;
+        let run = self.store.get_run(id).await?.context("run disappeared")?;
+        ensure!(
+            run.lifecycle == crate::agent_store::RunLifecycle::Suspended
+                && matches!(
+                    run.outcome,
+                    Some(crate::agent_store::RunOutcomeKind::Blocked)
+                        | Some(crate::agent_store::RunOutcomeKind::NeedsUserInput)
+                ),
+            "run is not suspended for explicit continuation"
+        );
+        ensure!(
+            run.agent_name == resource.definition.agent.name
+                && run.agent_version == resource.version
+                && resource.definition.version()? == resource.version
+                && run.model == resource.definition.agent.model,
+            "agent resource or model alias changed"
+        );
+        let suspension = self
+            .store
+            .latest_suspension(id)
+            .await?
+            .context("pending suspension state is unavailable")?;
+        ensure!(
+            suspension.continuation_input.is_none()
+                && suspension.continued_at.is_none()
+                && suspension.suspension_sequence == run.last_sequence
+                && Some(suspension.outcome) == run.outcome
+                && Some(suspension.reason_code.as_str()) == run.reason_code.as_deref(),
+            "pending suspension state does not match the run"
+        );
+        let assistant: ModelMessage = serde_json::from_value(
+            suspension
+                .assistant_message
+                .context("historical suspension cannot continue")?
+                .0,
+        )?;
+        let ModelMessage::Assistant { tool_calls, .. } = &assistant else {
+            anyhow::bail!("pending suspension assistant message is invalid")
+        };
+        ensure!(
+            tool_calls.len() == 1,
+            "pending suspension control is invalid"
+        );
+        let call = &tool_calls[0];
+        let call_id = call.id.clone();
+        let expected_name = match run.outcome {
+            Some(crate::agent_store::RunOutcomeKind::Blocked) => control::BLOCKED,
+            Some(crate::agent_store::RunOutcomeKind::NeedsUserInput) => control::REQUEST_USER_INPUT,
+            _ => unreachable!(),
+        };
+        ensure!(
+            call.name == expected_name
+                && resource.definition.agent.tools.contains(&call.name)
+                && control::outcome(
+                    match run.outcome {
+                        Some(crate::agent_store::RunOutcomeKind::Blocked) => {
+                            crate::traits::RunControlKind::Blocked
+                        }
+                        _ => crate::traits::RunControlKind::RequestUserInput,
+                    },
+                    call.arguments.clone(),
+                )
+                .is_ok(),
+            "pending suspension control is invalid"
+        );
+        let checkpoint = self
+            .store
+            .latest_checkpoint(id)
+            .await?
+            .context("run has no recovery checkpoint")?;
+        ensure!(
+            matches!(checkpoint.schema_version, VERSION | BOUNDED_VERSION),
+            "historical suspension checkpoint cannot continue"
+        );
+        let mut state = match checkpoint.schema_version {
+            VERSION => {
+                let current: SnapshotV2 = serde_json::from_value(checkpoint.state.0)?;
+                RestoredSnapshot {
+                    run_id: current.run_id,
+                    workspace: current.workspace,
+                    agent_version: current.agent_version,
+                    binding: current.binding,
+                    next_turn: current.next_turn,
+                    request: current.request,
+                    v2: Some(SnapshotV2State {
+                        budgets: current.budgets,
+                        usage: current.usage,
+                        original_deadline: current.original_deadline,
+                        suspended_ms: current.suspended_ms,
+                        outcome_schema_version: current.outcome_schema_version,
+                        projection: current.projection,
+                    }),
+                    bounded: None,
+                }
+            }
+            BOUNDED_VERSION => {
+                let current: SnapshotV3 = serde_json::from_value(checkpoint.state.0)?;
+                RestoredSnapshot {
+                    run_id: current.run_id,
+                    workspace: current.workspace,
+                    agent_version: current.agent_version,
+                    binding: current.binding,
+                    next_turn: current.next_turn,
+                    request: current.request,
+                    v2: Some(SnapshotV2State {
+                        budgets: current.budgets,
+                        usage: current.usage,
+                        original_deadline: current.original_deadline,
+                        suspended_ms: current.suspended_ms,
+                        outcome_schema_version: current.outcome_schema_version,
+                        projection: current.projection,
+                    }),
+                    bounded: Some((
+                        current.logical_indexes,
+                        current.source_message_count,
+                        current.source_exchange_count,
+                    )),
+                }
+            }
+            _ => unreachable!(),
+        };
+        ensure!(
+            state.run_id == id
+                && state.workspace == run.workspace_id
+                && state.agent_version == run.agent_version
+                && state.binding == self.binding(resource, checkpoint.schema_version)?,
+            "checkpoint binding changed or is invalid"
+        );
+        let snapshot = state.v2.as_ref().context("checkpoint state is invalid")?;
+        let timeout = run
+            .budgets
+            .timeout_seconds
+            .context("run timeout budget is unavailable")?;
+        let deadline = run
+            .created_at
+            .checked_add(
+                i64::try_from(timeout)?
+                    .checked_mul(1000)
+                    .context("timeout is too large")?,
+            )
+            .and_then(|value| value.checked_add(run.suspended_ms))
+            .context("timeout is too large")?;
+        ensure!(
+            snapshot.budgets == run.budgets.0
+                && snapshot.suspended_ms == run.suspended_ms
+                && snapshot.original_deadline == deadline
+                && snapshot.outcome_schema_version == OUTCOME_SCHEMA_VERSION
+                && usage_contains(&run.usage, &snapshot.usage)
+                && serde_json::to_value(&state.request.tools)?
+                    == serde_json::to_value(self.declarations(resource)?)?,
+            "checkpoint run state changed or is invalid"
+        );
+        state.request.validate()?;
+        let initial = vec![
+            ModelMessage::System {
+                content: resource.definition.prompt.system.clone(),
+            },
+            ModelMessage::User {
+                content: run.input.clone(),
+            },
+        ];
+        ensure!(
+            if checkpoint.schema_version == BOUNDED_VERSION {
+                state.request.messages.len() >= 3
+                    && serde_json::to_value([
+                        &state.request.messages[0],
+                        &state.request.messages[2],
+                    ])? == serde_json::to_value(initial)?
+            } else {
+                state.request.messages.len() >= 2
+                    && serde_json::to_value(&state.request.messages[..2])?
+                        == serde_json::to_value(initial)?
+            },
+            "checkpoint input changed"
+        );
+        let invocations = self.store.tool_invocations(id).await?;
+        let mut restored_results = std::collections::HashMap::new();
+        let mut restored_calls = std::collections::HashMap::new();
+        for message in &state.request.messages {
+            match message {
+                ModelMessage::Tool { call_id, content } => {
+                    restored_results.insert(call_id.as_str(), content.as_str());
+                }
+                ModelMessage::Assistant { tool_calls, .. } => {
+                    for call in tool_calls {
+                        restored_calls.insert(call.id.as_str(), call);
+                    }
+                }
+                _ => {}
+            }
+        }
+        for invocation in &invocations {
+            let recoverable = invocation.outcome_class.as_deref() == Some("recoverable_error")
+                && invocation.status == "failed"
+                && invocation.result_content.is_some();
+            ensure!(
+                (invocation.status == "completed" || recoverable)
+                    && invocation.requested_sequence < checkpoint.sequence,
+                "run requires reconciliation before continuation"
+            );
+            let call = restored_calls
+                .get(invocation.call_id.as_str())
+                .context("tool call missing from checkpoint; manual reconciliation required")?;
+            ensure!(
+                call.name == invocation.tool_name && call.arguments == invocation.arguments.0,
+                "tool history does not match checkpoint; manual reconciliation required"
+            );
+            let serialized = if recoverable {
+                invocation
+                    .result_content
+                    .as_deref()
+                    .context("recoverable tool result content missing")?
+                    .to_owned()
+            } else {
+                serde_json::to_string(
+                    &invocation.result.as_ref().context("tool result missing")?.0,
+                )?
+            };
+            ensure!(
+                restored_results.get(invocation.call_id.as_str()) == Some(&serialized.as_str()),
+                "checkpoint tool result changed"
+            );
+        }
+        let execution_stopped_at = run.completed_at.context("suspension timestamp missing")?;
+        ensure!(
+            execution_stopped_at
+                .checked_sub(run.created_at)
+                .and_then(|value| value.checked_sub(run.suspended_ms))
+                .is_some_and(|elapsed| elapsed >= 0
+                    && elapsed
+                        < i64::try_from(timeout)
+                            .unwrap_or(i64::MAX)
+                            .saturating_mul(1000)),
+            "duration budget exhausted"
+        );
+        ensure!(
+            run.budgets.max_total_tokens.is_none()
+                || (run.usage.responses_without_usage == 0
+                    && run.usage.total_tokens.is_some_and(|total| {
+                        run.budgets
+                            .max_total_tokens
+                            .is_some_and(|limit| total < limit)
+                    })),
+            "token budget exhausted or unavailable"
+        );
+        ensure!(
+            run.budgets
+                .max_tool_calls
+                .is_none_or(|limit| run.usage.tool_calls < limit),
+            "tool call budget exhausted"
+        );
+        let outcome =
+            serde_json::to_string(&run.outcome.context("suspended outcome is unavailable")?)?;
+        let reason = serde_json::to_string(
+            run.reason_code
+                .as_deref()
+                .context("suspended reason is unavailable")?,
+        )?;
+        let prompt = serde_json::to_string(&suspension.prompt)?;
+        let supplied = serde_json::to_string(input)?;
+        let content = format!(
+            "{{\"type\":\"run_continuation\",\"outcome\":{outcome},\"reason_code\":{reason},\"prompt\":{prompt},\"input\":{supplied}}}"
+        );
+        state.request.messages.push(assistant);
+        state
+            .request
+            .messages
+            .push(ModelMessage::Tool { call_id, content });
+        state.request.validate()?;
+        let attempts = u32::try_from(run.usage.model_turns)?;
+        ensure!(
+            attempts < resource.definition.agent.execution.max_turns,
+            "model turn budget exhausted"
+        );
+        state.next_turn = attempts;
+        let (mut logical_indexes, source_message_count, source_exchange_count) =
+            if let Some((mut indexes, count, exchanges)) = state.bounded.take() {
+                indexes.push(count);
+                indexes.push(count.checked_add(1).context("message count overflow")?);
+                (Some(indexes), Some(count + 2), Some(exchanges + 1))
+            } else {
+                (None, None, None)
+            };
+        let projection = if checkpoint.schema_version == VERSION {
+            self.context_builder.describe(&state.request)
+        } else {
+            let max_bytes = resource
+                .definition
+                .agent
+                .execution
+                .max_context_bytes
+                .context("bounded context budget is unavailable")?;
+            let mut source = state.request.clone();
+            ensure!(
+                source
+                    .messages
+                    .get(1)
+                    .is_some_and(|message| matches!(message, ModelMessage::System { .. })),
+                "bounded checkpoint capsule is unavailable"
+            );
+            source.messages.remove(1);
+            let working = self.store.working_state(id).await?;
+            ensure!(
+                working.status == WorkingStateStatus::Current,
+                "working state is not current"
+            );
+            let projected = context::bounded_project(
+                &source,
+                max_bytes,
+                &working,
+                logical_indexes
+                    .as_deref()
+                    .context("logical indexes missing")?,
+                source_message_count.context("source count missing")?,
+                source_exchange_count.context("exchange count missing")?,
+            )?;
+            state.request = projected.request;
+            logical_indexes = projected.retained_indexes;
+            projected.metadata
+        };
+        let checkpoint_state = if checkpoint.schema_version == VERSION {
+            serde_json::to_value(SnapshotV2 {
+                run_id: state.run_id,
+                workspace: state.workspace,
+                agent_version: state.agent_version,
+                binding: state.binding,
+                next_turn: state.next_turn,
+                request: state.request.clone(),
+                budgets: run.budgets.0.clone(),
+                usage: run.usage.0.clone(),
+                original_deadline: snapshot.original_deadline,
+                suspended_ms: run.suspended_ms,
+                outcome_schema_version: OUTCOME_SCHEMA_VERSION,
+                projection,
+            })?
+        } else {
+            serde_json::to_value(SnapshotV3 {
+                run_id: state.run_id,
+                workspace: state.workspace,
+                agent_version: state.agent_version,
+                binding: state.binding,
+                next_turn: state.next_turn,
+                request: state.request.clone(),
+                budgets: run.budgets.0.clone(),
+                usage: run.usage.0.clone(),
+                original_deadline: snapshot.original_deadline,
+                suspended_ms: run.suspended_ms,
+                outcome_schema_version: OUTCOME_SCHEMA_VERSION,
+                projection,
+                logical_indexes: logical_indexes.clone().context("logical indexes missing")?,
+                source_message_count: source_message_count.context("source count missing")?,
+                source_exchange_count: source_exchange_count.context("exchange count missing")?,
+            })?
+        };
+        let continued = self
+            .store
+            .continue_suspended_run(
+                id,
+                run.last_sequence,
+                suspension.suspension_sequence,
+                input,
+                checkpoint.schema_version,
+                i64::from(attempts),
+                &checkpoint_state,
+            )
+            .await?;
+        self.drive(
+            &continued,
+            resource,
+            Some(RestoredRequest {
+                request: state.request,
+                logical_indexes,
+                source_message_count,
+                source_exchange_count,
+            }),
+            attempts,
+            cancel,
+            &files,
+        )
+        .await
     }
 
     /// Resume only at a completed conversation boundary. The original resource,
@@ -351,6 +766,7 @@ impl AgentRuntime {
                         budgets: current.budgets,
                         usage: current.usage,
                         original_deadline: current.original_deadline,
+                        suspended_ms: current.suspended_ms,
                         outcome_schema_version: current.outcome_schema_version,
                         projection: current.projection,
                     }),
@@ -375,6 +791,7 @@ impl AgentRuntime {
                         budgets: current.budgets,
                         usage: current.usage,
                         original_deadline: current.original_deadline,
+                        suspended_ms: current.suspended_ms,
                         outcome_schema_version: current.outcome_schema_version,
                         projection: current.projection,
                     }),
@@ -402,10 +819,12 @@ impl AgentRuntime {
                         .checked_mul(1000)
                         .context("timeout is too large")?,
                 )
+                .and_then(|value| value.checked_add(run.suspended_ms))
                 .context("timeout is too large")?;
             let common_valid = v2.outcome_schema_version == OUTCOME_SCHEMA_VERSION
                 && v2.budgets == run.budgets.0
                 && v2.original_deadline == deadline
+                && v2.suspended_ms == run.suspended_ms
                 && usage_contains(&run.usage, &v2.usage);
             let projection_valid = if checkpoint.schema_version == BOUNDED_VERSION {
                 state
@@ -476,6 +895,11 @@ impl AgentRuntime {
                     }
                 }
                 _ => {}
+            }
+        }
+        for (call_id, call) in &restored_calls {
+            if control::is_reserved(&call.name) {
+                restored_results.remove(call_id);
             }
         }
         let captured_invocations = invocations
@@ -551,7 +975,7 @@ impl AgentRuntime {
                     attempts = attempts.checked_add(1).context("too many model attempts")?;
                 }
                 if event.sequence > checkpoint.sequence {
-                    ensure!(matches!(event.event_type.as_str(),"model.requested"|"model.responded"|"model.failed"|"run.failed"|"run.cancelled"|"run.resumed"|"context.resolved"|"context.projected"),
+                    ensure!(matches!(event.event_type.as_str(),"model.requested"|"model.responded"|"model.failed"|"run.failed"|"run.cancelled"|"run.resumed"|"run.continued"|"context.resolved"|"context.projected"),
                         "run has activity beyond its safe checkpoint; manual reconciliation required");
                 }
             }

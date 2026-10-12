@@ -472,10 +472,11 @@ impl AgentRuntime {
                     .context("run disappeared");
             }
         };
+        let mut pending_suspension = None;
         let outcome = tokio::select! {
             biased;
             _ = cancelled(&mut cancel) => RunOutcome::Cancelled,
-            result = tokio::time::timeout(remaining, self.execute(run, resource, &run.input, request, start_turn, files)) => {
+            result = tokio::time::timeout(remaining, self.execute(run, resource, &run.input, request, start_turn, files, &mut pending_suspension)) => {
                 match result {
                     Ok(Ok(outcome)) => outcome,
                     Ok(Err(error)) => RunOutcome::FailedWithReason {
@@ -491,7 +492,7 @@ impl AgentRuntime {
             }
         };
         self.store
-            .finish_run(&run.id, outcome)
+            .finish_run_with_pending_suspension(&run.id, outcome, pending_suspension)
             .await
             .with_context(|| format!("could not finalize run {}", run.id))?;
         self.store
@@ -507,6 +508,7 @@ impl AgentRuntime {
         let deadline = run
             .created_at
             .checked_add(budget)
+            .and_then(|value| value.checked_add(run.suspended_ms))
             .context("timeout is too large")?;
         let deadline = self
             .execution
@@ -569,6 +571,7 @@ impl AgentRuntime {
         Ok(declarations)
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn execute(
         &self,
         run: &AgentRun,
@@ -577,6 +580,7 @@ impl AgentRuntime {
         restored: Option<RestoredRequest>,
         start_turn: u32,
         files: &files::RunFiles,
+        pending_suspension: &mut Option<Value>,
     ) -> Result<RunOutcome> {
         let id = &run.id;
         let agent = &resource.definition.agent;
@@ -757,12 +761,22 @@ impl AgentRuntime {
                         });
                     }
                     let (kind, call) = controls[0];
-                    return Ok(control::outcome(kind, call.arguments.clone()).unwrap_or(
+                    let outcome = control::outcome(kind, call.arguments.clone()).unwrap_or(
                         RunOutcome::FailedWithReason {
                             code: FailureReason::InvalidModelResponse,
                             error: "invalid run control response".into(),
                         },
-                    ));
+                    );
+                    let pending = serde_json::to_value(response.message())?;
+                    if serde_json::to_vec(&pending)?.len() > 16 * 1024 * 1024 {
+                        return Ok(RunOutcome::LimitExceeded {
+                            code: LimitReason::CheckpointSize,
+                        });
+                    }
+                    if matches!(outcome, RunOutcome::Blocked { .. } | RunOutcome::NeedsUserInput { .. }) {
+                        *pending_suspension = Some(pending);
+                    }
+                    return Ok(outcome);
                 }
                 // Do not execute tools if the run cannot consume their results.
                 if turn + 1 >= agent.execution.max_turns {

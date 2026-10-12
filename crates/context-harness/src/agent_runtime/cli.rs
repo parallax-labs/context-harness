@@ -44,13 +44,15 @@ fn print_run(run: AgentRun, json_output: bool) -> Result<()> {
         println!("{}", serde_json::to_string_pretty(&run)?);
     } else {
         println!(
-            "Run: {}\nStatus: {}\nLifecycle: {:?}\nOutcome: {:?}\nReason: {}\nElapsed: {}ms\nBudgets: {}\nUsage: {}",
+            "Run: {}\nStatus: {}\nLifecycle: {:?}\nOutcome: {:?}\nReason: {}\nElapsed: {}ms\nSuspended: {}ms\nExecution elapsed: {}ms\nBudgets: {}\nUsage: {}",
             run.id,
             run.status,
             run.lifecycle,
             run.outcome,
             run.reason_code.as_deref().unwrap_or("-"),
             run.elapsed_ms,
+            run.suspended_ms,
+            run.execution_elapsed_ms,
             serde_json::to_string(&run.budgets.0)?,
             serde_json::to_string(&run.usage.0)?,
         );
@@ -103,6 +105,44 @@ pub async fn resume(
         let _ = sender.send(true);
     });
     let result = host.resume(id, receiver).await;
+    signal.abort();
+    print_run(result?, json_output)
+}
+
+pub async fn continue_run(
+    config: Config,
+    directories: &[ResourceDirectory],
+    tool_directories: &[ResourceDirectory],
+    id: &str,
+    input: &str,
+    json_output: bool,
+    non_interactive: bool,
+) -> Result<()> {
+    let store = read_store(config.clone())
+        .await?
+        .context("no runtime history in this workspace")?;
+    let previous = store
+        .get_run(id)
+        .await?
+        .context("run not found in workspace")?;
+    let root = std::env::current_dir()?;
+    let (catalog, authority) = cli_tool_bindings(&config, &root)?;
+    let mut builder = AgentHostBuilder::new(config, &root, ModelProviderCatalog::with_builtins()?)?
+        .with_agent_resources(directories.to_vec())
+        .with_tool_bindings(tool_directories.to_vec(), catalog, authority);
+    let approvals: Arc<dyn ApprovalHandler> = if non_interactive {
+        Arc::new(DenyApprovals)
+    } else {
+        Arc::new(super::terminal::TerminalApprovals)
+    };
+    builder = builder.with_policy(RuntimePolicy::default(), approvals);
+    let host = builder.build(&previous.agent_name).await?;
+    let (sender, receiver) = watch::channel(false);
+    let signal = tokio::spawn(async move {
+        let _ = tokio::signal::ctrl_c().await;
+        let _ = sender.send(true);
+    });
+    let result = host.continue_run(id, input, receiver).await;
     signal.abort();
     print_run(result?, json_output)
 }
@@ -475,10 +515,10 @@ pub async fn inspect(
         );
     } else {
         println!(
-            "Run: {}\nAgent: {}\nModel: {}\nWorkspace: {}\nStatus: {}\nLifecycle: {:?}\nOutcome: {:?}\nRecovery: {:?}\nReason: {}\nElapsed: {}ms\nBudgets: {}\nUsage: {}",
+            "Run: {}\nAgent: {}\nModel: {}\nWorkspace: {}\nStatus: {}\nLifecycle: {:?}\nOutcome: {:?}\nRecovery: {:?}\nReason: {}\nElapsed: {}ms\nSuspended: {}ms\nExecution elapsed: {}ms\nBudgets: {}\nUsage: {}",
             run.id, run.agent_name, run.model, run.workspace_id, run.status,
             run.lifecycle, run.outcome, run.recovery_disposition, run.reason_code.as_deref().unwrap_or("-"),
-            run.elapsed_ms, serde_json::to_string(&run.budgets.0)?,
+            run.elapsed_ms, run.suspended_ms, run.execution_elapsed_ms, serde_json::to_string(&run.budgets.0)?,
             serde_json::to_string(&run.usage.0)?
         );
         println!(

@@ -476,6 +476,15 @@ enum AgentAction {
         #[arg(long)]
         non_interactive: bool,
     },
+    /// Continue a blocked or needs-input run with trusted input.
+    Continue {
+        run_id: String,
+        input: String,
+        #[arg(long)]
+        json: bool,
+        #[arg(long)]
+        non_interactive: bool,
+    },
     /// Submit durable work for an explicitly started agent worker.
     Enqueue {
         name: String,
@@ -879,6 +888,7 @@ async fn main() -> anyhow::Result<()> {
         } | Commands::Agent {
             action: AgentAction::Run { .. }
                 | AgentAction::Resume { .. }
+                | AgentAction::Continue { .. }
                 | AgentAction::Enqueue { .. }
                 | AgentAction::Worker { .. }
         }
@@ -1217,6 +1227,23 @@ async fn main() -> anyhow::Result<()> {
                     &agent_resource_dirs,
                     &tool_resource_dirs,
                     &run_id,
+                    json,
+                    non_interactive,
+                )
+                .await?;
+            }
+            AgentAction::Continue {
+                run_id,
+                input,
+                json,
+                non_interactive,
+            } => {
+                agent_runtime::cli::continue_run(
+                    cfg,
+                    &agent_resource_dirs,
+                    &tool_resource_dirs,
+                    &run_id,
+                    &input,
                     json,
                     non_interactive,
                 )
