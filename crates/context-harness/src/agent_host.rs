@@ -811,6 +811,17 @@ impl AgentHost {
         self.runtime.resume(id, &self.resource, cancel).await
     }
 
+    pub async fn continue_run(
+        &self,
+        id: &str,
+        input: &str,
+        cancel: watch::Receiver<bool>,
+    ) -> Result<AgentRun> {
+        self.runtime
+            .continue_run(id, &self.resource, input, cancel)
+            .await
+    }
+
     async fn execute_linked(
         &self,
         run: &AgentRun,

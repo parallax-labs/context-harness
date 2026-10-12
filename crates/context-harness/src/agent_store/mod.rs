@@ -107,7 +107,9 @@ pub struct AgentRun {
     pub last_sequence: i64,
     pub budgets: sqlx::types::Json<RunBudgets>,
     pub usage: sqlx::types::Json<RunUsage>,
+    pub suspended_ms: i64,
     pub elapsed_ms: i64,
+    pub execution_elapsed_ms: i64,
     #[sqlx(skip)]
     pub recovery_disposition: RecoveryDisposition,
 }
@@ -215,6 +217,18 @@ pub struct AgentCheckpoint {
     pub state: sqlx::types::Json<Value>,
 }
 
+#[derive(Debug, Clone, FromRow)]
+pub struct RunSuspension {
+    pub run_id: String,
+    pub suspension_sequence: i64,
+    pub outcome: RunOutcomeKind,
+    pub reason_code: String,
+    pub prompt: String,
+    pub assistant_message: Option<sqlx::types::Json<Value>>,
+    pub continuation_input: Option<String>,
+    pub continued_at: Option<i64>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[serde(rename_all = "snake_case")]
 #[sqlx(type_name = "TEXT", rename_all = "snake_case")]
@@ -292,6 +306,15 @@ pub enum BudgetDecision {
 #[derive(FromRow)]
 struct BudgetRow {
     id: String,
+    budgets: sqlx::types::Json<RunBudgets>,
+    usage: sqlx::types::Json<RunUsage>,
+}
+
+#[derive(FromRow)]
+struct ContinuationRunRow {
+    created_at: i64,
+    completed_at: i64,
+    suspended_ms: i64,
     budgets: sqlx::types::Json<RunBudgets>,
     usage: sqlx::types::Json<RunUsage>,
 }
@@ -722,7 +745,7 @@ impl AgentRunStore {
     }
 
     pub(crate) async fn get_run_raw(&self, id: &str) -> Result<Option<AgentRun>> {
-        Ok(sqlx::query_as("SELECT *, MAX(0, COALESCE(completed_at, CAST(unixepoch('subsec') * 1000 AS INTEGER)) - created_at) AS elapsed_ms FROM agent_runs WHERE id = ? AND workspace_id = ?")
+        Ok(sqlx::query_as("SELECT *, MAX(0, COALESCE(completed_at, CAST(unixepoch('subsec') * 1000 AS INTEGER)) - created_at) AS elapsed_ms, MAX(0, COALESCE(completed_at, CAST(unixepoch('subsec') * 1000 AS INTEGER)) - created_at - suspended_ms) AS execution_elapsed_ms FROM agent_runs WHERE id = ? AND workspace_id = ?")
             .bind(id)
             .bind(&self.workspace_id)
             .fetch_optional(&self.pool)
@@ -732,7 +755,7 @@ impl AgentRunStore {
     /// Most recent runs first, with a bounded result count.
     pub async fn history(&self, limit: u32) -> Result<Vec<AgentRun>> {
         let mut runs: Vec<AgentRun> = sqlx::query_as(
-            "SELECT *, MAX(0, COALESCE(completed_at, CAST(unixepoch('subsec') * 1000 AS INTEGER)) - created_at) AS elapsed_ms FROM agent_runs WHERE workspace_id = ? ORDER BY created_at DESC, id LIMIT ?",
+            "SELECT *, MAX(0, COALESCE(completed_at, CAST(unixepoch('subsec') * 1000 AS INTEGER)) - created_at) AS elapsed_ms, MAX(0, COALESCE(completed_at, CAST(unixepoch('subsec') * 1000 AS INTEGER)) - created_at - suspended_ms) AS execution_elapsed_ms FROM agent_runs WHERE workspace_id = ? ORDER BY created_at DESC, id LIMIT ?",
         )
         .bind(&self.workspace_id)
         .bind(limit)
@@ -747,7 +770,7 @@ impl AgentRunStore {
     /// Classify only persisted state. This performs no provider/resource
     /// resolution and makes no network, process, or model calls.
     pub async fn recovery_disposition(&self, id: &str) -> Result<RecoveryDisposition> {
-        let run: AgentRun = sqlx::query_as("SELECT *, MAX(0, COALESCE(completed_at, CAST(unixepoch('subsec') * 1000 AS INTEGER)) - created_at) AS elapsed_ms FROM agent_runs WHERE id = ? AND workspace_id = ?")
+        let run: AgentRun = sqlx::query_as("SELECT *, MAX(0, COALESCE(completed_at, CAST(unixepoch('subsec') * 1000 AS INTEGER)) - created_at) AS elapsed_ms, MAX(0, COALESCE(completed_at, CAST(unixepoch('subsec') * 1000 AS INTEGER)) - created_at - suspended_ms) AS execution_elapsed_ms FROM agent_runs WHERE id = ? AND workspace_id = ?")
             .bind(id)
             .bind(&self.workspace_id)
             .fetch_optional(&self.pool)
@@ -1105,6 +1128,17 @@ impl AgentRunStore {
             .bind(id).bind(&self.workspace_id).fetch_optional(&self.pool).await?)
     }
 
+    pub async fn latest_suspension(&self, id: &str) -> Result<Option<RunSuspension>> {
+        self.get_run(id)
+            .await?
+            .context("run not found in workspace")?;
+        Ok(sqlx::query_as("SELECT s.* FROM agent_run_suspensions s JOIN agent_runs r ON r.id = s.run_id WHERE s.run_id = ? AND r.workspace_id = ? ORDER BY s.suspension_sequence DESC LIMIT 1")
+            .bind(id)
+            .bind(&self.workspace_id)
+            .fetch_optional(&self.pool)
+            .await?)
+    }
+
     /// Reopen only an unchanged, recoverable run. The caller must also hold the
     /// runtime's exclusive execution lock and validate its checkpoint before
     /// calling this method; the sequence guard prevents stale validation.
@@ -1136,7 +1170,125 @@ impl AgentRunStore {
             &json!({"previous_status": previous, "previous_sequence": expected_sequence}),
         )
         .await?;
-        let run = sqlx::query_as("SELECT *, MAX(0, CAST(unixepoch('subsec') * 1000 AS INTEGER) - created_at) AS elapsed_ms FROM agent_runs WHERE id = ? AND workspace_id = ?")
+        let run = sqlx::query_as("SELECT *, MAX(0, CAST(unixepoch('subsec') * 1000 AS INTEGER) - created_at) AS elapsed_ms, MAX(0, CAST(unixepoch('subsec') * 1000 AS INTEGER) - created_at - suspended_ms) AS execution_elapsed_ms FROM agent_runs WHERE id = ? AND workspace_id = ?")
+            .bind(id)
+            .bind(&self.workspace_id)
+            .fetch_one(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(run)
+    }
+
+    /// Resolve one exact suspension and durably checkpoint its continuation before
+    /// the caller is allowed to invoke the model again.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn continue_suspended_run(
+        &self,
+        id: &str,
+        expected_sequence: i64,
+        suspension_sequence: i64,
+        input: &str,
+        checkpoint_schema: i64,
+        checkpoint_turn: i64,
+        checkpoint_state: &Value,
+    ) -> Result<AgentRun> {
+        ensure!(
+            !input.trim().is_empty() && input.len() <= 8192,
+            "continuation input must contain 1–8192 bytes"
+        );
+        ensure!(
+            expected_sequence > 0
+                && suspension_sequence > 0
+                && checkpoint_schema > 0
+                && checkpoint_turn >= 0,
+            "invalid continuation boundary"
+        );
+        ensure!(
+            serde_json::to_vec(checkpoint_state)?.len() <= 16 * 1024 * 1024,
+            "checkpoint exceeds 16 MiB"
+        );
+        let mut tx = self.pool.begin().await?;
+        let row: Option<ContinuationRunRow> = sqlx::query_as("UPDATE agent_runs SET updated_at = updated_at WHERE id = ? AND workspace_id = ? AND last_sequence = ? AND lifecycle = 'suspended' AND outcome IN ('blocked', 'needs_user_input') AND completed_at IS NOT NULL RETURNING created_at, completed_at, suspended_ms, budgets, usage")
+            .bind(id)
+            .bind(&self.workspace_id)
+            .bind(expected_sequence)
+            .fetch_optional(&mut *tx)
+            .await?;
+        let row = row.context("run is not the expected current suspension")?;
+        let now = Utc::now().timestamp_millis();
+        let interval = now
+            .checked_sub(row.completed_at)
+            .filter(|value| *value >= 0)
+            .context("invalid suspended interval")?;
+        let suspension: Option<(RunOutcomeKind, String)> = sqlx::query_as("SELECT outcome, reason_code FROM agent_run_suspensions WHERE run_id = ? AND suspension_sequence = ? AND continuation_input IS NULL")
+            .bind(id)
+            .bind(suspension_sequence)
+            .fetch_optional(&mut *tx)
+            .await?;
+        let (prior_outcome, reason_code) =
+            suspension.context("pending suspension is unavailable or already continued")?;
+        ensure!(
+            suspension_sequence == expected_sequence,
+            "suspension is no longer current"
+        );
+        sqlx::query("UPDATE agent_run_suspensions SET continuation_input = ?, continued_at = ? WHERE run_id = ? AND suspension_sequence = ? AND continuation_input IS NULL")
+            .bind(input)
+            .bind(now)
+            .bind(id)
+            .bind(suspension_sequence)
+            .execute(&mut *tx)
+            .await?;
+        let suspended_ms = row
+            .suspended_ms
+            .checked_add(interval)
+            .context("suspended duration overflow")?;
+        let mut checkpoint_state = checkpoint_state.clone();
+        if let Some(state) = checkpoint_state.as_object_mut() {
+            state.insert("suspended_ms".into(), json!(suspended_ms));
+            if let Some(timeout) = row.budgets.timeout_seconds {
+                let deadline = row
+                    .created_at
+                    .checked_add(
+                        i64::try_from(timeout)?
+                            .checked_mul(1000)
+                            .context("timeout is too large")?,
+                    )
+                    .and_then(|value| value.checked_add(suspended_ms))
+                    .context("timeout is too large")?;
+                state.insert("original_deadline".into(), json!(deadline));
+            }
+        }
+        sqlx::query("UPDATE agent_runs SET status = 'running', lifecycle = 'active', outcome = NULL, reason_code = NULL, reason_detail = NULL, output = NULL, error = NULL, completed_at = NULL, suspended_ms = suspended_ms + ? WHERE id = ? AND workspace_id = ?")
+            .bind(interval)
+            .bind(id)
+            .bind(&self.workspace_id)
+            .execute(&mut *tx)
+            .await?;
+        let checkpoint_sequence = self
+            .append_in(
+                &mut tx,
+                id,
+                "checkpoint.created",
+                &json!({"schema_version": checkpoint_schema, "turn": checkpoint_turn}),
+            )
+            .await?;
+        sqlx::query("INSERT INTO agent_checkpoints (run_id, sequence, schema_version, turn, created_at, state) VALUES (?, ?, ?, ?, ?, ?)")
+            .bind(id)
+            .bind(checkpoint_sequence)
+            .bind(checkpoint_schema)
+            .bind(checkpoint_turn)
+            .bind(now)
+            .bind(sqlx::types::Json(&checkpoint_state))
+            .execute(&mut *tx)
+            .await?;
+        self.append_in(
+            &mut tx,
+            id,
+            "run.continued",
+            &json!({"prior_outcome": prior_outcome, "reason_code": reason_code, "suspension_sequence": suspension_sequence, "continuation_bytes": input.len(), "suspended_ms": suspended_ms, "budgets": row.budgets, "usage": row.usage}),
+        )
+        .await?;
+        let run = sqlx::query_as("SELECT *, MAX(0, CAST(unixepoch('subsec') * 1000 AS INTEGER) - created_at) AS elapsed_ms, MAX(0, CAST(unixepoch('subsec') * 1000 AS INTEGER) - created_at - suspended_ms) AS execution_elapsed_ms FROM agent_runs WHERE id = ? AND workspace_id = ?")
             .bind(id)
             .bind(&self.workspace_id)
             .fetch_one(&mut *tx)
@@ -1214,6 +1366,23 @@ impl AgentRunStore {
 
     /// Terminal runs reject ordinary writes; recovery requires `reopen_run`.
     pub async fn finish_run(&self, id: &str, outcome: RunOutcome) -> Result<()> {
+        self.finish_run_with_pending_suspension(id, outcome, None)
+            .await
+    }
+
+    pub(crate) async fn finish_run_with_pending_suspension(
+        &self,
+        id: &str,
+        outcome: RunOutcome,
+        pending_assistant: Option<Value>,
+    ) -> Result<()> {
+        let pending = match (&outcome, pending_assistant) {
+            (RunOutcome::Blocked { message, .. }, assistant) => Some((message.clone(), assistant)),
+            (RunOutcome::NeedsUserInput { question, .. }, assistant) => {
+                Some((question.clone(), assistant))
+            }
+            _ => None,
+        };
         let stopped = stopped(outcome)?;
         let mut tx = self.pool.begin().await?;
         // Acquire the write lock before reading invocation state. Terminal state
@@ -1254,7 +1423,18 @@ impl AgentRunStore {
             };
             self.finish_in(&mut tx, &child, &child_outcome).await?;
         }
-        self.finish_in(&mut tx, id, &stopped).await?;
+        let suspension_sequence = self.finish_in(&mut tx, id, &stopped).await?;
+        if let Some((prompt, assistant)) = pending {
+            sqlx::query("INSERT INTO agent_run_suspensions (run_id, suspension_sequence, outcome, reason_code, prompt, assistant_message) VALUES (?, ?, ?, ?, ?, ?)")
+                .bind(id)
+                .bind(suspension_sequence)
+                .bind(stopped.outcome)
+                .bind(&stopped.reason_code)
+                .bind(prompt)
+                .bind(assistant.map(sqlx::types::Json))
+                .execute(&mut *tx)
+                .await?;
+        }
         tx.commit().await?;
         Ok(())
     }
@@ -1264,7 +1444,7 @@ impl AgentRunStore {
         tx: &mut Transaction<'_, Sqlite>,
         id: &str,
         stopped: &StoppedRun,
-    ) -> Result<()> {
+    ) -> Result<i64> {
         let state: (sqlx::types::Json<RunBudgets>, sqlx::types::Json<RunUsage>) =
             sqlx::query_as("SELECT budgets, usage FROM agent_runs WHERE id = ?")
                 .bind(id)
@@ -1294,7 +1474,7 @@ impl AgentRunStore {
             sqlx::query("UPDATE tool_invocations SET status = 'failed', error = 'run interrupted', outcome_class = ?, completed_at = ? WHERE run_id = ? AND call_id = ?")
                 .bind(invocation_outcome).bind(Utc::now().timestamp_millis()).bind(id).bind(call_id).execute(&mut **tx).await?;
         }
-        self.append_in(
+        let sequence = self.append_in(
             tx,
             id,
             &format!("run.{}", reason_code_for_event(stopped.outcome)),
@@ -1303,7 +1483,7 @@ impl AgentRunStore {
         .await?;
         sqlx::query("UPDATE agent_runs SET status = ?, lifecycle = ?, outcome = ?, reason_code = ?, reason_detail = ?, output = ?, error = ?, completed_at = updated_at WHERE id = ? AND workspace_id = ?")
             .bind(stopped.status).bind(stopped.lifecycle).bind(stopped.outcome).bind(&stopped.reason_code).bind(sqlx::types::Json(&stopped.reason_detail)).bind(&stopped.output).bind(&stopped.error).bind(id).bind(&self.workspace_id).execute(&mut **tx).await?;
-        Ok(())
+        Ok(sequence)
     }
 
     pub async fn request_tool(

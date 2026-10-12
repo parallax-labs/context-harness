@@ -238,6 +238,10 @@ pub async fn run_migrations(config: &Config) -> Result<()> {
             "usage",
             "TEXT NOT NULL DEFAULT '{\"model_turns\":0,\"input_tokens\":null,\"output_tokens\":null,\"total_tokens\":null,\"responses_with_usage\":0,\"responses_without_usage\":0,\"tool_calls\":0,\"token_accounting\":\"unavailable\"}' CHECK (json_valid(usage))",
         ),
+        (
+            "suspended_ms",
+            "INTEGER NOT NULL DEFAULT 0 CHECK (suspended_ms >= 0)",
+        ),
     ] {
         if !columns.iter().any(|column| column == name) {
             sqlx::query(&format!("ALTER TABLE agent_runs ADD COLUMN {name} {definition}"))

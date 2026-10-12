@@ -172,7 +172,9 @@ its named Phase 5 contract before implementation.
 - ADR-0033/SPEC-0030 define explicit same-run suspended continuation through a
   resolved runtime-control exchange. Cumulative budgets remain attached to that run,
   and only persisted suspended intervals are excluded from duration consumption.
-  Runtime behavior remains deferred until that contract is implemented.
+  The public host/CLI continuation path now implements that contract for standalone,
+  non-MCP runs while delegated trees and automatic worker continuation remain
+  deferred.
 - No Session is introduced. Root/child lineage and resumable runs remain the product
   boundary until a separately reviewed cross-run use case requires another concept.
 

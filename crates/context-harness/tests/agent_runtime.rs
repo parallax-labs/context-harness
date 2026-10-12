@@ -97,6 +97,66 @@ struct Grounded {
 
 struct OneResponse(ModelResponse);
 
+struct SuspendThenComplete {
+    calls: AtomicUsize,
+    requests: Arc<Mutex<Vec<ModelRequest>>>,
+}
+
+struct SuspendThenBlock(AtomicUsize);
+
+#[async_trait]
+impl ModelProvider for SuspendThenBlock {
+    async fn generate(&self, _request: &ModelRequest) -> ModelResult<ModelResponse> {
+        if self.0.fetch_add(1, Ordering::SeqCst) == 0 {
+            return Ok(call(
+                "run.request_user_input",
+                "question-1",
+                json!({"code":"information_required","question":"Which release should I inspect?"}),
+            ));
+        }
+        std::future::pending().await
+    }
+}
+
+struct CompleteContinued;
+
+#[async_trait]
+impl ModelProvider for CompleteContinued {
+    async fn generate(&self, request: &ModelRequest) -> ModelResult<ModelResponse> {
+        assert!(
+            matches!(request.messages.last(), Some(ModelMessage::Tool { call_id, .. }) if call_id == "question-1")
+        );
+        Ok(ModelResponse::text("recovered continuation"))
+    }
+}
+
+#[async_trait]
+impl ModelProvider for SuspendThenComplete {
+    async fn generate(&self, request: &ModelRequest) -> ModelResult<ModelResponse> {
+        self.requests.lock().unwrap().push(request.clone());
+        if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+            return Ok(call(
+                "run.request_user_input",
+                "question-1",
+                json!({"code":"information_required","question":"Which release should I inspect?"}),
+            ));
+        }
+        assert!(request.messages.len() >= 4);
+        let assistant_index = request.messages.len() - 2;
+        assert!(matches!(
+            &request.messages[assistant_index],
+            ModelMessage::Assistant { tool_calls, .. }
+                if tool_calls.len() == 1 && tool_calls[0].id == "question-1"
+        ));
+        let ModelMessage::Tool { call_id, content } = request.messages.last().unwrap() else {
+            panic!("missing continuation result")
+        };
+        assert_eq!(call_id, "question-1");
+        assert_eq!(content, "{\"type\":\"run_continuation\",\"outcome\":\"needs_user_input\",\"reason_code\":\"information_required\",\"prompt\":\"Which release should I inspect?\",\"input\":\"Release 2.0.\"}");
+        Ok(ModelResponse::text("inspected release 2.0"))
+    }
+}
+
 struct CapturingResponse {
     requests: Arc<Mutex<Vec<ModelRequest>>>,
 }
@@ -446,6 +506,166 @@ async fn request_user_input_suspends_with_a_typed_question() {
         .await
         .unwrap()
         .is_empty());
+}
+
+#[tokio::test]
+async fn suspended_run_continues_same_identity_with_a_resolved_control_exchange() {
+    let tmp = TempDir::new().unwrap();
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let runtime = AgentRuntime::new(
+        config(tmp.path()),
+        tmp.path(),
+        registry(Arc::new(SuspendThenComplete {
+            calls: AtomicUsize::new(0),
+            requests: requests.clone(),
+        })),
+    )
+    .await
+    .unwrap();
+    let mut resource = resource(&["run.request_user_input"], 3, 10);
+    resource.definition.agent.execution.max_context_bytes = Some(2 * 1024 * 1024);
+    resource.version = resource.definition.version().unwrap();
+    let (_sender, cancel) = watch::channel(false);
+    let suspended = runtime
+        .run(&resource, "Inspect a release", cancel)
+        .await
+        .unwrap();
+    assert_eq!(suspended.lifecycle, RunLifecycle::Suspended);
+    assert_eq!(suspended.usage.model_turns, 1);
+    assert!(runtime
+        .store()
+        .tool_invocations(&suspended.id)
+        .await
+        .unwrap()
+        .is_empty());
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let (_sender, cancel) = watch::channel(false);
+    let completed = runtime
+        .continue_run(&suspended.id, &resource, "Release 2.0.", cancel)
+        .await
+        .unwrap();
+    assert_eq!(completed.id, suspended.id);
+    assert_eq!(completed.outcome, Some(RunOutcomeKind::Completed));
+    assert_eq!(completed.output.as_deref(), Some("inspected release 2.0"));
+    assert_eq!(completed.usage.model_turns, 2);
+    assert!(completed.suspended_ms >= 40);
+    assert_eq!(
+        completed.elapsed_ms - completed.execution_elapsed_ms,
+        completed.suspended_ms
+    );
+    assert_eq!(requests.lock().unwrap().len(), 2);
+    assert!(runtime
+        .store()
+        .tool_invocations(&completed.id)
+        .await
+        .unwrap()
+        .is_empty());
+    let events = runtime.store().events(&completed.id, 0, 100).await.unwrap();
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event.event_type == "run.continued")
+            .count(),
+        1
+    );
+    let before = completed.last_sequence;
+    let (_sender, cancel) = watch::channel(false);
+    assert!(runtime
+        .continue_run(&completed.id, &resource, "duplicate", cancel)
+        .await
+        .is_err());
+    assert_eq!(
+        runtime
+            .store()
+            .get_run(&completed.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .last_sequence,
+        before
+    );
+}
+
+#[tokio::test]
+async fn committed_continuation_resumes_after_crash_without_duplicate_input() {
+    let tmp = TempDir::new().unwrap();
+    let resource = resource(&["run.request_user_input"], 4, 10);
+    let runtime = Arc::new(
+        AgentRuntime::new(
+            config(tmp.path()),
+            tmp.path(),
+            registry(Arc::new(SuspendThenBlock(AtomicUsize::new(0)))),
+        )
+        .await
+        .unwrap(),
+    );
+    let (_sender, cancel) = watch::channel(false);
+    let suspended = runtime
+        .run(&resource, "Inspect a release", cancel)
+        .await
+        .unwrap();
+    let id = suspended.id.clone();
+    let rt = runtime.clone();
+    let continued_resource = resource.clone();
+    let (_sender, cancel) = watch::channel(false);
+    let task = tokio::spawn(async move {
+        rt.continue_run(&id, &continued_resource, "Release 2.0.", cancel)
+            .await
+    });
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let events = runtime.store().events(&suspended.id, 0, 100).await.unwrap();
+            if events
+                .iter()
+                .filter(|event| event.event_type == "model.requested")
+                .count()
+                == 2
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    task.abort();
+    assert!(task.await.unwrap_err().is_cancelled());
+
+    let recovered = AgentRuntime::new(
+        config(tmp.path()),
+        tmp.path(),
+        registry(Arc::new(CompleteContinued)),
+    )
+    .await
+    .unwrap();
+    let (_sender, cancel) = watch::channel(false);
+    let completed = recovered
+        .resume(&suspended.id, &resource, cancel)
+        .await
+        .unwrap();
+    assert_eq!(completed.output.as_deref(), Some("recovered continuation"));
+    let suspension = recovered
+        .store()
+        .latest_suspension(&completed.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        suspension.continuation_input.as_deref(),
+        Some("Release 2.0.")
+    );
+    assert_eq!(
+        recovered
+            .store()
+            .events(&completed.id, 0, 100)
+            .await
+            .unwrap()
+            .iter()
+            .filter(|event| event.event_type == "run.continued")
+            .count(),
+        1
+    );
 }
 
 #[tokio::test]
