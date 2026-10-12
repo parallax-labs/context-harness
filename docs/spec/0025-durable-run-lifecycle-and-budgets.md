@@ -7,7 +7,8 @@
 [ADR-0028](../adr/0028-typed-run-outcomes-and-compatibility.md),
 [SPEC-0017](0017-local-agent-execution.md),
 [SPEC-0019](0019-checkpoints-recovery-and-artifacts.md),
-[SPEC-0021](0021-agent-delegation.md)
+[SPEC-0021](0021-agent-delegation.md),
+[SPEC-0030](0030-suspended-run-continuation.md)
 
 ## Scope
 
@@ -142,9 +143,9 @@ set the suspended outcome atomically. It SHALL NOT execute an ordinary tool, cre
 tool invocation, or require another model turn. Incidental response text SHALL NOT
 override or expand the structured control detail.
 
-Suspended continuation is not implemented by this contract. `ctx agent resume` SHALL
-reject suspended outcomes without mutation until a later specification defines how
-user or environment input becomes valid provider conversation. Hosts and workers
+`ctx agent resume` SHALL reject suspended outcomes without mutation. Explicit
+same-run continuation is governed separately by SPEC-0030, including how trusted
+user or environment input becomes a valid provider conversation. Hosts and workers
 SHALL retain and report the suspension instead of converting it to failure or
 starting a replacement run automatically.
 
@@ -165,7 +166,9 @@ The runtime SHALL persist these cumulative counters:
 - `responses_with_usage` and `responses_without_usage`;
 - `tool_calls`: invocations that reached `started`; and
 - elapsed duration, derived from original `created_at` and the current or stopped
-  timestamp rather than accumulated process uptime.
+  timestamp rather than accumulated process uptime. SPEC-0030 excludes only
+  successfully continued suspended intervals from duration-budget consumption while
+  preserving wall-clock elapsed inspection.
 
 Token accounting state SHALL be `complete` when every recorded response reports
 usage, `partial` when some but not all do, and `unavailable` when none do. Missing
@@ -191,11 +194,13 @@ stop with `tool_calls` or `tool_calls_per_turn` respectively. Valid runtime cont
 calls do not create tool invocations and do not consume the ordinary tool-call
 counter.
 
-Exhausting `max_turns` SHALL produce limit_exceeded/model_turns. Expiring the original
-wall-clock deadline SHALL produce limit_exceeded/duration. Checkpoint and final-output
-bounds SHALL map to their corresponding limit reasons. Provider refusal, content
-filtering, truncated provider output, and ordinary model/tool errors remain failed
-outcomes rather than budget exhaustion.
+Exhausting `max_turns` SHALL produce limit_exceeded/model_turns. Expiring the effective
+wall-clock deadline SHALL produce limit_exceeded/duration. For a run never continued
+from suspension, this is the original deadline. SPEC-0030 extends it by exactly the
+persisted suspended intervals of a continued run. Checkpoint and final-output bounds
+SHALL map to their corresponding limit reasons. Provider refusal, content filtering,
+truncated provider output, and ordinary model/tool errors remain failed outcomes
+rather than budget exhaustion.
 
 Cancellation observed before another terminal or suspended transition SHALL produce
 cancelled/cancellation_requested. Exactly one stopped transition may commit. A race
@@ -266,9 +271,9 @@ Inspection and future workers SHALL derive one of these dispositions:
 Disposition derivation SHALL never downgrade `reconciliation_required` based on
 outcome prose or a worker lease. Completed and limit-exceeded runs SHALL not reopen.
 The first lifecycle implementation SHALL preserve current failed/cancelled resume
-eligibility, but suspended runs SHALL reject `ctx agent resume` until continuation is
-specified. A future contract may narrow legacy recovery only with a migration and
-compatibility plan.
+eligibility, while suspended runs SHALL reject `ctx agent resume`. SPEC-0030 defines
+the separate explicit continuation operation. A future contract may narrow legacy
+recovery only with a migration and compatibility plan.
 
 Read-only inspection SHALL derive the disposition only from already persisted run,
 checkpoint, lineage, tool, approval, artifact and event state. It SHALL NOT load the

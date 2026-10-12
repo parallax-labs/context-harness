@@ -41,6 +41,7 @@ including the context, alternatives considered, and consequences of each decisio
 | [0030](0030-runtime-owned-materialized-working-state.md) | Runtime-Owned Materialized Working State | Accepted |
 | [0031](0031-deterministic-bounded-context-projection.md) | Deterministic Bounded Context Projection | Accepted |
 | [0032](0032-explicit-recoverable-tool-observations.md) | Explicit Recoverable Tool Observations | Accepted |
+| [0033](0033-same-run-suspended-continuation.md) | Same-Run Suspended Continuation | Accepted |
 
 ## Creating a New ADR
 

@@ -169,8 +169,10 @@ its named Phase 5 contract before implementation.
 - ADR-0032/SPEC-0029 define explicit trusted no-effect recoverable tool observations,
   sanitized model-visible errors and deterministic identical-failure loop detection.
   Runtime behavior remains fail-closed until that contract is implemented.
-- Suspended continuation remains deferred; the first lifecycle slice records and
-  exposes suspension but does not synthesize user input into provider conversation.
+- ADR-0033/SPEC-0030 define explicit same-run suspended continuation through a
+  resolved runtime-control exchange. Cumulative budgets remain attached to that run,
+  and only persisted suspended intervals are excluded from duration consumption.
+  Runtime behavior remains deferred until that contract is implemented.
 - No Session is introduced. Root/child lineage and resumable runs remain the product
   boundary until a separately reviewed cross-run use case requires another concept.
 
@@ -206,5 +208,7 @@ its named Phase 5 contract before implementation.
   classification and deterministic repetition-key architecture.
 - [SPEC-0029](../spec/0029-recoverable-tool-observations.md): authoritative Phase 5C
   outcome, observation, loop and recovery contract.
-- A future contract remains required before suspended continuation changes runtime
-  behavior.
+- [ADR-0033](../adr/0033-same-run-suspended-continuation.md): explicit same-run
+  continuation and suspended-duration accounting architecture.
+- [SPEC-0030](../spec/0030-suspended-run-continuation.md): authoritative Phase 5D
+  host/CLI, conversation, persistence, budget and recovery contract.

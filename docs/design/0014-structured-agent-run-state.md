@@ -3,7 +3,7 @@
 **Status:** Planning
 **Date:** 2026-10-01
 **Author:** Context Harness contributors
-**Related:** [PRD-0014](../prd/0014-durable-agent-runs.md), [ADR-0024](../adr/0024-local-agent-runtime.md), [ADR-0030](../adr/0030-runtime-owned-materialized-working-state.md), [ADR-0031](../adr/0031-deterministic-bounded-context-projection.md), [ADR-0032](../adr/0032-explicit-recoverable-tool-observations.md), [SPEC-0017](../spec/0017-local-agent-execution.md), [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md), [SPEC-0027](../spec/0027-structured-agent-working-state.md), [SPEC-0028](../spec/0028-bounded-agent-context-projection.md), [SPEC-0029](../spec/0029-recoverable-tool-observations.md)
+**Related:** [PRD-0014](../prd/0014-durable-agent-runs.md), [ADR-0024](../adr/0024-local-agent-runtime.md), [ADR-0030](../adr/0030-runtime-owned-materialized-working-state.md), [ADR-0031](../adr/0031-deterministic-bounded-context-projection.md), [ADR-0032](../adr/0032-explicit-recoverable-tool-observations.md), [ADR-0033](../adr/0033-same-run-suspended-continuation.md), [SPEC-0017](../spec/0017-local-agent-execution.md), [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md), [SPEC-0027](../spec/0027-structured-agent-working-state.md), [SPEC-0028](../spec/0028-bounded-agent-context-projection.md), [SPEC-0029](../spec/0029-recoverable-tool-observations.md), [SPEC-0030](../spec/0030-suspended-run-continuation.md)
 
 ## Context
 
@@ -392,17 +392,18 @@ as the compatibility baseline until its replacement has acceptance coverage.
    no effect becomes a recoverable observation. Repetition identity hashes stable
    resolved tool identity, canonical effective arguments and public error code; the
    third consecutive identical failure terminates before another model call.
-6. Does user input resume the same run or create a linked run under the existing
-   run-lineage model?
-7. Does a concrete future workflow require a Session abstraction, or can the
-   existing run-lineage model remain sufficient?
+6. **Resolved by ADR-0033/SPEC-0030:** trusted continuation input reopens the same
+   run and resolves the pending runtime control exchange before another model call.
+7. **Resolved for Phase 5D by ADR-0033/SPEC-0030:** the existing run remains the
+   authority; no Session abstraction or linked replacement run is introduced.
 8. Does the delivered SPEC-0023 tool-binding identity contain every compatibility
    input that later context projection requires?
 
 ## Documentation Graduation
 
 ADR-0028 and SPEC-0025 graduate the minimum lifecycle/budget boundary, and PRD-0014
-is Planned. This design remains non-authoritative for the remaining questions above.
+is Planned. ADR-0033 and SPEC-0030 graduate the suspended-continuation boundary.
+This design remains non-authoritative for the remaining questions above.
 Create later ADR/spec contracts before implementing those behaviors, then keep this
 document as Planning during implementation and Reference after all planned slices are
 delivered.
