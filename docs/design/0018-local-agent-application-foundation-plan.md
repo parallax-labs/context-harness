@@ -519,13 +519,18 @@ Implement the specified tool outcome taxonomy and allow only approved recoverabl
 errors back into the model loop. Bound identical-call/failure repetition without
 weakening permission or uncertain-effect failures.
 
-**Contract status (2026-10-09): Ready for implementation.** ADR-0032 requires
-recoverability to be an explicit trusted-code assertion rather than an inference from
-error strings, capabilities or transports. SPEC-0029 defines the additive typed error
-API, exact sanitized model observation, durable outcome classification, canonical
-repetition identity and third-identical-failure stop rule. Untyped, denied, invalid,
-cancelled, oversized, Lua, MCP and uncertain-effect failures remain fail-closed.
-Automatic retries, backoff and suspended continuation remain outside 5C.
+**Slice status (2026-10-09): Implemented.** The public additive
+`ToolExecutionError` API now lets trusted compiled tools declare sanitized
+recoverable, terminal or uncertain outcomes through the unchanged `Tool::execute`
+signature. Runtime-authored recoverable observations, typed invocation history and
+canonical implementation/argument/error repetition keys are durable; the third
+identical consecutive failure stops as `tool_loop_detected`. Exact observations and
+counts survive checkpoint resume without replay, while completed results reset the
+sequence. Focused fixtures cover registration, redaction, exact model context,
+argument/code changes, terminal and uncertain failures, loop termination and restart.
+Untyped, denied, invalid, cancelled, oversized, Lua, MCP and preparation failures
+remain fail-closed. Automatic retries, backoff and suspended continuation remain
+outside 5C.
 
 #### 5D. Suspended continuation
 

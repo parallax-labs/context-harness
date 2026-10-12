@@ -494,8 +494,15 @@ impl AgentRuntime {
             if invocation.tool_name.starts_with("runtime.") {
                 continue;
             }
+            let recoverable = invocation.outcome_class.as_deref() == Some("recoverable_error")
+                && invocation.status == "failed"
+                && invocation.result.is_some()
+                && invocation.result_content.is_some()
+                && invocation.error_code.is_some()
+                && invocation.repetition_key.is_some()
+                && invocation.consecutive_count.is_some_and(|count| count > 0);
             ensure!(
-                invocation.status == "completed"
+                (invocation.status == "completed" || recoverable)
                     && invocation.requested_sequence < checkpoint.sequence,
                 "tool history is unsafe for recovery; manual reconciliation required"
             );
@@ -515,11 +522,15 @@ impl AgentRuntime {
                 call.name == invocation.tool_name && call.arguments == invocation.arguments.0,
                 "tool history does not match checkpoint; manual reconciliation required"
             );
-            let result = invocation
-                .result
-                .as_ref()
-                .context("completed tool result missing")?;
-            let serialized = serde_json::to_string(&result.0)?;
+            let result = invocation.result.as_ref().context("tool result missing")?;
+            let serialized = if recoverable {
+                invocation
+                    .result_content
+                    .clone()
+                    .context("recoverable tool result content missing")?
+            } else {
+                serde_json::to_string(&result.0)?
+            };
             ensure!(
                 restored_results.get(invocation.call_id.as_str()) == Some(&serialized.as_str()),
                 "checkpoint tool result changed"

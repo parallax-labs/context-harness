@@ -245,6 +245,31 @@ pub async fn run_migrations(config: &Config) -> Result<()> {
                 .await?;
         }
     }
+    let tool_columns: Vec<String> =
+        sqlx::query_scalar("SELECT name FROM pragma_table_info('tool_invocations')")
+            .fetch_all(&mut *tx)
+            .await?;
+    for (name, definition) in [
+        ("result_content", "TEXT"),
+        (
+            "outcome_class",
+            "TEXT CHECK (outcome_class IS NULL OR outcome_class IN ('completed', 'denied', 'recoverable_error', 'terminal_error', 'uncertain_side_effect', 'cancelled'))",
+        ),
+        ("error_code", "TEXT"),
+        ("repetition_key", "TEXT"),
+        (
+            "consecutive_count",
+            "INTEGER CHECK (consecutive_count IS NULL OR consecutive_count > 0)",
+        ),
+    ] {
+        if !tool_columns.iter().any(|column| column == name) {
+            sqlx::query(&format!(
+                "ALTER TABLE tool_invocations ADD COLUMN {name} {definition}"
+            ))
+            .execute(&mut *tx)
+            .await?;
+        }
+    }
     sqlx::query(
         "UPDATE agent_runs SET lifecycle = CASE status WHEN 'running' THEN 'active' ELSE 'terminal' END, outcome = CASE status WHEN 'completed' THEN 'completed' WHEN 'failed' THEN 'failed' WHEN 'cancelled' THEN 'cancelled' END, reason_code = CASE status WHEN 'completed' THEN 'legacy_completed' WHEN 'failed' THEN 'legacy_failure' WHEN 'cancelled' THEN 'legacy_cancelled' END, reason_detail = CASE WHEN status = 'running' THEN NULL ELSE '{}' END WHERE reason_code IS NULL",
     )

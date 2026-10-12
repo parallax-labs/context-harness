@@ -265,6 +265,7 @@ pub enum FailureReason {
     StorageError,
     AccountingError,
     RecoveryRejected,
+    ToolLoopDetected,
     LegacyFailure,
 }
 
@@ -311,6 +312,11 @@ pub enum RunOutcome {
     FailedWithReason {
         code: FailureReason,
         error: String,
+    },
+    FailedWithDetail {
+        code: FailureReason,
+        error: String,
+        detail: Value,
     },
     LimitExceeded {
         code: LimitReason,
@@ -403,6 +409,19 @@ fn stopped(outcome: RunOutcome) -> Result<StoppedRun> {
             output: None,
             error: Some(error),
         },
+        RunOutcome::FailedWithDetail {
+            code,
+            error,
+            detail,
+        } => StoppedRun {
+            lifecycle: RunLifecycle::Terminal,
+            outcome: RunOutcomeKind::Failed,
+            reason_code: reason_code(code),
+            reason_detail: detail,
+            status: "failed",
+            output: None,
+            error: Some(error),
+        },
         RunOutcome::LimitExceeded { code } => StoppedRun {
             lifecycle: RunLifecycle::Terminal,
             outcome: RunOutcomeKind::LimitExceeded,
@@ -453,7 +472,12 @@ pub struct ToolInvocation {
     pub arguments: sqlx::types::Json<Value>,
     pub status: String,
     pub result: Option<sqlx::types::Json<Value>>,
+    pub result_content: Option<String>,
     pub error: Option<String>,
+    pub outcome_class: Option<String>,
+    pub error_code: Option<String>,
+    pub repetition_key: Option<String>,
+    pub consecutive_count: Option<i64>,
     pub started_at: Option<i64>,
     pub completed_at: Option<i64>,
 }
@@ -462,6 +486,21 @@ pub enum ToolOutcome {
     Completed(Value),
     Failed(String),
     Denied(String),
+    Recoverable {
+        code: String,
+        message: String,
+        observation: Value,
+        observation_content: String,
+        repetition_key: String,
+    },
+    Terminal {
+        code: String,
+        message: String,
+    },
+    UncertainSideEffect {
+        code: String,
+        message: String,
+    },
 }
 
 /// Metadata for an immutable file stored beneath a run's artifact directory.
@@ -734,7 +773,7 @@ impl AgentRunStore {
             return Ok(RecoveryDisposition::RestartRequired);
         };
 
-        let unsafe_invocation: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tool_invocations WHERE run_id = ? AND (status != 'completed' OR requested_sequence >= ?))")
+        let unsafe_invocation: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tool_invocations WHERE run_id = ? AND ((status != 'completed' AND outcome_class IS NOT 'recoverable_error') OR requested_sequence >= ?))")
             .bind(&run.id)
             .bind(checkpoint_sequence)
             .fetch_one(&self.pool)
@@ -1082,7 +1121,7 @@ impl AgentRunStore {
             !delegated,
             "cannot resume delegated child or parent with descendants"
         );
-        let unsafe_tools: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tool_invocations WHERE run_id = ? AND status != 'completed')")
+        let unsafe_tools: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tool_invocations WHERE run_id = ? AND status != 'completed' AND outcome_class IS NOT 'recoverable_error')")
             .bind(id).fetch_one(&mut *tx).await?;
         ensure!(
             !unsafe_tools,
@@ -1238,17 +1277,22 @@ impl AgentRunStore {
             "cannot complete run with unfinished tools"
         );
         for call_id in unfinished {
+            let invocation_outcome = if stopped.outcome == RunOutcomeKind::Cancelled {
+                "cancelled"
+            } else {
+                "terminal_error"
+            };
             self.deny_pending_approval(tx, id, &call_id, "run interrupted")
                 .await?;
             self.append_in(
                 tx,
                 id,
                 "tool.failed",
-                &json!({"call_id": call_id, "error": "run interrupted"}),
+                &json!({"call_id": call_id, "outcome": invocation_outcome, "error": "run interrupted", "message": "run interrupted"}),
             )
             .await?;
-            sqlx::query("UPDATE tool_invocations SET status = 'failed', error = 'run interrupted', completed_at = ? WHERE run_id = ? AND call_id = ?")
-                .bind(Utc::now().timestamp_millis()).bind(id).bind(call_id).execute(&mut **tx).await?;
+            sqlx::query("UPDATE tool_invocations SET status = 'failed', error = 'run interrupted', outcome_class = ?, completed_at = ? WHERE run_id = ? AND call_id = ?")
+                .bind(invocation_outcome).bind(Utc::now().timestamp_millis()).bind(id).bind(call_id).execute(&mut **tx).await?;
         }
         self.append_in(
             tx,
@@ -1424,31 +1468,153 @@ impl AgentRunStore {
     }
 
     pub async fn finish_tool(&self, id: &str, call_id: &str, outcome: ToolOutcome) -> Result<()> {
-        let (status, expected, result, error) = match outcome {
+        self.finish_tool_with_count(id, call_id, outcome)
+            .await
+            .map(|_| ())
+    }
+
+    pub(crate) async fn finish_tool_with_count(
+        &self,
+        id: &str,
+        call_id: &str,
+        outcome: ToolOutcome,
+    ) -> Result<Option<u32>> {
+        let (
+            status,
+            event,
+            expected,
+            result,
+            result_content,
+            error,
+            outcome_class,
+            error_code,
+            repetition_key,
+        ) = match outcome {
             ToolOutcome::Completed(result) => (
                 "completed",
+                "tool.completed",
                 "started",
                 Some(sqlx::types::Json(result)),
                 None,
+                None,
+                "completed",
+                None,
+                None,
             ),
-            ToolOutcome::Failed(error) => ("failed", "started", None, Some(error)),
-            ToolOutcome::Denied(error) => ("denied", "requested", None, Some(error)),
+            ToolOutcome::Failed(error) => (
+                "failed",
+                "tool.failed",
+                "started",
+                None,
+                None,
+                Some(error),
+                "terminal_error",
+                None,
+                None,
+            ),
+            ToolOutcome::Denied(error) => (
+                "denied",
+                "tool.denied",
+                "requested",
+                None,
+                None,
+                Some(error),
+                "denied",
+                None,
+                None,
+            ),
+            ToolOutcome::Recoverable {
+                code,
+                message,
+                observation,
+                observation_content,
+                repetition_key,
+            } => (
+                "failed",
+                "tool.recoverable_error",
+                "started",
+                Some(sqlx::types::Json(observation)),
+                Some(observation_content),
+                Some(message),
+                "recoverable_error",
+                Some(code),
+                Some(repetition_key),
+            ),
+            ToolOutcome::Terminal { code, message } => (
+                "failed",
+                "tool.failed",
+                "started",
+                None,
+                None,
+                Some(message),
+                "terminal_error",
+                Some(code),
+                None,
+            ),
+            ToolOutcome::UncertainSideEffect { code, message } => (
+                "failed",
+                "tool.failed",
+                "started",
+                None,
+                None,
+                Some(message),
+                "uncertain_side_effect",
+                Some(code),
+                None,
+            ),
         };
         let mut tx = self.pool.begin().await?;
+        let consecutive_count = if outcome_class == "recoverable_error" {
+            let key = repetition_key
+                .as_deref()
+                .context("recoverable repetition key missing")?;
+            let previous: Option<(Option<String>, Option<String>, Option<i64>)> = sqlx::query_as(
+                "SELECT outcome_class, repetition_key, consecutive_count FROM tool_invocations WHERE run_id = ? AND requested_sequence < (SELECT requested_sequence FROM tool_invocations WHERE run_id = ? AND call_id = ?) ORDER BY requested_sequence DESC LIMIT 1",
+            )
+            .bind(id)
+            .bind(id)
+            .bind(call_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+            let count = match previous {
+                Some((Some(class), Some(previous_key), Some(count)))
+                    if class == "recoverable_error" && previous_key == key =>
+                {
+                    count
+                        .checked_add(1)
+                        .context("recoverable repetition count overflow")?
+                }
+                _ => 1,
+            };
+            Some(count)
+        } else {
+            None
+        };
         self.append_in(
             &mut tx,
             id,
-            &format!("tool.{status}"),
-            &json!({"call_id": call_id, "error": error}),
+            event,
+            &json!({
+                "call_id": call_id,
+                "outcome": outcome_class,
+                "code": error_code,
+                "error": error,
+                "message": error,
+                "repetition_key": repetition_key,
+                "consecutive_count": consecutive_count,
+            }),
         )
         .await?;
-        let changed = sqlx::query("UPDATE tool_invocations SET status = ?, result = ?, error = ?, completed_at = ? WHERE run_id = ? AND call_id = ? AND status = ?")
-            .bind(status).bind(result).bind(error).bind(Utc::now().timestamp_millis()).bind(id).bind(call_id).bind(expected).execute(&mut *tx).await?.rows_affected();
+        let changed = sqlx::query("UPDATE tool_invocations SET status = ?, result = ?, result_content = ?, error = ?, outcome_class = ?, error_code = ?, repetition_key = ?, consecutive_count = ?, completed_at = ? WHERE run_id = ? AND call_id = ? AND status = ?")
+            .bind(status).bind(result).bind(result_content).bind(error).bind(outcome_class).bind(error_code).bind(repetition_key).bind(consecutive_count).bind(Utc::now().timestamp_millis()).bind(id).bind(call_id).bind(expected).execute(&mut *tx).await?.rows_affected();
         ensure!(changed == 1, "invalid tool invocation transition");
         self.deny_pending_approval(&mut tx, id, call_id, "tool denied")
             .await?;
         tx.commit().await?;
-        Ok(())
+        consecutive_count
+            .map(u32::try_from)
+            .transpose()
+            .context("recoverable repetition count is invalid")
     }
 
     pub async fn tool_invocations(&self, id: &str) -> Result<Vec<ToolInvocation>> {

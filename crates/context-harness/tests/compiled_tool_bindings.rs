@@ -1,7 +1,10 @@
 use anyhow::{bail, ensure, Context, Result};
 use async_trait::async_trait;
 use context_harness::{
-    agent_model::{fake::FakeModel, FinishReason, ModelRegistry, ModelResponse, ToolCall},
+    agent_model::{
+        fake::FakeModel, FinishReason, ModelMessage, ModelProvider, ModelRegistry, ModelRequest,
+        ModelResponse, ModelResult, ToolCall,
+    },
     agent_resource::{
         AgentResource, Capability, LoadedAgentResource, ResourceDirectory, ResourceScope,
     },
@@ -11,10 +14,16 @@ use context_harness::{
         HostToolAuthority, RestrictionKind, ToolBindingRequest, ToolImplementationCatalog,
         ToolImplementationDescriptor, ToolImplementationFactory, ToolTrustClass,
     },
-    traits::{Tool, ToolContext},
+    traits::{Tool, ToolContext, ToolExecutionError},
 };
 use serde_json::{json, Value};
-use std::{fs, sync::Arc};
+use std::{
+    fs,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+};
 use tempfile::TempDir;
 use tokio::sync::watch;
 
@@ -105,11 +114,45 @@ impl Tool for EchoTool {
         Ok(())
     }
 
+    fn approval_arguments(&self, arguments: &Value) -> Result<Value> {
+        self.validate_arguments(arguments)?;
+        Ok(json!({
+            "text": arguments["text"],
+            "prefix": self.binding.fixed["prefix"],
+        }))
+    }
+
     async fn execute(&self, arguments: Value, _context: &ToolContext) -> Result<Value> {
         self.validate_arguments(&arguments)?;
         let text = arguments["text"].as_str().unwrap();
         if text == "fail" {
             bail!("fixture failure");
+        }
+        if text.starts_with("recover") {
+            let code = if text == "recover_alt_code" {
+                "unavailable"
+            } else {
+                "not_found"
+            };
+            return Err(ToolExecutionError::recoverable(
+                code,
+                "The requested fixture value does not exist.",
+            )?
+            .into());
+        }
+        if text == "terminal" {
+            return Err(ToolExecutionError::terminal(
+                "fixture_failed",
+                "The fixture could not complete the request.",
+            )?
+            .into());
+        }
+        if text == "uncertain" {
+            return Err(ToolExecutionError::uncertain_side_effect(
+                "commit_unknown",
+                "The fixture cannot confirm whether the operation completed.",
+            )?
+            .into());
         }
         if text == "block" {
             std::future::pending::<()>().await;
@@ -143,19 +186,23 @@ max_output_bytes = 128
 "#;
 
 fn agent() -> LoadedAgentResource {
-    let definition = AgentResource::parse(
+    agent_with_turns(3)
+}
+
+fn agent_with_turns(max_turns: u32) -> LoadedAgentResource {
+    let definition = AgentResource::parse(&format!(
         r#"
 [agent]
 name = "compiled-fixture"
 model = "test"
 tools = ["fixture.echo"]
 [agent.execution]
-max_turns = 3
+max_turns = {max_turns}
 timeout_seconds = 10
 [prompt]
 system = "Use the fixture."
-"#,
-    )
+"#
+    ))
     .unwrap();
     LoadedAgentResource {
         path: "agent.toml".into(),
@@ -174,14 +221,277 @@ fn catalog(capability: Capability) -> ToolImplementationCatalog {
 }
 
 fn tool_call(arguments: Value) -> ModelResponse {
+    tool_call_id("echo-1", arguments)
+}
+
+fn tool_call_id(id: &str, arguments: Value) -> ModelResponse {
     let mut call = ModelResponse::text("");
     call.finish_reason = FinishReason::ToolCalls;
     call.tool_calls = vec![ToolCall {
         name: "fixture.echo".into(),
-        id: "echo-1".into(),
+        id: id.into(),
         arguments,
     }];
     call
+}
+
+async fn runtime_with_responses(
+    temp: &TempDir,
+    responses: impl IntoIterator<Item = context_harness::agent_model::ModelResult<ModelResponse>>,
+) -> AgentRuntime {
+    runtime_with_provider(temp, Arc::new(FakeModel::new(responses))).await
+}
+
+async fn runtime_with_provider(temp: &TempDir, provider: Arc<dyn ModelProvider>) -> AgentRuntime {
+    let tools = temp.path().join("tools");
+    fs::create_dir_all(&tools).unwrap();
+    fs::write(tools.join("echo.toml"), RESOURCE).unwrap();
+    let directories = [ResourceDirectory {
+        path: tools,
+        scope: ResourceScope::Workspace,
+    }];
+    let mut config = Config::minimal();
+    config.db.path = temp.path().join("ctx.sqlite");
+    let mut models = ModelRegistry::default();
+    models
+        .register("test", "fake", "fixture", provider)
+        .unwrap();
+    let authority =
+        Arc::new(HostToolAuthority::new(temp.path(), vec![Capability::ReadOnly]).unwrap());
+    AgentRuntime::new(config, temp.path(), models)
+        .await
+        .unwrap()
+        .with_tool_binding_catalog(&directories, &catalog(Capability::ReadOnly), authority)
+        .await
+        .unwrap()
+}
+
+struct RecoverThenBlock(AtomicUsize);
+
+#[async_trait]
+impl ModelProvider for RecoverThenBlock {
+    async fn generate(&self, _request: &ModelRequest) -> ModelResult<ModelResponse> {
+        if self.0.fetch_add(1, Ordering::SeqCst) > 0 {
+            std::future::pending().await
+        }
+        Ok(tool_call_id("recover-1", json!({"text":"recover"})))
+    }
+}
+
+struct VerifyRecovered;
+
+#[async_trait]
+impl ModelProvider for VerifyRecovered {
+    async fn generate(&self, request: &ModelRequest) -> ModelResult<ModelResponse> {
+        let ModelMessage::Tool { call_id, content } = request.messages.last().unwrap() else {
+            panic!("recoverable observation missing")
+        };
+        assert_eq!(call_id, "recover-1");
+        assert_eq!(
+            content,
+            r#"{"ok":false,"error":{"type":"recoverable_tool_error","code":"not_found","message":"The requested fixture value does not exist."}}"#
+        );
+        Ok(ModelResponse::text("resumed"))
+    }
+}
+
+async fn wait_for_event(runtime: &AgentRuntime, event_type: &str, count: usize) -> String {
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            if let Some(run) = runtime.store().history(1).await.unwrap().first() {
+                let events = runtime.store().events(&run.id, 0, 100).await.unwrap();
+                if events
+                    .iter()
+                    .filter(|event| event.event_type == event_type)
+                    .count()
+                    >= count
+                {
+                    return run.id.clone();
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn compiled_tool_recoverable_error_is_exact_and_model_visible() {
+    let temp = TempDir::new().unwrap();
+    let runtime = runtime_with_responses(
+        &temp,
+        [
+            Ok(tool_call_id("recover-1", json!({"text":"recover"}))),
+            Ok(ModelResponse::text("recovered")),
+        ],
+    )
+    .await;
+    let (_sender, cancel) = watch::channel(false);
+    let run = runtime.run(&agent(), "Recover", cancel).await.unwrap();
+    assert_eq!(run.status, "completed");
+    let calls = runtime.store().tool_invocations(&run.id).await.unwrap();
+    assert_eq!(calls[0].outcome_class.as_deref(), Some("recoverable_error"));
+    assert_eq!(calls[0].error_code.as_deref(), Some("not_found"));
+    assert_eq!(calls[0].consecutive_count, Some(1));
+    assert_eq!(
+        calls[0].result_content.as_deref(),
+        Some(
+            r#"{"ok":false,"error":{"type":"recoverable_tool_error","code":"not_found","message":"The requested fixture value does not exist."}}"#
+        )
+    );
+    let checkpoint = runtime
+        .store()
+        .latest_checkpoint(&run.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(checkpoint.state.to_string().contains(r#"{\"ok\":false,\"error\":{\"type\":\"recoverable_tool_error\",\"code\":\"not_found\",\"message\":\"The requested fixture value does not exist.\"}}"#));
+    assert_eq!(run.usage.model_turns, 2);
+}
+
+#[tokio::test]
+async fn recoverable_observation_resumes_without_replaying_the_tool() {
+    let temp = TempDir::new().unwrap();
+    let runtime = Arc::new(
+        runtime_with_provider(&temp, Arc::new(RecoverThenBlock(AtomicUsize::new(0)))).await,
+    );
+    let resource = agent_with_turns(5);
+    let run_resource = resource.clone();
+    let running = runtime.clone();
+    let (_sender, cancel) = watch::channel(false);
+    let task = tokio::spawn(async move { running.run(&run_resource, "Recover", cancel).await });
+    let run_id = wait_for_event(&runtime, "model.requested", 2).await;
+    task.abort();
+    assert!(task.await.unwrap_err().is_cancelled());
+
+    let resumed_runtime = runtime_with_provider(&temp, Arc::new(VerifyRecovered)).await;
+    let (_sender, cancel) = watch::channel(false);
+    let resumed = resumed_runtime
+        .resume(&run_id, &resource, cancel)
+        .await
+        .unwrap();
+    assert_eq!(resumed.output.as_deref(), Some("resumed"));
+    let calls = resumed_runtime
+        .store()
+        .tool_invocations(&run_id)
+        .await
+        .unwrap();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].consecutive_count, Some(1));
+}
+
+#[tokio::test]
+async fn third_identical_recoverable_error_stops_before_another_model_call() {
+    let temp = TempDir::new().unwrap();
+    let runtime = runtime_with_responses(
+        &temp,
+        [
+            Ok(tool_call_id("recover-1", json!({"text":"recover"}))),
+            Ok(tool_call_id("recover-2", json!({"text":"recover"}))),
+            Ok(tool_call_id("recover-3", json!({"text":"recover"}))),
+        ],
+    )
+    .await;
+    let (_sender, cancel) = watch::channel(false);
+    let run = runtime
+        .run(&agent_with_turns(5), "Recover", cancel)
+        .await
+        .unwrap();
+    assert_eq!(run.reason_code.as_deref(), Some("tool_loop_detected"));
+    assert_eq!(run.usage.model_turns, 3);
+    let detail = &run.reason_detail.as_ref().unwrap().0;
+    assert_eq!(detail["consecutive_count"], 3);
+    assert_eq!(detail["tool"], "fixture.echo");
+    assert!(detail.get("message").is_none());
+    assert!(detail.get("arguments").is_none());
+    let calls = runtime.store().tool_invocations(&run.id).await.unwrap();
+    assert_eq!(
+        calls
+            .iter()
+            .map(|call| call.consecutive_count)
+            .collect::<Vec<_>>(),
+        vec![Some(1), Some(2), Some(3)]
+    );
+}
+
+#[tokio::test]
+async fn changed_arguments_and_success_reset_recoverable_repetition() {
+    let temp = TempDir::new().unwrap();
+    let runtime = runtime_with_responses(
+        &temp,
+        [
+            Ok(tool_call_id("recover-1", json!({"text":"recover"}))),
+            Ok(tool_call_id("recover-2", json!({"text":"recover-other"}))),
+            Ok(tool_call_id("success", json!({"text":"hello"}))),
+            Ok(tool_call_id("recover-3", json!({"text":"recover"}))),
+            Ok(ModelResponse::text("done")),
+        ],
+    )
+    .await;
+    let (_sender, cancel) = watch::channel(false);
+    let run = runtime
+        .run(&agent_with_turns(6), "Recover", cancel)
+        .await
+        .unwrap();
+    assert_eq!(run.status, "completed");
+    let calls = runtime.store().tool_invocations(&run.id).await.unwrap();
+    assert_eq!(
+        calls
+            .iter()
+            .map(|call| call.consecutive_count)
+            .collect::<Vec<_>>(),
+        vec![Some(1), Some(1), None, Some(1)]
+    );
+    assert_ne!(calls[0].repetition_key, calls[1].repetition_key);
+    assert_eq!(calls[0].repetition_key, calls[3].repetition_key);
+}
+
+#[tokio::test]
+async fn changed_error_code_starts_a_new_recoverable_sequence() {
+    let temp = TempDir::new().unwrap();
+    let runtime = runtime_with_responses(
+        &temp,
+        [
+            Ok(tool_call_id("recover-1", json!({"text":"recover"}))),
+            Ok(tool_call_id(
+                "recover-2",
+                json!({"text":"recover_alt_code"}),
+            )),
+            Ok(ModelResponse::text("done")),
+        ],
+    )
+    .await;
+    let (_sender, cancel) = watch::channel(false);
+    let run = runtime
+        .run(&agent_with_turns(4), "Recover", cancel)
+        .await
+        .unwrap();
+    let calls = runtime.store().tool_invocations(&run.id).await.unwrap();
+    assert_eq!(calls[0].consecutive_count, Some(1));
+    assert_eq!(calls[1].consecutive_count, Some(1));
+    assert_ne!(calls[0].repetition_key, calls[1].repetition_key);
+}
+
+#[tokio::test]
+async fn typed_terminal_and_uncertain_errors_remain_non_model_visible() {
+    for (text, class, code) in [
+        ("terminal", "terminal_error", "fixture_failed"),
+        ("uncertain", "uncertain_side_effect", "commit_unknown"),
+    ] {
+        let temp = TempDir::new().unwrap();
+        let runtime =
+            runtime_with_responses(&temp, [Ok(tool_call_id("failed-1", json!({"text":text})))])
+                .await;
+        let (_sender, cancel) = watch::channel(false);
+        let run = runtime.run(&agent(), "Fail", cancel).await.unwrap();
+        assert_eq!(run.reason_code.as_deref(), Some("tool_error"));
+        assert_eq!(run.usage.model_turns, 1);
+        let calls = runtime.store().tool_invocations(&run.id).await.unwrap();
+        assert_eq!(calls[0].outcome_class.as_deref(), Some(class));
+        assert_eq!(calls[0].error_code.as_deref(), Some(code));
+        assert!(calls[0].result.is_none());
+    }
 }
 
 #[tokio::test]
