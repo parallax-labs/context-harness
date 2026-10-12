@@ -538,6 +538,15 @@ Support blocked and needs-input continuation only after state ownership and chec
 safety are settled. Decide whether continuation resumes the same run or creates a
 linked run; do not introduce a Session abstraction without a separate requirement.
 
+**Contract status (2026-10-12): Resolved.**
+[ADR-0033](../adr/0033-same-run-suspended-continuation.md) selects explicit
+same-run continuation, a resolved runtime-control exchange and cumulative budgets
+that exclude only persisted suspended intervals. [SPEC-0030](../spec/0030-suspended-run-continuation.md)
+defines the public host and CLI operation, atomic persistence boundary, duration
+accounting, safety validation and compatibility contract. Implementation remains a
+separate slice; automatic worker continuation, delegated/MCP recovery and a Session
+abstraction remain deferred.
+
 **Acceptance:** a 25-plus-turn fixture remains bounded and inspectable; compaction
 retains required evidence; typed suspension and continuation preserve budgets and
 recovery identity.
