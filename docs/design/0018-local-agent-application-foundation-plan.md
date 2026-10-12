@@ -592,6 +592,17 @@ lease expiry, cancellation, blocked/needs-input, token/tool/time exhaustion, res
 drift, ingestion rejection, embedding failure and vector-sidecar failure. Verify that
 each layer reports its own state without claiming downstream success.
 
+**Slice status (2026-10-12): Implemented.** The integrated failure matrix is covered
+by deterministic focused fixtures: `agent_host` covers provider construction failure,
+identity drift, worker interruption/lease recovery and linked-run cancellation;
+`agent_task_cli` and `agent_task_store` cover missing resources, queue bounds and
+duplicate/conflicting submission; `agent_runtime` covers blocked/needs-input and
+token, tool and duration exhaustion; and `targeted_refresh` covers preflight and
+canonical-storage rejection. New offline refresh fixtures prove that embedding
+initialization and vector-sidecar maintenance failures preserve canonical indexing
+while reporting only their own derived layer as pending. No layer claims downstream
+success, and no live provider, credential or network dependency is required.
+
 #### 6C. Compatibility and performance
 
 Run migration tests from pre-0014 databases, synchronous runtime regressions,
