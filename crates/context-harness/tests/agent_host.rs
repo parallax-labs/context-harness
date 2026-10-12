@@ -1,5 +1,6 @@
 use anyhow::{ensure, Context, Result};
 use async_trait::async_trait;
+use chrono::{TimeZone, Utc};
 use context_harness::{
     agent_host::{AgentHostBuilder, AgentWorkerOptions},
     agent_model::{
@@ -10,14 +11,17 @@ use context_harness::{
     agent_runtime::policy::{DenyApprovals, RuntimePolicy},
     agent_store::{BlockedReason, RunOutcome, RunOutcomeKind},
     agent_task_store::{AgentTaskStatus, TaskSchedulingReason},
-    config::Config,
+    config::{Config, FilesystemConnectorConfig},
+    targeted_refresh::{CanonicalRefreshStatus, EnrolledSource, TargetedRefresher},
     tool_binding::{
         HostToolAuthority, ResolvedToolBinding, RestrictionKind, ToolBindingRequest,
         ToolImplementationCatalog, ToolImplementationDescriptor, ToolImplementationFactory,
         ToolTrustClass,
     },
     traits::{Tool, ToolContext},
+    SourceItem,
 };
+use context_harness_core::search::{search, SearchParams, SearchRequest};
 use serde_json::{json, Value};
 use std::time::Duration;
 use std::{
@@ -1074,4 +1078,152 @@ async fn host_builder_grants_no_implicit_tool_authority() {
     let run = host.run("Echo hello", cancel).await.unwrap();
     assert_eq!(run.status, "failed");
     assert_eq!(calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn neutral_fixture_composes_task_host_refresh_and_retrieval() {
+    let (temp, mut config, agents, tools) = fixture();
+    let content = temp.path().join("content");
+    fs::create_dir(&content).unwrap();
+    config.connectors.filesystem.insert(
+        "fixture-docs".into(),
+        FilesystemConnectorConfig {
+            root: content.clone(),
+            include_globs: vec!["**/*.md".into()],
+            exclude_globs: Vec::new(),
+            follow_symlinks: false,
+            max_extract_bytes: 1024,
+        },
+    );
+    let inspection_config = config.clone();
+    let builds = Arc::new(AtomicUsize::new(0));
+    let calls = Arc::new(AtomicUsize::new(0));
+    let binds = Arc::new(AtomicUsize::new(0));
+    let authority =
+        Arc::new(HostToolAuthority::new(temp.path(), vec![Capability::ReadOnly]).unwrap());
+    let builder = AgentHostBuilder::new(
+        config.clone(),
+        temp.path(),
+        model_catalog(builds.clone(), calls.clone()),
+    )
+    .unwrap()
+    .with_agent_resources(agents)
+    .with_tool_bindings(tools, tool_catalog(binds.clone()), authority)
+    .with_policy(
+        RuntimePolicy {
+            allow: vec![Capability::ReadOnly],
+            require_approval: vec![],
+        },
+        Arc::new(DenyApprovals),
+    );
+    let submitter = builder
+        .clone()
+        .build_task_submitter("fixture-host")
+        .await
+        .unwrap();
+    let task = match submitter
+        .submit("neutral-fixture", "Echo hello", b"fixture-v1".to_vec())
+        .await
+        .unwrap()
+    {
+        context_harness::agent_task_store::AgentTaskSubmissionResult::Created(task) => task,
+        _ => panic!("expected a new task"),
+    };
+    let task_store = submitter.store().clone();
+    let worker = builder
+        .build_worker(AgentWorkerOptions {
+            worker_id: Some("neutral-fixture-worker".into()),
+            lease_duration: Duration::from_secs(5),
+            heartbeat_interval: Duration::from_secs(1),
+            polling_interval: Duration::from_millis(50),
+            graceful_shutdown_timeout: Duration::from_secs(3),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let running = tokio::spawn(async move { worker.run(shutdown_rx).await });
+    let terminal = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let current = task_store.get(&task.id).await.unwrap().unwrap();
+            if current.status == AgentTaskStatus::Terminal {
+                break current;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    shutdown_tx.send(true).unwrap();
+    running.await.unwrap().unwrap();
+
+    assert_eq!(
+        terminal.scheduling_reason_kind(),
+        Some(TaskSchedulingReason::RunStopped)
+    );
+    let app = context_harness::app_store::SqliteAppStore::connect(&inspection_config)
+        .await
+        .unwrap();
+    let runs = app.agent_runs(&terminal.workspace_id).unwrap();
+    let run = runs
+        .get_run(terminal.run_id.as_deref().unwrap())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(run.outcome, Some(RunOutcomeKind::Completed));
+    assert_eq!(run.output.as_deref(), Some("done"));
+    assert_eq!(runs.tool_invocations(&run.id).await.unwrap().len(), 1);
+    assert_eq!(builds.load(Ordering::SeqCst), 1);
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+    assert_eq!(binds.load(Ordering::SeqCst), 1);
+
+    let body = "neutral fixture sapphire retrieval evidence";
+    fs::write(content.join("result.md"), body).unwrap();
+    let enrolled =
+        EnrolledSource::resolve(&config, temp.path(), "filesystem:fixture-docs").unwrap();
+    let refresher = TargetedRefresher::new(config, temp.path()).await.unwrap();
+    let report = refresher
+        .refresh(
+            &enrolled,
+            vec![SourceItem {
+                source: "filesystem:fixture-docs".into(),
+                source_id: "result.md".into(),
+                source_url: None,
+                title: Some("Fixture result".into()),
+                author: None,
+                created_at: Utc.timestamp_opt(1_700_000_000, 0).unwrap(),
+                updated_at: Utc.timestamp_opt(1_700_000_001, 0).unwrap(),
+                content_type: "text/markdown".into(),
+                body: fs::read_to_string(content.join("result.md")).unwrap(),
+                metadata_json: "{}".into(),
+                raw_json: None,
+                raw_bytes: None,
+            }],
+        )
+        .await;
+    assert!(report.preflight_passed);
+    assert_eq!(report.items[0].canonical, CanonicalRefreshStatus::Indexed);
+
+    let hits = search(
+        &app,
+        &SearchRequest {
+            query: "sapphire",
+            query_vec: None,
+            mode: "keyword",
+            source_filter: Some("filesystem:fixture-docs"),
+            since: None,
+            params: SearchParams {
+                hybrid_alpha: 0.5,
+                candidate_k_keyword: 10,
+                candidate_k_vector: 10,
+                final_limit: 5,
+            },
+            explain: false,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].source_id, "result.md");
+    assert!(hits[0].snippet.contains("sapphire"));
 }

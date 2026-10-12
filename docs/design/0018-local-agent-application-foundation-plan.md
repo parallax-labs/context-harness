@@ -578,6 +578,13 @@ Build a small, domain-neutral fixture host that:
 The fixture proves composition. It must not introduce wiki, hook, publication or
 vendor-specific behavior into runtime code.
 
+**Slice status (2026-10-12): Implemented.** A domain-neutral integration fixture now
+uses only public host APIs to register a compiled scoped tool and local model,
+submit and execute a durable background task, inspect typed task/run completion,
+write a host-owned document, request targeted refresh and verify source-scoped
+keyword retrieval. The fixture adds no production behavior or application-specific
+policy and proves the independently delivered seams compose without another facade.
+
 #### 6B. Failure matrix
 
 Exercise provider down/model missing, queue full, duplicate/conflict, worker crash,
