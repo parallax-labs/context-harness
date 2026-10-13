@@ -280,3 +280,69 @@ async fn canonical_replacement_rolls_back_when_chunk_write_fails() {
     .unwrap();
     assert_eq!(body, "stable original");
 }
+
+#[tokio::test]
+async fn embedding_failure_preserves_canonical_success_and_reports_pending() {
+    let temp = TempDir::new().unwrap();
+    let mut embedding_config = config(&temp);
+    embedding_config.embedding.provider = "unavailable-fixture".into();
+    embedding_config.embedding.model = Some("fixture".into());
+    embedding_config.embedding.dims = Some(3);
+    embedding_config.vector_index.backend = "disabled".into();
+    let enrolled =
+        EnrolledSource::resolve(&embedding_config, temp.path(), "filesystem:docs").unwrap();
+    let report = TargetedRefresher::new(embedding_config, temp.path())
+        .await
+        .unwrap()
+        .refresh(
+            &enrolled,
+            vec![item(
+                "notes/embedding.md",
+                "canonical embedding failure evidence",
+            )],
+        )
+        .await;
+    assert_eq!(report.items[0].canonical, CanonicalRefreshStatus::Indexed);
+    assert_eq!(report.items[0].embedding, DerivedRefreshStatus::Pending);
+    assert_eq!(report.items[0].sidecar, DerivedRefreshStatus::NotConfigured);
+    assert_eq!(
+        report.items[0].reasons,
+        vec![RefreshReason::EmbeddingPending]
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn sidecar_failure_preserves_canonical_success_and_reports_pending() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let sidecar_temp = TempDir::new().unwrap();
+    let mut sidecar_config = config(&sidecar_temp);
+    sidecar_config.vector_index.backend = "zvec".into();
+    let sidecar = sidecar_temp.path().join("sidecar");
+    std::fs::create_dir(&sidecar).unwrap();
+    std::fs::write(sidecar.join("manifest"), "fixture").unwrap();
+    std::fs::set_permissions(&sidecar, std::fs::Permissions::from_mode(0o500)).unwrap();
+    sidecar_config.vector_index.path = sidecar.clone();
+    let enrolled =
+        EnrolledSource::resolve(&sidecar_config, sidecar_temp.path(), "filesystem:docs").unwrap();
+    let report = TargetedRefresher::new(sidecar_config, sidecar_temp.path())
+        .await
+        .unwrap()
+        .refresh(
+            &enrolled,
+            vec![item(
+                "notes/sidecar.md",
+                "canonical sidecar failure evidence",
+            )],
+        )
+        .await;
+    std::fs::set_permissions(&sidecar, std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert_eq!(report.items[0].canonical, CanonicalRefreshStatus::Indexed);
+    assert_eq!(
+        report.items[0].embedding,
+        DerivedRefreshStatus::NotConfigured
+    );
+    assert_eq!(report.items[0].sidecar, DerivedRefreshStatus::Pending);
+    assert_eq!(report.items[0].reasons, vec![RefreshReason::SidecarPending]);
+}
