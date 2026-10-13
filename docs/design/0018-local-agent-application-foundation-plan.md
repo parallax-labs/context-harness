@@ -611,12 +611,14 @@ connector sync equivalence. Measure queue claim overhead, local cold/warm infere
 context projection size and targeted-versus-full refresh. Set thresholds from observed
 baselines rather than inventing them in advance.
 
-**Slice status (2026-10-13): In progress.** The first reproducible baseline slice adds
-an ignored durable queue probe and RUNBOOK-0021. On the recorded M3 Pro host, 250
-submissions/claims averaged 0.341/0.232 ms; `qwen3.6:latest` cold total/load latency
-was 8.59/8.19 seconds and stable warm totals were 404–422 ms. These are host-specific
-observations, not universal thresholds. Compatibility gates, context-projection size
-and targeted-versus-full refresh measurements remain before 6C is complete.
+**Slice status (2026-10-13): Implemented.** Compatibility remains covered by legacy
+migration, synchronous runtime, declarative binding, multi-workspace, MCP/profile and
+connector-equivalence suites. Reproducible probes and RUNBOOK-0021 record queue,
+`qwen3.6`, bounded-context and targeted/full-refresh baselines. On the reference M3
+Pro host, 26-turn requests remained 1,011–6,798 bytes and one targeted update was
+89.65x faster than a 100-document discovery/index pass. Host-specific diagnostic
+guardrails derive from these observations and are not imposed as cross-platform CI
+timing assertions.
 
 #### 6D. Documentation graduation
 

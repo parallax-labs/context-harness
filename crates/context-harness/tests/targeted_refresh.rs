@@ -2,13 +2,16 @@ use chrono::{TimeZone, Utc};
 use context_harness::{
     app_store::SqliteAppStore,
     config::Config,
+    connector_fs::FilesystemConnector,
     targeted_refresh::{
         CanonicalRefreshStatus, DerivedRefreshStatus, EnrolledSource, RefreshReason,
         TargetedRefresher, MAX_TARGETED_REFRESH_ITEMS,
     },
+    traits::Connector,
     SourceItem,
 };
 use sqlx::Row;
+use std::time::Instant;
 use tempfile::TempDir;
 
 fn config(temp: &TempDir) -> Config {
@@ -87,6 +90,46 @@ fn item(source_id: &str, body: &str) -> SourceItem {
         raw_json: None,
         raw_bytes: None,
     }
+}
+
+#[tokio::test]
+#[ignore = "performance probe; run with --ignored --nocapture"]
+async fn perf_targeted_refresh_vs_full_source_scan() {
+    const DOCUMENTS: usize = 100;
+    let temp = TempDir::new().unwrap();
+    let config = config(&temp);
+    let root = config.connectors.filesystem["docs"].root.clone();
+    for index in 0..DOCUMENTS {
+        std::fs::write(
+            root.join(format!("doc-{index}.md")),
+            format!("fixture document {index} baseline content"),
+        )
+        .unwrap();
+    }
+    let connector =
+        FilesystemConnector::new("docs".into(), config.connectors.filesystem["docs"].clone());
+    let enrolled = EnrolledSource::resolve(&config, temp.path(), "filesystem:docs").unwrap();
+    let refresher = TargetedRefresher::new(config, temp.path()).await.unwrap();
+    let full_started = Instant::now();
+    let discovered = connector.scan().await.unwrap();
+    assert_eq!(discovered.len(), DOCUMENTS);
+    let full = refresher.refresh(&enrolled, discovered).await;
+    assert!(full.preflight_passed);
+    let full_ms = full_started.elapsed().as_secs_f64() * 1_000.0;
+
+    let targeted_started = Instant::now();
+    let targeted = refresher
+        .refresh(
+            &enrolled,
+            vec![item("doc-50.md", "fixture document 50 updated content")],
+        )
+        .await;
+    assert!(targeted.preflight_passed);
+    let targeted_ms = targeted_started.elapsed().as_secs_f64() * 1_000.0;
+    println!(
+        "refresh_baseline documents={DOCUMENTS} full_scan_index_ms={full_ms:.3} targeted_one_ms={targeted_ms:.3} ratio={:.2}",
+        full_ms / targeted_ms
+    );
 }
 
 #[test]

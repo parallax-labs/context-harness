@@ -44,16 +44,43 @@ cold/warm inference. Results are observations, not portable service-level object
 4. Repeat the second `curl` command five times without unloading the model. Treat the
    first sample as cache warm-up and report the remaining range.
 
+5. Measure the 26-turn bounded context fixture.
+
+   ```bash
+   cargo test -p context-harness --test agent_runtime bounded_context_supports_more_than_twenty_five_model_turns -- --nocapture
+   ```
+
+   Expected: one `context_baseline` line containing minimum, maximum and final
+   serialized provider-request sizes.
+
+6. Compare a 100-document filesystem discovery/index pass with one targeted update.
+
+   ```bash
+   cargo test -p context-harness --test targeted_refresh perf_targeted_refresh_vs_full_source_scan -- --ignored --nocapture
+   ```
+
+   Expected: one `refresh_baseline` line with both durations and their ratio.
+
 ## Verification
 
 - The queue probe exits zero and reports all 250 submissions and claims.
 - Ollama returns exactly `baseline ok` with `done_reason` equal to `stop`.
 - The report includes host, Ollama version, model tag and model ID.
+- Every context request remains below its configured byte ceiling.
+- Targeted refresh remains materially faster than full discovery/indexing for the
+  same fixture corpus.
 
 Verified observation: MacBook Pro `Mac15,7`, M3 Pro (12 cores), 36 GB, Ollama
 0.23.2, `qwen3.6:latest` ID `07d35212591f`. Cold total/load were 8593.5/8191.7
 ms; stable warm totals were 404.3–422.5 ms. Queue submission/claim means were
-0.341/0.232 ms for 250 operations.
+0.341/0.232 ms for 250 operations. The 26-turn context fixture ranged from 1,011
+to 6,798 bytes. A 100-document full scan/index took 59.420 ms versus 0.663 ms for
+one targeted update (89.65x).
+
+For this reference host, investigate queue means above 1 ms, cold loads above 15
+seconds, stable warm totals above 1 second, any request exceeding its configured
+context ceiling, or a targeted/full ratio below 10x. These are diagnostic guardrails,
+not cross-platform CI assertions.
 
 ## Troubleshooting
 
