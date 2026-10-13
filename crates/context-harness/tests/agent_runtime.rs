@@ -287,16 +287,19 @@ async fn bounded_context_supports_more_than_twenty_five_model_turns() {
     let run = runtime.run(&bounded, "question", cancel).await.unwrap();
     assert_eq!(run.output.as_deref(), Some("finished"));
     assert_eq!(run.usage.model_turns, 26);
-    assert_eq!(
-        runtime
-            .store()
-            .events(&run.id, 0, 1000)
-            .await
-            .unwrap()
-            .iter()
-            .filter(|event| event.event_type == "context.projected")
-            .count(),
-        26
+    let events = runtime.store().events(&run.id, 0, 1000).await.unwrap();
+    let sizes = events
+        .iter()
+        .filter(|event| event.event_type == "context.projected")
+        .map(|event| event.payload["request_bytes"].as_u64().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(sizes.len(), 26);
+    assert!(sizes.iter().all(|size| *size <= 2 * 1024 * 1024));
+    println!(
+        "context_baseline turns=26 min_bytes={} max_bytes={} final_bytes={}",
+        sizes.iter().min().unwrap(),
+        sizes.iter().max().unwrap(),
+        sizes.last().unwrap()
     );
 }
 
