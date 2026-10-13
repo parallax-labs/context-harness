@@ -1,6 +1,6 @@
 # PRD-0016: Durable Background Agent Tasks
 
-**Status:** Draft
+**Status:** Delivered
 **Date:** 2026-10-02
 **Author:** Context Harness contributors
 
@@ -84,6 +84,14 @@ workflow engine.
   private-module access or runtime public-name dispatch.
 - No worker starts during list/show/validate, `ctx serve`, or ordinary sync.
 - Existing direct agent execution and recovery tests remain green.
+
+**Evaluation (2026-10-13): Delivered.** Public host, task-store, worker and CLI
+fixtures cover durable acceptance, deduplication/conflict, queue bounds, exclusive
+claims, leases, cancellation, drift, crash reconciliation and task/run correlation.
+The neutral cross-track fixture composes a compiled provider and scoped tool with a
+background task and targeted refresh entirely through public APIs. No worker starts
+during static inspection, serving or sync; foreground worker operation is documented
+in [RUNBOOK-0020](../runbook/0020-operate-agent-task-worker.md).
 
 ## Dependencies and Risks
 

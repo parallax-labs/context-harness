@@ -1,6 +1,6 @@
 # PRD-0014: Durable Long-Running Agent Runs
 
-**Status:** In Progress
+**Status:** Delivered
 **Date:** 2026-10-01
 **Author:** Context Harness contributors
 
@@ -122,6 +122,15 @@ happened instead of treating every non-successful outcome as the same failure.
   runs remain immutable.
 - Existing local-agent, provider, tool-policy, MCP compatibility and delegation
   suites continue to pass or have an approved migration documented in the spec.
+
+**Evaluation (2026-10-13): Delivered.** Deterministic runtime fixtures cover typed
+completion and suspension, cumulative turn/duration/token/tool budgets, 25-plus-turn
+bounded projection, materialized working state, recoverable observations, same-run
+continuation and conservative recovery. Compatibility and performance evidence is
+recorded in [DESIGN-0018](../design/0018-local-agent-application-foundation-plan.md)
+and [RUNBOOK-0021](../runbook/0021-agent-foundation-performance.md). Semantic
+retrieval is not performed implicitly during projection; agents retain explicit,
+source-scoped search/get tools when indexed context is needed.
 
 ## Dependencies and Risks
 

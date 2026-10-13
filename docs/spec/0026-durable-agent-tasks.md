@@ -1,6 +1,6 @@
 # SPEC-0026: Durable Agent Tasks
 
-**Status:** Authoritative — implementation pending
+**Status:** Authoritative — implemented
 **Date:** 2026-10-05
 **Related:** [PRD-0016](../prd/0016-durable-background-agent-tasks.md),
 [DESIGN-0016](../design/0016-durable-background-agent-tasks.md),

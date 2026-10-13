@@ -1,6 +1,6 @@
 # SPEC-0025: Durable Run Lifecycle and Cumulative Budgets
 
-**Status:** Authoritative — implementation pending
+**Status:** Authoritative — implemented
 **Date:** 2026-10-03
 **Related:** [PRD-0014](../prd/0014-durable-agent-runs.md),
 [DESIGN-0014](../design/0014-structured-agent-run-state.md),

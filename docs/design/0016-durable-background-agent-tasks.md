@@ -1,6 +1,6 @@
 # DESIGN-0016: Durable Background Agent Tasks
 
-**Status:** Draft
+**Status:** Reference
 **Date:** 2026-10-02
 **Author:** Context Harness contributors
 **Related:** [PRD-0016](../prd/0016-durable-background-agent-tasks.md), [PRD-0014](../prd/0014-durable-agent-runs.md), [DESIGN-0014](0014-structured-agent-run-state.md), [DESIGN-0010](0010-local-agent-runtime.md), [SPEC-0017](../spec/0017-local-agent-execution.md), [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md), [SPEC-0023](../spec/0023-declarative-tool-bindings.md), [SPEC-0025](../spec/0025-durable-run-lifecycle-and-budgets.md)
@@ -167,3 +167,9 @@ pin a versioned non-secret accepted identity, fail visibly on drift, permit one 
 per task, define database-clock lease and shutdown bounds, limit scheduling state to
 four task-owned values, project linked run outcomes, and defer CLI exposure to Phase
 4D.
+
+## Implementation Status
+
+**Implemented (2026-10-13).** Task persistence, public host submission, bounded
+workers, reconciliation and the foreground CLI surfaces are delivered. The
+authoritative behavior lives in SPEC-0026; RUNBOOK-0020 covers operation.

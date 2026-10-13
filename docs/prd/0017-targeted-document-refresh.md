@@ -1,6 +1,6 @@
 # PRD-0017: Targeted Document Refresh
 
-**Status:** Draft
+**Status:** Delivered
 **Date:** 2026-10-02
 **Author:** Context Harness contributors
 
@@ -74,6 +74,13 @@ a connector checkpoint past unseen work or changing unrelated documents.
 - Disabled, successful local, and failed embedding modes produce explicit tested
   outcomes and safe retry behavior.
 - Full sync regression tests continue to use the shared ingestion path successfully.
+
+**Evaluation (2026-10-13): Delivered.** Targeted-refresh fixtures cover bounded
+whole-batch preflight, create/update, stable identity, superseded-chunk removal,
+checkpoint and unrelated-document isolation, idempotency, disabled/successful/failed
+embedding states and vector-sidecar failure. The neutral application fixture verifies
+search visibility without connector discovery. The delivered API remains library-only;
+deletion, connector item lookup, dry-run and CLI exposure remain explicit non-goals.
 
 ## Dependencies and Risks
 

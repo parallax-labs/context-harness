@@ -165,9 +165,12 @@ code {
     gap: 8px;
     padding: 14px 32px;
     font-size: 16px;
+    white-space: nowrap;
 
     svg { flex-shrink: 0; }
 }
+
+.download-label { white-space: nowrap; }
 
 .platform-select {
     position: relative;
@@ -664,12 +667,16 @@ code {
 }
 
 .cta-block {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
     text-align: center;
     padding: 48px;
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    p { font-size: 20px; font-weight: 600; margin-bottom: 24px; }
+    p { width: 100%; font-size: 20px; font-weight: 600; margin-bottom: 12px; }
 }
 
 // ── Footer ──
@@ -836,11 +843,12 @@ code {
     .hero-actions-row { flex-direction: column; align-items: center; width: 100%; }
     .hero-actions-row .btn { width: 100%; max-width: 280px; justify-content: center; min-height: 48px; }
     .download-cta { width: 100%; max-width: 280px; }
-    .btn-download { width: 100%; justify-content: center; min-height: 48px; }
+    .btn-download { width: 100%; justify-content: center; min-height: 48px; font-size: 15px; padding-inline: 18px; }
     .platform-dropdown { min-width: 100%; }
     .footer-inner { flex-direction: column; gap: 16px; text-align: center; }
     .footer-links a { min-height: 44px; display: inline-flex; align-items: center; }
     .terminal-body { font-size: 11px; padding: 16px; -webkit-overflow-scrolling: touch; }
     .step { flex-direction: column; gap: 12px; }
+    .cta-block { padding: 32px 20px; }
+    .cta-block .btn { width: 100%; justify-content: center; }
 }
-

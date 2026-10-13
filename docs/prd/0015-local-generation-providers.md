@@ -1,6 +1,6 @@
 # PRD-0015: Local Generation Providers
 
-**Status:** Planned
+**Status:** Delivered
 **Date:** 2026-10-02
 **Author:** Context Harness contributors
 
@@ -80,6 +80,14 @@ fallback or automatic model download.
 - An external fixture host registers a test provider without editing provider-name
   branches in the runtime.
 - Existing provider and agent-runtime regression suites remain green.
+
+**Evaluation (2026-10-13): Delivered.** The trusted provider catalog, native Ollama
+adapter, offline validation, classified failures, local-only transport policy,
+compiled-host registration fixture and OpenAI/fake compatibility coverage are
+implemented. Fixture protocol tests cover failure and cancellation boundaries; the
+opt-in `qwen3.6` cold/warm live procedure and observed baseline are recorded in
+[RUNBOOK-0021](../runbook/0021-agent-foundation-performance.md). Static inspection
+does not establish model readiness or quality and never contacts the provider.
 
 ## Dependencies and Risks
 

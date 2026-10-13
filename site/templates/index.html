@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}Context Harness — Local-First Context Engine for AI Tools{% endblock %}
-{% block description %}Index project knowledge locally, give existing AI clients reusable profiles, or run bounded agents with durable history.{% endblock %}
+{% block title %}Context Harness — Local-First Knowledge and Agent Runtime{% endblock %}
+{% block description %}Index project knowledge locally, equip the AI clients you already use, or run governed agents with durable tasks and history.{% endblock %}
 {% block body_class %}landing{% endblock %}
 
-{% block og_title %}Context Harness — Local-First Context Engine for AI Tools{% endblock %}
-{% block twitter_title %}Context Harness — Local-First Context Engine for AI Tools{% endblock %}
+{% block og_title %}Context Harness — Local-First Knowledge and Agent Runtime{% endblock %}
+{% block twitter_title %}Context Harness — Local-First Knowledge and Agent Runtime{% endblock %}
 
 {% block structured_data %}
 <script type="application/ld+json">
@@ -28,10 +28,9 @@
       "name": "Context Harness",
       "applicationCategory": "DeveloperApplication",
       "operatingSystem": "macOS, Linux, Windows",
-      "description": "A local-first context engine for AI tools. Ingest and retrieve project knowledge, give existing AI clients reusable profiles, or run bounded local agents with durable history.",
+      "description": "A local-first knowledge and agent runtime. Index project context, equip existing AI clients with reusable profiles, or run governed agents with durable tasks and history.",
       "url": "{{ config.base_url | safe }}",
       "downloadUrl": "https://github.com/parallax-labs/context-harness/releases/latest",
-      "softwareVersion": "0.3.0",
       "license": "https://www.gnu.org/licenses/agpl-3.0.html",
       "programmingLanguage": "Rust",
       "offers": {
@@ -42,13 +41,15 @@
       "featureList": [
         "Local-first SQLite storage with FTS5 and vector embeddings",
         "Hybrid search combining BM25 keyword and cosine semantic scoring",
-        "MCP server for Cursor, Claude, and AI agent integration",
+        "MCP server and reusable profiles for external AI clients",
         "Reusable MCP profiles with roles, tools, arguments, and startup context",
-        "Durable local agents with scoped declarative tools and approvals",
+        "Durable local agents with scoped tools, typed outcomes, approvals, and recovery",
+        "Native loopback-only Ollama generation with no silent cloud fallback",
+        "Durable background task workers and public application-host APIs",
+        "Targeted refresh for host-known changed documents",
         "Connector-driven ingestion from filesystem, Git, S3, and Lua scripts",
         "Lua extensibility for custom connectors and agent tools",
-        "CLI-first Unix-composable tooling",
-        "Offline-first RAG for web applications"
+        "CLI-first Unix-composable tooling"
       ]
     },
     {
@@ -59,7 +60,7 @@
           "name": "What is Context Harness?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Context Harness is an open-source, local-first context engine for AI tools. It ingests documents and knowledge from any source (filesystem, Git, S3, or custom Lua scripts), indexes them in a local SQLite database with FTS5 and vector embeddings, and exposes hybrid keyword + semantic search via a CLI and MCP-compatible HTTP server."
+            "text": "Context Harness is an open-source, local-first knowledge and agent runtime. It indexes project knowledge in SQLite, exposes it to existing AI clients through MCP and reusable profiles, and can run governed local agents with scoped tools, durable history, background tasks, and conservative recovery."
           }
         },
         {
@@ -75,7 +76,7 @@
           "name": "Does Context Harness require a cloud service or API keys?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "No. Context Harness is fully local-first. All data is stored in a local SQLite database. Keyword search works out of the box with no external dependencies. Semantic search uses local embeddings by default. No cloud services, API keys, or external databases are required."
+            "text": "No cloud service is required. Canonical data is stored in local SQLite, keyword search works without an API key, and local embeddings and Ollama generation are supported. Cloud providers remain explicit opt-in configuration; Context Harness never silently falls back from a selected local generation provider."
           }
         },
         {
@@ -162,19 +163,19 @@
     <div class="container">
         <div class="hero-badge">Open Source · Local-First · Rust</div>
         <h1 class="hero-title">
-            Give AI the right project context.<br>
-            <span class="hero-accent">Keep the conversation—or let local agents run it.</span>
+            Your project knowledge, ready for AI.<br>
+            <span class="hero-accent">Keep control of where the work runs.</span>
         </h1>
         <p class="hero-sub">
-            Ingest knowledge from any source and index it locally. Add reusable
-            profiles to Cursor and Claude, or run bounded agents with scoped tools,
-            approvals, and durable history.
+            Build one inspectable local knowledge layer. Use it from Cursor, Claude,
+            and custom clients—or run governed agents with scoped tools, local models,
+            durable tasks, typed outcomes, and safe recovery.
         </p>
         <div class="hero-actions">
             <div class="download-cta">
                 <a href="https://github.com/parallax-labs/context-harness/releases/latest" class="btn btn-primary btn-download" id="download-btn">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    Download for <span id="platform-label">your platform</span>
+                    <span class="download-label">Download for <span id="platform-label">your platform</span></span>
                 </a>
                 <div class="platform-select">
                     <button type="button" class="platform-toggle" id="platform-toggle" aria-expanded="false" aria-controls="platform-dropdown">
@@ -230,17 +231,11 @@
                 <div class="terminal-line" style="--delay: 0"><span class="prompt">$</span> <span class="cmd">ctx init</span></div>
                 <div class="terminal-line" style="--delay: 1"><span class="output">Database initialized successfully.</span></div>
                 <div class="terminal-line" style="--delay: 2"><span class="prompt">$</span> <span class="cmd">ctx sync filesystem</span></div>
-                <div class="terminal-line" style="--delay: 3"><span class="output">sync filesystem</span></div>
-                <div class="terminal-line" style="--delay: 3.2"><span class="output dim">  fetched: 2,847 items</span></div>
-                <div class="terminal-line" style="--delay: 3.4"><span class="output dim">  upserted documents: 2,847</span></div>
-                <div class="terminal-line" style="--delay: 3.6"><span class="output dim">  chunks written: 12,403</span></div>
-                <div class="terminal-line" style="--delay: 3.8"><span class="output success">ok</span></div>
-                <div class="terminal-line" style="--delay: 5"><span class="prompt">$</span> <span class="cmd">ctx search "JWT signing key rotation"</span></div>
-                <div class="terminal-line" style="--delay: 6"><span class="output">1. <span class="score">[0.94]</span> filesystem / auth-module.rs</span></div>
-                <div class="terminal-line" style="--delay: 6.3"><span class="output dim">    excerpt: "JWT signing key loaded from AWS Secrets Manager..."</span></div>
-                <div class="terminal-line" style="--delay: 6.6"><span class="output">2. <span class="score">[0.81]</span> filesystem / deployment-runbook.md</span></div>
-                <div class="terminal-line" style="--delay: 6.9"><span class="output dim">    excerpt: "Key rotation procedure for production services..."</span></div>
-                <div class="terminal-line blink" style="--delay: 7.5"><span class="prompt">$</span> <span class="cursor-blink">_</span></div>
+                <div class="terminal-line" style="--delay: 3"><span class="output success">Project knowledge indexed in local SQLite.</span></div>
+                <div class="terminal-line" style="--delay: 4"><span class="prompt">$</span> <span class="cmd">ctx agent run project-researcher "Trace the recovery contract"</span></div>
+                <div class="terminal-line" style="--delay: 5"><span class="output dim">search → get → inspect → final answer</span></div>
+                <div class="terminal-line" style="--delay: 6"><span class="output success">completed · history and evidence recorded</span></div>
+                <div class="terminal-line blink" style="--delay: 6.8"><span class="prompt">$</span> <span class="cursor-blink">_</span></div>
             </div>
         </div>
     </div>
@@ -248,8 +243,8 @@
 
 <section id="features" class="features">
     <div class="container">
-        <h2 class="section-title">One context layer. Two ways to put it to work.</h2>
-        <p class="section-sub">Use profiles inside the AI clients you already have, or let Context Harness run governed agents itself.</p>
+        <h2 class="section-title">One local foundation. Three useful layers.</h2>
+        <p class="section-sub">Start with searchable knowledge, connect the clients you already use, or add durable governed execution when the work needs to outlive a chat.</p>
 
         <div class="feature-grid">
             <div class="feature-card">
@@ -260,7 +255,7 @@
             <div class="feature-card">
                 <div class="feature-icon">💾</div>
                 <h3>Local-First Storage</h3>
-                <p>SQLite with WAL mode. No cloud dependencies. Your data stays on your machine. Back up with a single file copy.</p>
+                <p>Canonical documents, chunks, runs, tasks, and history stay in local SQLite. Cloud model providers are explicit opt-in dependencies, never storage requirements.</p>
             </div>
             <div class="feature-card">
                 <div class="feature-icon">🔍</div>
@@ -274,8 +269,8 @@
             </div>
             <div class="feature-card">
                 <div class="feature-icon">🧭</div>
-                <h3>Executable Agents</h3>
-                <p>Run standalone project agents with scoped declarative tools, explicit approvals, durable history, checkpoints, and safe recovery.</p>
+                <h3>Governed Agents</h3>
+                <p>Run standalone or queued work with scoped tools, explicit approvals, cumulative budgets, typed outcomes, bounded context, checkpoints, and safe recovery.</p>
             </div>
             <div class="feature-card">
                 <div class="feature-icon">🤖</div>
@@ -284,13 +279,13 @@
             </div>
             <div class="feature-card">
                 <div class="feature-icon">⚡</div>
-                <h3>CLI-First</h3>
-                <p>Everything through the <code>ctx</code> command. Init, sync, search, get — composable Unix-style tooling. No GUI required.</p>
+                <h3>Local Generation</h3>
+                <p>Choose OpenAI or native Ollama generation. Local-only endpoints stay loopback-only, never download models, and never silently fall back to a cloud provider.</p>
             </div>
             <div class="feature-card">
                 <div class="feature-icon">📦</div>
-                <h3>Extension Registry</h3>
-                <p>Install community connectors for Jira, Confluence, Slack, RSS, and more from Git-backed registries. Write your own in Lua — no Rust compilation needed.</p>
+                <h3>Application Foundation</h3>
+                <p>Embed public Rust APIs for trusted providers and tools, durable task workers, typed run inspection, and bounded targeted refresh.</p>
             </div>
         </div>
     </div>
@@ -299,27 +294,27 @@
 <section id="architecture" class="architecture">
     <div class="container">
         <h2 class="section-title">How it works</h2>
-        <p class="section-sub">A clean pipeline from raw sources to AI-ready context</p>
+        <p class="section-sub">Canonical local knowledge underneath two deliberately different execution paths</p>
 
         <div class="arch-flow">
             <div class="arch-step">
                 <div class="arch-node">
-                    <div class="arch-label">Sources</div>
-                    <div class="arch-detail">Filesystem, Git, S3, Lua, Community Registry</div>
+                    <div class="arch-label">Project Sources</div>
+                    <div class="arch-detail">Filesystem · Git · S3 · Lua · host-provided changes</div>
                 </div>
                 <div class="arch-arrow">&rarr;</div>
             </div>
             <div class="arch-step">
                 <div class="arch-node">
-                    <div class="arch-label">Connectors</div>
-                    <div class="arch-detail">Fetch &amp; normalize into Documents</div>
+                    <div class="arch-label">Ingest + Refresh</div>
+                    <div class="arch-detail">Full discovery or bounded targeted updates</div>
                 </div>
                 <div class="arch-arrow">&rarr;</div>
             </div>
             <div class="arch-step">
                 <div class="arch-node">
-                    <div class="arch-label">Chunking</div>
-                    <div class="arch-detail">Paragraph-aware splitting</div>
+                    <div class="arch-label">Index</div>
+                    <div class="arch-detail">Extract · chunk · embed · synchronize</div>
                 </div>
                 <div class="arch-arrow">&rarr;</div>
             </div>
@@ -332,15 +327,15 @@
             </div>
             <div class="arch-step">
                 <div class="arch-node">
-                    <div class="arch-label">Query Engine</div>
-                    <div class="arch-detail">Keyword · Semantic · Hybrid</div>
+                    <div class="arch-label">Knowledge API</div>
+                    <div class="arch-detail">Keyword · semantic · hybrid · source-scoped</div>
                 </div>
                 <div class="arch-arrow">&rarr;</div>
             </div>
             <div class="arch-step">
                 <div class="arch-node">
-                    <div class="arch-label">Interfaces</div>
-                    <div class="arch-detail">CLI · Profiles · Local Agents · MCP Server · Tool Bindings</div>
+                    <div class="arch-label">Choose Execution</div>
+                    <div class="arch-detail">MCP profiles in your client · governed agents in Context Harness</div>
                 </div>
             </div>
         </div>
@@ -382,22 +377,22 @@ include_globs = ["**/*.md"]</code></pre>
 <section id="use-cases" class="use-cases">
     <div class="container">
         <h2 class="section-title">Built for real workflows</h2>
-        <p class="section-sub">From offline-first web apps to AI-powered development</p>
+        <p class="section-sub">Adopt the layer you need today without handing over more authority than the work requires</p>
 
         <div class="use-case-grid">
             <div class="use-case-card featured">
-                <div class="use-case-badge">Primary Use Case</div>
+                <div class="use-case-badge">Foundation</div>
                 <div class="use-case-icon">🧩</div>
-                <h3>Offline-First RAG for Web Apps</h3>
-                <p>Pre-build your knowledge base at build time. Ship the SQLite database as a static asset. Your web app gets retrieval-augmented generation <strong>without a backend</strong>.</p>
+                <h3>Project Knowledge Layer</h3>
+                <p>Index code, decisions, runbooks, and research once. Search it from the CLI, serve it over MCP, or embed the public APIs while keeping canonical data <strong>inspectable and local</strong>.</p>
                 <div class="use-case-tags">
-                    <span class="tag">Static Hosting</span>
-                    <span class="tag">No API Keys</span>
-                    <span class="tag">Works Offline</span>
+                    <span class="tag">SQLite + FTS5</span>
+                    <span class="tag">Hybrid Retrieval</span>
+                    <span class="tag">Source Scoped</span>
                 </div>
             </div>
             <div class="use-case-card featured">
-                <div class="use-case-badge">Primary Use Case</div>
+                <div class="use-case-badge">Client-Owned Execution</div>
                 <div class="use-case-icon">🤖</div>
                 <h3>Reusable AI Profiles via MCP</h3>
                 <p>Give Cursor, Claude, and custom clients named roles such as reviewer, architect, or incident responder, grounded in the same <strong>local project context</strong>.</p>
@@ -408,29 +403,29 @@ include_globs = ["**/*.md"]</code></pre>
                 </div>
             </div>
             <div class="use-case-card featured">
-                <div class="use-case-badge">Primary Use Case</div>
+                <div class="use-case-badge">Runtime-Owned Execution</div>
                 <div class="use-case-icon">🔌</div>
-                <h3>Governed Local Agents</h3>
-                <p>Run bounded model-and-tool workflows with explicit permissions, approvals, inspectable history, and safe recovery — <strong>without surrendering project control</strong>.</p>
+                <h3>Governed Durable Agents</h3>
+                <p>Run direct or queued model-and-tool work with explicit permissions, budgets, typed outcomes, inspectable history, and safe recovery — <strong>without surrendering project control</strong>.</p>
                 <div class="use-case-tags">
-                    <span class="tag">Lua Scripts</span>
-                    <span class="tag">Custom Tools</span>
-                    <span class="tag">RAG-Powered</span>
+                    <span class="tag">OpenAI + Ollama</span>
+                    <span class="tag">Durable Tasks</span>
+                    <span class="tag">Safe Recovery</span>
                 </div>
             </div>
             <div class="use-case-card">
                 <div class="use-case-icon">📚</div>
-                <h3>Documentation Site Search</h3>
-                <p>Replace Algolia or DocSearch with self-hosted semantic search. Build the index at deploy time, serve from a CDN. <strong>No third-party dependencies.</strong></p>
+                <h3>Application Agent Foundation</h3>
+                <p>Register trusted providers and scoped tools, submit durable work, operate bounded workers, and refresh known changed documents through <strong>supported public Rust APIs</strong>.</p>
                 <div class="use-case-tags">
-                    <span class="tag">Self-Hosted</span>
-                    <span class="tag">CDN-Ready</span>
+                    <span class="tag">Public APIs</span>
+                    <span class="tag">Domain Neutral</span>
                 </div>
             </div>
             <div class="use-case-card">
                 <div class="use-case-icon">🏗️</div>
                 <h3>Engineering Onboarding</h3>
-                <p>Index incident reports, ADRs, and runbooks. New engineers query naturally instead of searching Confluence for 45 minutes.</p>
+                <p>Index incident reports, ADRs, and runbooks. Give engineers and AI tools one source-scoped place to retrieve the decisions behind the code.</p>
                 <div class="use-case-tags">
                     <span class="tag">Knowledge Base</span>
                     <span class="tag">Natural Language</span>
@@ -457,7 +452,8 @@ include_globs = ["**/*.md"]</code></pre>
 
 <section id="quickstart" class="quickstart">
     <div class="container">
-        <h2 class="section-title">Get started in 60 seconds</h2>
+        <h2 class="section-title">Start with knowledge. Add execution deliberately.</h2>
+        <p class="section-sub">The first four commands build a useful local index. Profiles and agents are separate next steps, not prerequisites.</p>
         <div class="steps">
             <div class="step">
                 <div class="step-num">1</div>
@@ -506,8 +502,10 @@ EOF</code></pre>
             </div>
         </div>
         <div class="cta-block">
-            <p>Ready to give your AI tools real memory?</p>
-            <a href="{{ config.extra.github_url }}" class="btn btn-primary" target="_blank" rel="noopener">Star on GitHub</a>
+            <p>Choose who should own the conversation.</p>
+            <a href="{{ get_url(path='@/docs/profiles/overview.md') }}" class="btn btn-primary">Connect an AI Client</a>
+            <a href="{{ get_url(path='@/docs/agents/overview.md') }}" class="btn btn-secondary">Run a Governed Agent</a>
+            <a href="{{ get_url(path='@/docs/agents/embed-an-agent-host.md') }}" class="btn btn-secondary">Embed the Runtime</a>
         </div>
     </div>
 </section>

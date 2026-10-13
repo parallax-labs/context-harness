@@ -1,6 +1,6 @@
 # DESIGN-0014: Structured Agent Run State and Context Projection
 
-**Status:** Planning
+**Status:** Reference
 **Date:** 2026-10-01
 **Author:** Context Harness contributors
 **Related:** [PRD-0014](../prd/0014-durable-agent-runs.md), [ADR-0024](../adr/0024-local-agent-runtime.md), [ADR-0030](../adr/0030-runtime-owned-materialized-working-state.md), [ADR-0031](../adr/0031-deterministic-bounded-context-projection.md), [ADR-0032](../adr/0032-explicit-recoverable-tool-observations.md), [ADR-0033](../adr/0033-same-run-suspended-continuation.md), [SPEC-0017](../spec/0017-local-agent-execution.md), [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md), [SPEC-0027](../spec/0027-structured-agent-working-state.md), [SPEC-0028](../spec/0028-bounded-agent-context-projection.md), [SPEC-0029](../spec/0029-recoverable-tool-observations.md), [SPEC-0030](../spec/0030-suspended-run-continuation.md)
@@ -377,7 +377,7 @@ as the compatibility baseline until its replacement has acceptance coverage.
   could make this work too broad; interfaces should align, but delivery should
   remain separable.
 
-## Remaining Open Questions
+## Resolved Questions and Deferred Follow-up
 
 1. **Resolved by ADR-0030/SPEC-0027:** Phase 5A uses one versioned materialized
    snapshot of deterministic facts and canonical-record references per run.
@@ -396,14 +396,13 @@ as the compatibility baseline until its replacement has acceptance coverage.
    run and resolves the pending runtime control exchange before another model call.
 7. **Resolved for Phase 5D by ADR-0033/SPEC-0030:** the existing run remains the
    authority; no Session abstraction or linked replacement run is introduced.
-8. Does the delivered SPEC-0023 tool-binding identity contain every compatibility
-   input that later context projection requires?
+8. The delivered SPEC-0023 effective binding identity is the compatibility input for
+   projection and recovery. Any future identity field is a versioned contract change,
+   not an open requirement of this design.
 
 ## Documentation Graduation
 
-ADR-0028 and SPEC-0025 graduate the minimum lifecycle/budget boundary, and PRD-0014
-is Planned. ADR-0033 and SPEC-0030 graduate the suspended-continuation boundary.
-This design remains non-authoritative for the remaining questions above.
-Create later ADR/spec contracts before implementing those behaviors, then keep this
-document as Planning during implementation and Reference after all planned slices are
-delivered.
+ADR-0028 and SPEC-0025 graduate the minimum lifecycle/budget boundary. ADR-0033 and
+SPEC-0030 graduate the suspended-continuation boundary. All planned slices now have
+authoritative ADR/spec contracts and implementation coverage. This design is a
+historical Reference; the linked specs define current behavior.
