@@ -144,6 +144,9 @@ Choose one path:
    an existing project and create the smallest safe configuration.
 3. Start from the repository's `examples/local-agents` directory when you want
    complete files to compare or copy.
+4. Use [Embed an Agent Host](@/docs/agents/embed-an-agent-host.md) when your
+   application should register compiled providers or tools, submit durable work,
+   operate workers, or refresh host-known changed documents through public APIs.
 
 A successful first run is intentionally small: one read-only agent, one indexed
 source, source-scoped search and retrieval, static validation, a direct search

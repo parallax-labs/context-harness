@@ -1,6 +1,6 @@
 # DESIGN-0018: Local Agent Application Foundation Implementation Plan
 
-**Status:** Draft
+**Status:** Reference
 **Date:** 2026-10-02
 **Author:** Context Harness contributors
 **Related:** [PRD-0014](../prd/0014-durable-agent-runs.md), [DESIGN-0014](0014-structured-agent-run-state.md), [PRD-0015](../prd/0015-local-generation-providers.md), [DESIGN-0015](0015-local-generation-providers.md), [PRD-0016](../prd/0016-durable-background-agent-tasks.md), [DESIGN-0016](0016-durable-background-agent-tasks.md), [PRD-0017](../prd/0017-targeted-document-refresh.md), [DESIGN-0017](0017-targeted-document-refresh.md), [ADR-0024](../adr/0024-local-agent-runtime.md), [ADR-0026](../adr/0026-native-ollama-local-generation.md), [ADR-0028](../adr/0028-typed-run-outcomes-and-compatibility.md), [ADR-0030](../adr/0030-runtime-owned-materialized-working-state.md), [ADR-0031](../adr/0031-deterministic-bounded-context-projection.md), [ADR-0032](../adr/0032-explicit-recoverable-tool-observations.md), [SPEC-0016](../spec/0016-model-runtime.md), [SPEC-0017](../spec/0017-local-agent-execution.md), [SPEC-0019](../spec/0019-checkpoints-recovery-and-artifacts.md), [SPEC-0023](../spec/0023-declarative-tool-bindings.md), [SPEC-0025](../spec/0025-durable-run-lifecycle-and-budgets.md), [SPEC-0027](../spec/0027-structured-agent-working-state.md), [SPEC-0028](../spec/0028-bounded-agent-context-projection.md), [SPEC-0029](../spec/0029-recoverable-tool-observations.md)
@@ -627,6 +627,15 @@ runbooks, mark implemented designs Reference, and move PRDs through their lifecy
 only after their individual success criteria are evaluated. Application authors then
 consume the public contracts without importing their domain into Context Harness.
 
+**Slice status (2026-10-13): Implemented.** PRD-0014 through PRD-0017 have been
+evaluated against their success criteria and marked Delivered; DESIGN-0014 through
+DESIGN-0018 are historical Reference documents; implemented authoritative specs no
+longer claim implementation is pending. Existing setup, worker-operation and
+performance runbooks are linked from an application-author handoff in the public
+documentation. The repository overview and website now present the delivered product
+as a local knowledge layer with two explicit execution paths: reusable profiles for
+external clients and governed durable agents. No application-domain policy is added.
+
 ### Phase and slice matrix
 
 | Slice | Primary design | Depends on | Can run in parallel with | Review boundary |
@@ -731,7 +740,7 @@ new public behavior behind the authoritative contract gates.
 - Live local-model quality may fail even when protocol tests pass. Keep quality
   evaluation separate from adapter correctness and never add cloud fallback silently.
 
-## Open Questions
+## Historical Planning Questions
 
 1. Which maintainers own Gates L, P, Q and I, and what review marks each resolved?
 2. Should behavior-preserving seam PRs wait for full specs or only approved directional
@@ -744,6 +753,7 @@ new public behavior behind the authoritative contract gates.
    refresh release independently before background tasks?
 7. Which designs move from Draft to Planning once this sequence is approved?
 
-Resolve the ownership and contract-gate questions before implementation begins. The
-phase order may change as prototypes reveal constraints, but dependency direction and
-the task/run authority boundary should remain explicit.
+The accepted ADRs/specs, per-slice implementation record, migration fixtures and
+neutral cross-track host resolved these questions during delivery. They remain here
+as planning history; the authoritative contracts and delivered code now define the
+answers. Dependency direction and the task/run authority boundary remain explicit.

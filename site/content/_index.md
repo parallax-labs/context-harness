@@ -1,6 +1,5 @@
 +++
 title = "Context Harness"
-description = "A structured memory layer between your systems and your AI tools. Ingest, index, and retrieve context from any source."
+description = "A local-first knowledge and agent runtime. Index project context, equip existing AI clients, or run governed durable agents."
 template = "index.html"
 +++
-

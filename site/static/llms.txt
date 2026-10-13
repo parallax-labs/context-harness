@@ -1,8 +1,13 @@
 # Context Harness
 
-> Context Harness is an open-source, local-first context engine for AI tools. It ingests documents and knowledge from any source, indexes them in a local SQLite database with FTS5 and vector embeddings, and exposes hybrid search (keyword + semantic) via a CLI and MCP-compatible HTTP server. Built in Rust by Parallax Labs. AGPL-3.0 licensed.
+> Context Harness is an open-source, local-first knowledge and agent runtime. It indexes project knowledge in SQLite, equips external AI clients through MCP profiles, and runs governed agents with scoped tools, durable tasks, typed outcomes, checkpoints, and conservative recovery. Built in Rust by Parallax Labs. AGPL-3.0 licensed.
 
-Context Harness solves the problem of giving AI agents (Cursor, Claude, custom agents) access to your project's documentation, code, runbooks, and knowledge — without sending data to the cloud. It runs as a single binary (`ctx`) that syncs content from filesystem, Git, S3, or custom Lua connectors, chunks it intelligently, and serves it to any MCP-compatible tool.
+Context Harness creates one inspectable local knowledge layer from filesystem, Git,
+S3, or custom Lua sources. Cursor, Claude, and custom clients can use that layer while
+owning their own conversations. When Context Harness should own execution, its agent
+runtime adds model/tool policy, cumulative budgets, durable history, background tasks,
+bounded context, and explicit recovery. Cloud models are optional, explicit providers;
+local embeddings and native loopback-only Ollama generation are supported.
 
 ## Key Capabilities
 
@@ -11,11 +16,14 @@ Context Harness solves the problem of giving AI agents (Cursor, Claude, custom a
 - **Local-first storage**: SQLite with WAL mode, FTS5 full-text search, vector embeddings (local fastembed/tract, Ollama, or OpenAI)
 - **Hybrid search**: BM25 keyword scoring + cosine semantic scoring with configurable alpha blending
 - **MCP server**: Streamable HTTP endpoint for Cursor, Claude Desktop, and any MCP-compatible agent
-- **Local agent runtime**: standalone project agents with bounded execution, approvals, durable history, checkpoints, and recovery
+- **Reusable profiles**: named external-client roles, tool suggestions, arguments, and optional startup context without taking over the conversation
+- **Local agent runtime**: direct or queued project agents with scoped tools, cumulative budgets, typed outcomes, approvals, durable history, bounded context, checkpoints, and recovery
+- **Local generation**: native loopback-only Ollama chat with no redirects, model download, or silent cloud fallback
+- **Durable tasks**: idempotent submission, bounded workers, claims, leases, cancellation, and conservative task/run reconciliation
+- **Application host APIs**: explicit compiled provider/tool registration and bounded targeted refresh for host-known changed documents
 - **Declarative tool bindings**: compose scoped public tools over trusted built-in, Rust, Lua, and MCP implementations
 - **Lua extensibility**: custom connectors and agent tools without recompiling Rust
 - **CLI-first**: Unix-composable `ctx` commands for init, sync, search, serve, and more
-- **Offline-first RAG**: pre-build search indexes at build time, ship as static assets
 
 ## Documentation
 
@@ -32,6 +40,7 @@ Context Harness solves the problem of giving AI agents (Cursor, Claude, custom a
 - [Agents Overview](https://parallax-labs.github.io/context-harness/docs/agents/overview/): Run bounded, inspectable AI workflows against local project context
 - [Build Local Agents](https://parallax-labs.github.io/context-harness/docs/agents/build-local-agents/): Configure models, scoped tools, permissions, history, and recovery
 - [Use the Agent Setup Skill](https://parallax-labs.github.io/context-harness/docs/agents/setup-skill/): Install and invoke the Codex skill that configures and validates local agents
+- [Embed an Agent Host](https://parallax-labs.github.io/context-harness/docs/agents/embed-an-agent-host/): Compose trusted providers, scoped tools, tasks, workers, runs, and targeted refresh through public Rust APIs
 
 ## Profiles
 

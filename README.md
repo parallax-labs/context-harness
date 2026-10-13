@@ -4,7 +4,7 @@
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/parallax-labs/context-harness?include_prereleases&style=flat)](https://github.com/parallax-labs/context-harness/releases/latest)
 
-**A local-first context ingestion and retrieval framework for AI tools.**
+**A local-first knowledge and agent runtime for AI tools.**
 
 *by [Parallax Labs](https://github.com/parallax-labs)*
 
@@ -12,7 +12,11 @@
 
 ---
 
-Context Harness ingests external knowledge (files, Git repos, S3, Lua scripts) into a local SQLite store with optional embeddings, and exposes it via the `ctx` CLI and an MCP-compatible HTTP server so tools like Cursor and Claude can search your context.
+Context Harness turns project knowledge into infrastructure AI can actually use. It
+ingests files, Git repositories, S3, and custom sources into an inspectable local
+SQLite index, then gives you two execution paths: reusable profiles for clients such
+as Cursor and Claude, or governed local agents with scoped tools, durable tasks,
+typed outcomes, checkpoints, and conservative recovery.
 
 ## Features
 
@@ -24,6 +28,9 @@ Context Harness ingests external knowledge (files, Git repos, S3, Lua scripts) i
 - **Hybrid retrieval** — keyword + semantic + weighted merge (configurable alpha)
 - **MCP server** — expose context to Cursor and other AI tools via HTTP
 - **Local agents** — run durable, workspace-scoped agents with declarative tools, history, inspection, and resume support
+- **Local generation** — use OpenAI or a native loopback-only Ollama adapter with no silent fallback or model download
+- **Durable background tasks** — enqueue bounded work, operate independent workers, and correlate task/run outcomes
+- **Application host APIs** — register trusted compiled providers and tools, then refresh host-known changed documents without a full scan
 - **CLI-first** — everything accessible via the `ctx` command
 - **Incremental sync** — checkpointed, idempotent, deterministic
 
@@ -175,7 +182,7 @@ covers installation, invocation, customization, generated files, and validation.
 ## Architecture
 
 ```
-Connectors → Normalization → Chunking → Embedding → SQLite Store → Query Engine → CLI / MCP Server
+Sources → Ingest + Index → Canonical SQLite Knowledge → CLI / MCP Profiles / Governed Agents
 ```
 
 ### Data Flow

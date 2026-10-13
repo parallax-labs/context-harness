@@ -1,6 +1,6 @@
 # DESIGN-0015: Local Generation Providers
 
-**Status:** Planning
+**Status:** Reference
 **Date:** 2026-10-02
 **Author:** Context Harness contributors
 **Related:** [PRD-0015](../prd/0015-local-generation-providers.md), [DESIGN-0010](0010-local-agent-runtime.md), [ADR-0026](../adr/0026-native-ollama-local-generation.md), [SPEC-0016](../spec/0016-model-runtime.md), [SPEC-0017](../spec/0017-local-agent-execution.md)
@@ -123,7 +123,7 @@ DESIGN-0016.
 - A custom compiled provider registers without a new runtime match branch.
 - OpenAI/fake behavior and checkpoint identity tests remain compatible.
 
-## Deferred questions
+## Deferred Follow-up
 
 1. Should a later provider support enrolled LAN/HTTPS endpoints or Unix sockets?
 2. Which installed models form the non-normative live quality evaluation set?

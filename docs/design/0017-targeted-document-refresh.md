@@ -1,6 +1,6 @@
 # DESIGN-0017: Targeted Document Refresh
 
-**Status:** Draft
+**Status:** Reference
 **Date:** 2026-10-02
 **Author:** Context Harness contributors
 **Related:** [PRD-0017](../prd/0017-targeted-document-refresh.md), [ADR-0027](../adr/0027-targeted-refresh-authority-and-atomicity.md), [SPEC-0024](../spec/0024-targeted-document-refresh.md), [SPEC-0002](../spec/0002-workspace-refactor.md), [SPEC-0004](../spec/0004-file-support.md), [SPEC-0005](../spec/0005-usage-contract.md)

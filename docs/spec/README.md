@@ -43,11 +43,11 @@ See [SPEC-0000](0000-spec-policy.md) for the full policy.
 | [0022](0022-resource-prompt-projection.md) | Resource Prompt Projection | Authoritative |
 | [0023](0023-declarative-tool-bindings.md) | Declarative Tool Bindings | Authoritative |
 | [0024](0024-targeted-document-refresh.md) | Targeted Document Refresh | Authoritative |
-| [0025](0025-durable-run-lifecycle-and-budgets.md) | Durable Run Lifecycle and Cumulative Budgets | Authoritative — implementation pending |
-| [0026](0026-durable-agent-tasks.md) | Durable Agent Tasks | Authoritative — implementation pending |
+| [0025](0025-durable-run-lifecycle-and-budgets.md) | Durable Run Lifecycle and Cumulative Budgets | Authoritative — implemented |
+| [0026](0026-durable-agent-tasks.md) | Durable Agent Tasks | Authoritative — implemented |
 | [0027](0027-structured-agent-working-state.md) | Structured Agent Working State | Implemented |
-| [0028](0028-bounded-agent-context-projection.md) | Bounded Agent Context Projection | Authoritative — implementation pending |
-| [0029](0029-recoverable-tool-observations.md) | Recoverable Tool Observations and Loop Safeguards | Authoritative — implementation pending |
+| [0028](0028-bounded-agent-context-projection.md) | Bounded Agent Context Projection | Authoritative — implemented |
+| [0029](0029-recoverable-tool-observations.md) | Recoverable Tool Observations and Loop Safeguards | Authoritative — implemented |
 | [0030](0030-suspended-run-continuation.md) | Suspended Run Continuation | Implemented |
 
 ## Creating a New Spec
