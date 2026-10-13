@@ -611,6 +611,13 @@ connector sync equivalence. Measure queue claim overhead, local cold/warm infere
 context projection size and targeted-versus-full refresh. Set thresholds from observed
 baselines rather than inventing them in advance.
 
+**Slice status (2026-10-13): In progress.** The first reproducible baseline slice adds
+an ignored durable queue probe and RUNBOOK-0021. On the recorded M3 Pro host, 250
+submissions/claims averaged 0.341/0.232 ms; `qwen3.6:latest` cold total/load latency
+was 8.59/8.19 seconds and stable warm totals were 404–422 ms. These are host-specific
+observations, not universal thresholds. Compatibility gates, context-projection size
+and targeted-versus-full refresh measurements remain before 6C is complete.
+
 #### 6D. Documentation graduation
 
 Update authoritative specs to match delivered behavior, add setup/operations

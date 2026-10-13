@@ -8,6 +8,7 @@ use context_harness::{
     config::Config,
 };
 use serde_json::json;
+use std::time::Instant;
 use tempfile::TempDir;
 
 async fn setup() -> (TempDir, SqliteAppStore, AgentTaskStore) {
@@ -42,6 +43,37 @@ fn created(result: AgentTaskSubmissionResult) -> context_harness::agent_task_sto
         AgentTaskSubmissionResult::Created(task) => task,
         _ => panic!("expected created task"),
     }
+}
+
+#[tokio::test]
+#[ignore = "performance probe; run with --ignored --nocapture"]
+async fn perf_queue_submit_and_claim_overhead() {
+    const TASKS: usize = 250;
+    let (_temp, _app, store) = setup().await;
+    let submitted = Instant::now();
+    for index in 0..TASKS {
+        created(
+            store
+                .submit(submission(&format!("perf-{index}"), "input"))
+                .await
+                .unwrap(),
+        );
+    }
+    let submit_ms = submitted.elapsed().as_secs_f64() * 1_000.0;
+    let claimed = Instant::now();
+    for _ in 0..TASKS {
+        store
+            .claim_next("perf-worker", 60, 3)
+            .await
+            .unwrap()
+            .unwrap();
+    }
+    let claim_ms = claimed.elapsed().as_secs_f64() * 1_000.0;
+    println!(
+        "queue_baseline tasks={TASKS} submit_total_ms={submit_ms:.3} submit_mean_ms={:.3} claim_total_ms={claim_ms:.3} claim_mean_ms={:.3}",
+        submit_ms / TASKS as f64,
+        claim_ms / TASKS as f64
+    );
 }
 
 #[test]
