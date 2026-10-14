@@ -3,7 +3,7 @@
 
 base_url = "https://parallax-labs.github.io/context-harness"
 title = "Context Harness"
-description = "A local-first knowledge and agent runtime — index project context, equip existing AI clients, or run governed durable agents."
+description = "Run project agents with relevant context, scoped tools, and inspectable history. Keep your index local and use the model you configure."
 compile_sass = true
 minify_html = false
 build_search_index = false          # We use ctx-search.js instead
@@ -17,7 +17,7 @@ smart_punctuation = true
 
 [extra]
 github_url = "https://github.com/parallax-labs/context-harness"
-tagline = "Local-First Knowledge and Agent Runtime"
+tagline = "Project context for inspectable agents"
 author = "Parallax Labs"
 og_image = "og-image.jpg"
 twitter_handle = "@parallaboratory"

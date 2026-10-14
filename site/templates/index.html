@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}Context Harness — Local-First Knowledge and Agent Runtime{% endblock %}
-{% block description %}Index project knowledge locally, equip the AI clients you already use, or run governed agents with durable tasks and history.{% endblock %}
+{% block title %}Context Harness — Project context for inspectable agents{% endblock %}
+{% block description %}Run project agents with relevant context, scoped tools, and inspectable history. Keep your index local and use the model you configure.{% endblock %}
 {% block body_class %}landing{% endblock %}
 
-{% block og_title %}Context Harness — Local-First Knowledge and Agent Runtime{% endblock %}
-{% block twitter_title %}Context Harness — Local-First Knowledge and Agent Runtime{% endblock %}
+{% block og_title %}Context Harness — Project context for inspectable agents{% endblock %}
+{% block twitter_title %}Context Harness — Project context for inspectable agents{% endblock %}
 
 {% block structured_data %}
 <script type="application/ld+json">
@@ -16,85 +16,36 @@
       "@type": "WebSite",
       "name": "Context Harness",
       "url": "{{ config.base_url | safe }}",
-      "description": "{{ config.description }}",
-      "publisher": {
-        "@type": "Organization",
-        "name": "Parallax Labs",
-        "url": "{{ config.base_url | safe }}"
-      }
+      "description": "Run project agents with relevant context, scoped tools, and inspectable history. Keep your index local and use the model you configure.",
+      "publisher": {"@type": "Organization", "name": "Parallax Labs", "url": "{{ config.base_url | safe }}"}
     },
     {
       "@type": "SoftwareApplication",
       "name": "Context Harness",
       "applicationCategory": "DeveloperApplication",
       "operatingSystem": "macOS, Linux, Windows",
-      "description": "A local-first knowledge and agent runtime. Index project context, equip existing AI clients with reusable profiles, or run governed agents with durable tasks and history.",
+      "description": "Run project agents with relevant context, scoped tools, and inspectable history. Keep your index local and use the model you configure.",
       "url": "{{ config.base_url | safe }}",
       "downloadUrl": "https://github.com/parallax-labs/context-harness/releases/latest",
       "license": "https://www.gnu.org/licenses/agpl-3.0.html",
       "programmingLanguage": "Rust",
-      "offers": {
-        "@type": "Offer",
-        "price": "0",
-        "priceCurrency": "USD"
-      },
+      "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
       "featureList": [
-        "Local-first SQLite storage with FTS5 and vector embeddings",
-        "Hybrid search combining BM25 keyword and cosine semantic scoring",
-        "MCP server and reusable profiles for external AI clients",
-        "Reusable MCP profiles with roles, tools, arguments, and startup context",
-        "Durable local agents with scoped tools, typed outcomes, approvals, and recovery",
-        "Native loopback-only Ollama generation with no silent cloud fallback",
-        "Durable background task workers and public application-host APIs",
-        "Targeted refresh for host-known changed documents",
-        "Connector-driven ingestion from filesystem, Git, S3, and Lua scripts",
-        "Lua extensibility for custom connectors and agent tools",
-        "CLI-first Unix-composable tooling"
+        "Search indexed project documents",
+        "Run agents with scoped tools and configured limits",
+        "Inspect durable run history and recover eligible runs",
+        "Share project context with external AI clients over MCP",
+        "Submit durable background tasks through CLI or host APIs"
       ]
     },
     {
       "@type": "FAQPage",
       "mainEntity": [
-        {
-          "@type": "Question",
-          "name": "What is Context Harness?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Context Harness is an open-source, local-first knowledge and agent runtime. It indexes project knowledge in SQLite, exposes it to existing AI clients through MCP and reusable profiles, and can run governed local agents with scoped tools, durable history, background tasks, and conservative recovery."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "How does Context Harness work with Cursor and Claude?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Context Harness includes a built-in MCP (Model Context Protocol) server. Start it with 'ctx serve mcp' and point Cursor, Claude Desktop, or any MCP-compatible AI tool at the endpoint. The agent can then search your indexed knowledge base, retrieve documents, and use custom Lua tools — all running locally."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Does Context Harness require a cloud service or API keys?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "No cloud service is required. Canonical data is stored in local SQLite, keyword search works without an API key, and local embeddings and Ollama generation are supported. Cloud providers remain explicit opt-in configuration; Context Harness never silently falls back from a selected local generation provider."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "What data sources can Context Harness ingest?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Context Harness includes built-in connectors for the local filesystem, Git repositories, and S3-compatible storage. You can also write custom connectors in Lua to ingest from any source — GitHub Issues, Confluence, Notion, Slack, WordPress, or any API."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "How do I install Context Harness?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Install from source with 'cargo install --git https://github.com/parallax-labs/context-harness', or use Docker with 'docker pull ghcr.io/parallax-labs/context-harness'. Requires Rust 1.75+ for source builds. See the installation guide for details."
-          }
-        }
+        {"@type":"Question","name":"Do I need to run an agent to use Context Harness?","acceptedAnswer":{"@type":"Answer","text":"No. You can index and search project documents from the CLI, or expose them over MCP to an existing AI client. Profiles provide reusable starting instructions; the external client owns execution and permissions."}},
+        {"@type":"Question","name":"Does local storage mean all processing stays on my machine?","acceptedAnswer":{"@type":"Answer","text":"No. The index and run history are local. Cloud model providers, external AI clients, connectors, and tools may send data over the network. Use local models and appropriately configured tools when processing must stay local."}},
+        {"@type":"Question","name":"Can I use Claude?","acceptedAnswer":{"@type":"Answer","text":"A compatible Claude client can use Context Harness context and profiles over MCP. The built-in agent runtime currently includes OpenAI and Ollama generation adapters. It does not include a native Anthropic generation adapter."}},
+        {"@type":"Question","name":"Can a webhook start an agent?","acceptedAnswer":{"@type":"Answer","text":"Your application can receive a webhook and submit a durable task through the CLI or host APIs. Context Harness does not currently provide a built-in webhook receiver. Your application supplies verification, event filtering, and result delivery; a separately started worker executes accepted tasks."}},
+        {"@type":"Question","name":"What happens when a run is interrupted or needs input?","acceptedAnswer":{"@type":"Answer","text":"Eligible interrupted runs can resume after recovery checks. Eligible standalone runs suspended as blocked or needing input can be continued explicitly. Changed definitions, uncertain tool effects, MCP-backed runs, and delegated runs can restrict recovery. Consult the lifecycle documentation for the supported cases."}}
       ]
     }
   ]
@@ -102,76 +53,132 @@
 </script>
 {% endblock %}
 
+
 {% block body %}
-<nav class="nav">
+<nav class="nav" aria-label="Main navigation">
     <div class="nav-inner">
         <a href="{{ get_url(path='/') }}" class="nav-brand">
-            <span class="nav-logo">⚡</span>
-            <span class="nav-name">Context Harness</span>
+            <span class="nav-logo">⚡</span><span class="nav-name">Context Harness</span>
         </a>
         <div class="nav-links">
-            <a href="#features">Features</a>
-            <a href="#architecture">Architecture</a>
+            <a href="#use-cases">Use cases</a>
+            <a href="#architecture">How it works</a>
             <a href="{{ get_url(path='@/docs/_index.md') }}">Docs</a>
             <a href="{{ get_url(path='@/blog/_index.md') }}">Blog</a>
-            <a href="{{ get_url(path='demo/') }}">Demo</a>
-            <button type="button" id="search-trigger" class="nav-search-btn" aria-label="Search">Search</button>
-            <a href="#quickstart">Get Started</a>
-            <a href="{{ config.extra.github_url }}" class="nav-github" target="_blank" rel="noopener">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+            <a href="{{ config.extra.github_url }}" class="nav-github" target="_blank" rel="noopener" aria-label="Context Harness on GitHub">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
             </a>
         </div>
-        <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Open menu" aria-expanded="false">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-        </button>
+        <div class="nav-controls">
+            <button type="button" id="search-trigger" class="nav-search-btn" aria-label="Search docs and site">Search</button>
+            <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-nav">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            </button>
+        </div>
+    </div>
+</nav>
+<div class="mobile-nav-backdrop" id="mobile-nav-backdrop" aria-hidden="true" inert></div>
+<nav class="mobile-nav" id="mobile-nav" aria-label="Mobile navigation" aria-hidden="true" inert>
+    <div class="mobile-nav-header">
+        <a href="{{ get_url(path='/') }}" class="nav-brand"><span class="nav-logo">⚡</span><span class="nav-name">Context Harness</span></a>
+        <button class="mobile-nav-close" id="mobile-nav-close" aria-label="Close menu"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="mobile-nav-links">
+        <a href="#use-cases">Use cases</a>
+        <a href="#architecture">How it works</a>
+        <a href="{{ get_url(path='@/docs/_index.md') }}">Docs</a>
+        <a href="{{ get_url(path='@/blog/_index.md') }}">Blog</a>
+        <a href="{{ get_url(path='@/docs/agents/build-local-agents.md') }}">Run a project agent</a>
+        <a href="https://github.com/parallax-labs/context-harness/releases/latest" id="mobile-download-link" class="mobile-nav-download">Download</a>
+        <a href="{{ config.extra.github_url }}" target="_blank" rel="noopener">GitHub</a>
     </div>
 </nav>
 
-<div class="mobile-nav-backdrop" id="mobile-nav-backdrop"></div>
-<div class="mobile-nav" id="mobile-nav" aria-hidden="true">
-    <div class="mobile-nav-header">
-        <a href="{{ get_url(path='/') }}" class="nav-brand">
-            <span class="nav-logo">⚡</span>
-            <span class="nav-name">Context Harness</span>
-        </a>
-        <button class="mobile-nav-close" id="mobile-nav-close" aria-label="Close menu">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-    </div>
-    <div class="mobile-nav-links">
-        <a href="https://github.com/parallax-labs/context-harness/releases/latest" id="mobile-download-link" class="mobile-nav-download">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Download
-        </a>
-        <a href="#features">Features</a>
-        <a href="#architecture">Architecture</a>
-        <a href="{{ get_url(path='@/docs/_index.md') }}">Docs</a>
-        <a href="{{ get_url(path='@/blog/_index.md') }}">Blog</a>
-        <a href="{{ get_url(path='demo/') }}">Demo</a>
-        <a href="#quickstart">Get Started</a>
-    </div>
-    <div class="mobile-nav-footer">
-        <a href="{{ config.extra.github_url }}" class="mobile-nav-github" target="_blank" rel="noopener">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
-            GitHub
-        </a>
-    </div>
-</div>
-
+<main>
 <section class="hero">
-    <div class="hero-glow"></div>
+    <div class="hero-glow" aria-hidden="true"></div>
     <div class="container">
-        <div class="hero-badge">Open Source · Local-First · Rust</div>
-        <h1 class="hero-title">
-            Your project knowledge, ready for AI.<br>
-            <span class="hero-accent">Keep control of where the work runs.</span>
-        </h1>
-        <p class="hero-sub">
-            Build one inspectable local knowledge layer. Use it from Cursor, Claude,
-            and custom clients—or run governed agents with scoped tools, local models,
-            durable tasks, typed outcomes, and safe recovery.
-        </p>
-        <div class="hero-actions">
+        <div class="hero-copy">
+            <p class="hero-eyebrow">Local context. Inspectable agent runs.</p>
+            <h1 class="hero-title">Give your agent the project knowledge it needs.</h1>
+            <p class="hero-sub">Turn your code, decisions, and runbooks into context an agent can search. Run a focused task with scoped tools and inspect its history, or bring that context into the AI client you already use.</p>
+            <div class="hero-actions">
+                <a href="{{ get_url(path='@/docs/agents/build-local-agents.md') }}" class="btn btn-primary">Run a project agent</a>
+                <a href="{{ get_url(path='@/docs/getting-started/quick-start.md') }}" class="btn btn-secondary">Connect your AI client</a>
+            </div>
+            <a class="hero-install" href="{{ get_url(path='@/docs/getting-started/installation.md') }}">Install Context Harness</a>
+        </div>
+    </div>
+</section>
+
+<section id="workflow" class="workflow landing-section">
+    <div class="container">
+        <h2 class="section-title">Start with one project question</h2>
+        <div class="workflow-grid">
+            <div class="workflow-copy">
+                <p class="workflow-question">“How does authentication work here, and which decisions explain it?”</p>
+                <p>Configure a read-only project researcher to search your indexed files and cite the sources it uses. Read its answer, then inspect the run to see the recorded model and tool activity.</p>
+                <p class="workflow-prerequisite">After completing the <a href="{{ get_url(path='@/docs/agents/build-local-agents.md') }}">project researcher setup</a>, run these commands from that project's root. Agent execution uses your configured model.</p>
+            </div>
+            <div class="command-panel">
+                <pre><code>ctx agent validate
+ctx tool bindings validate
+ctx init
+ctx sync filesystem:project
+ctx search "authentication" --source "filesystem:project"
+ctx agent run project-researcher "How does authentication work here? Cite the files you use."
+ctx agent history --limit 5</code></pre>
+            </div>
+        </div>
+        <p class="workflow-note">Use the run ID from history with <code>ctx agent inspect &lt;run-id&gt;</code>. If direct search finds no relevant documents, check the source configuration and sync before asking the agent. Review the answer and citations; a completed run is not a guarantee of correctness.</p>
+        <a href="{{ get_url(path='@/docs/agents/build-local-agents.md') }}" class="text-link">Build the project researcher <span aria-hidden="true">→</span></a>
+    </div>
+</section>
+
+<section id="features" class="features landing-section">
+    <div class="container">
+        <h2 class="section-title">Know what your agent can use—and what happened</h2>
+        <p class="section-sub">Useful project work needs relevant information, clear limits, and a record you can inspect when something goes wrong.</p>
+        <div class="benefit-grid">
+            <article class="benefit-card"><h3>Consult project evidence</h3><p>Index code, decisions, and runbooks so an agent can search for relevant passages and retrieve the source documents.</p></article>
+            <article class="benefit-card"><h3>Set the scope</h3><p>Choose the agent's tools, restrict supported tools to specific sources or paths, and configure execution limits.</p></article>
+            <article class="benefit-card"><h3>Inspect the run</h3><p>Review recorded model and tool activity, approvals, usage, and outcomes. Eligible interrupted runs can resume after safety checks.</p></article>
+            <article class="benefit-card"><h3>Own the local state</h3><p>Keep the knowledge index and run history in SQLite, without a separate database service. Model and tool configuration determines what leaves the machine.</p></article>
+        </div>
+    </div>
+</section>
+
+<section id="use-cases" class="use-cases landing-section">
+    <div class="container">
+        <h2 class="section-title">Choose how you want to work</h2>
+        <p class="section-sub">Start with a project question. Use the same indexed knowledge in your existing AI client or in an application you build.</p>
+        <div class="path-grid">
+            <article class="path-card path-primary"><span class="path-badge">Start here</span><h3>Ask a project question</h3><p>Trace an architecture decision or find the conventions behind the code. Configure the project researcher, request a cited answer, and inspect the run.</p><a class="btn btn-primary" href="{{ get_url(path='@/docs/agents/build-local-agents.md') }}">Run a project agent</a></article>
+            <article class="path-card"><h3>Use your AI client</h3><p>Give an MCP-compatible client access to indexed project documents. Add a reusable profile when you want consistent starting instructions.</p><a class="btn btn-secondary" href="{{ get_url(path='@/docs/getting-started/quick-start.md') }}">Connect your AI client</a></article>
+            <article class="path-card"><span class="path-badge path-badge-quiet">For application developers</span><h3>Embed an agent in your application</h3><p>Register trusted tools and model providers, submit durable tasks, and inspect outcomes through public Rust APIs. Your application owns its events and user experience.</p><a class="btn btn-secondary" href="{{ get_url(path='@/docs/agents/embed-an-agent-host.md') }}">Explore the host APIs</a></article>
+        </div>
+    </div>
+</section>
+
+<section id="architecture" class="architecture landing-section">
+    <div class="container">
+        <h2 class="section-title">From project knowledge to an inspectable run</h2>
+        <ol class="process-list">
+            <li class="process-step"><span class="process-number">1</span><h3>Index your sources.</h3><p>Bring selected files into a local, searchable index.</p></li>
+            <li class="process-step"><span class="process-number">2</span><h3>Choose tools and limits.</h3><p>Configure a model, an agent role, and scoped tools.</p></li>
+            <li class="process-step"><span class="process-number">3</span><h3>Run a focused task.</h3><p>Ask the agent to work from the project evidence it can access.</p></li>
+            <li class="process-step"><span class="process-number">4</span><h3>Inspect the outcome.</h3><p>Review the answer, recorded activity, and reason the run stopped.</p></li>
+        </ol>
+        <p class="client-path">Already using an AI client? Serve the same index over MCP. Your client owns the conversation and decides which exposed tools to call; Context Harness serves the configured tools. Profiles provide reusable starting instructions. Read the <a href="{{ get_url(path='@/docs/profiles/overview.md') }}">profiles guide</a>.</p>
+    </div>
+</section>
+
+<section id="quickstart" class="quickstart landing-section">
+    <div class="container">
+        <h2 class="section-title">Ready to try it on your project?</h2>
+        <p class="section-sub">Install Context Harness, configure one source and a model, and run the project researcher. The guide includes the agent and tool definitions you need.</p>
+        <div class="setup-actions">
+            <a href="{{ get_url(path='@/docs/agents/build-local-agents.md') }}" class="btn btn-primary">Run a project agent</a>
             <div class="download-cta">
                 <a href="https://github.com/parallax-labs/context-harness/releases/latest" class="btn btn-primary btn-download" id="download-btn">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -214,301 +221,26 @@
                     </div>
                 </div>
             </div>
-            <div class="hero-actions-row">
-                <a href="#quickstart" class="btn btn-secondary">Get Started</a>
-                <a href="{{ config.extra.github_url }}" class="btn btn-secondary" target="_blank" rel="noopener">View on GitHub</a>
             </div>
-        </div>
-
-        <div class="terminal">
-            <div class="terminal-bar">
-                <span class="terminal-dot red"></span>
-                <span class="terminal-dot yellow"></span>
-                <span class="terminal-dot green"></span>
-                <span class="terminal-title">ctx — context harness</span>
-            </div>
-            <div class="terminal-body">
-                <div class="terminal-line" style="--delay: 0"><span class="prompt">$</span> <span class="cmd">ctx init</span></div>
-                <div class="terminal-line" style="--delay: 1"><span class="output">Database initialized successfully.</span></div>
-                <div class="terminal-line" style="--delay: 2"><span class="prompt">$</span> <span class="cmd">ctx sync filesystem</span></div>
-                <div class="terminal-line" style="--delay: 3"><span class="output success">Project knowledge indexed in local SQLite.</span></div>
-                <div class="terminal-line" style="--delay: 4"><span class="prompt">$</span> <span class="cmd">ctx agent run project-researcher "Trace the recovery contract"</span></div>
-                <div class="terminal-line" style="--delay: 5"><span class="output dim">search → get → inspect → final answer</span></div>
-                <div class="terminal-line" style="--delay: 6"><span class="output success">completed · history and evidence recorded</span></div>
-                <div class="terminal-line blink" style="--delay: 6.8"><span class="prompt">$</span> <span class="cursor-blink">_</span></div>
-            </div>
-        </div>
+        <p class="requirements-note">Keyword search needs no model or API key. Agent runs need a configured model: use OpenAI with API credentials, or a separately running local Ollama service with a compatible model already installed. Cloud models receive the context included in their requests.</p>
+        <div class="setup-links"><a href="{{ get_url(path='@/docs/getting-started/installation.md') }}">Installation options</a><a href="{{ get_url(path='demo/') }}">Try the search demo</a><span>Browser retrieval demo; no agent runs.</span></div>
     </div>
 </section>
 
-<section id="features" class="features">
+<section id="faq" class="faq landing-section">
     <div class="container">
-        <h2 class="section-title">One local foundation. Three useful layers.</h2>
-        <p class="section-sub">Start with searchable knowledge, connect the clients you already use, or add durable governed execution when the work needs to outlive a chat.</p>
-
-        <div class="feature-grid">
-            <div class="feature-card">
-                <div class="feature-icon">🔌</div>
-                <h3>Connector-Driven</h3>
-                <p>Plug in any source — filesystem, Git, S3, or write your own in Lua. Each connector normalizes data into a consistent Document model.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">💾</div>
-                <h3>Local-First Storage</h3>
-                <p>Canonical documents, chunks, runs, tasks, and history stay in local SQLite. Cloud model providers are explicit opt-in dependencies, never storage requirements.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">🔍</div>
-                <h3>Hybrid Search</h3>
-                <p>FTS5 keyword search, vector semantic search, and configurable hybrid merge with BM25 + cosine scoring. Deterministic results.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">🎭</div>
-                <h3>Reusable Profiles</h3>
-                <p>Give Cursor, Claude, and custom clients a consistent role, suggested tools, arguments, and optional project-aware startup context.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">🧭</div>
-                <h3>Governed Agents</h3>
-                <p>Run standalone or queued work with scoped tools, explicit approvals, cumulative budgets, typed outcomes, bounded context, checkpoints, and safe recovery.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">🤖</div>
-                <h3>MCP Server</h3>
-                <p>Expose search, retrieval, custom tools, and profiles through the standard protocol used by modern AI clients.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">⚡</div>
-                <h3>Local Generation</h3>
-                <p>Choose OpenAI or native Ollama generation. Local-only endpoints stay loopback-only, never download models, and never silently fall back to a cloud provider.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">📦</div>
-                <h3>Application Foundation</h3>
-                <p>Embed public Rust APIs for trusted providers and tools, durable task workers, typed run inspection, and bounded targeted refresh.</p>
-            </div>
+        <h2 class="section-title">Before you start</h2>
+        <div class="faq-list">
+            <article><h3>Do I need to run an agent to use Context Harness?</h3><p>No. You can index and search project documents from the CLI, or expose them over MCP to an existing AI client. Profiles provide reusable starting instructions; the external client owns execution and permissions.</p></article>
+            <article><h3>Does local storage mean all processing stays on my machine?</h3><p>No. The index and run history are local. Cloud model providers, external AI clients, connectors, and tools may send data over the network. Use local models and appropriately configured tools when processing must stay local.</p></article>
+            <article><h3>Can I use Claude?</h3><p>A compatible Claude client can use Context Harness context and profiles over MCP. The built-in agent runtime currently includes OpenAI and Ollama generation adapters. It does not include a native Anthropic generation adapter.</p></article>
+            <article><h3>Can a webhook start an agent?</h3><p>Your application can receive a webhook and submit a durable task through the CLI or host APIs. Context Harness does not currently provide a built-in webhook receiver. Your application supplies verification, event filtering, and result delivery; a separately started worker executes accepted tasks.</p></article>
+            <article><h3>What happens when a run is interrupted or needs input?</h3><p>Eligible interrupted runs can resume after recovery checks. Eligible standalone runs suspended as blocked or needing input can be continued explicitly. Changed definitions, uncertain tool effects, MCP-backed runs, and delegated runs can restrict recovery. Consult the lifecycle documentation for the supported cases.</p></article>
         </div>
+        <a class="text-link" href="{{ get_url(path='@/docs/agents/build-local-agents.md') }}">Run lifecycle and recovery <span aria-hidden="true">→</span></a>
     </div>
 </section>
-
-<section id="architecture" class="architecture">
-    <div class="container">
-        <h2 class="section-title">How it works</h2>
-        <p class="section-sub">Canonical local knowledge underneath two deliberately different execution paths</p>
-
-        <div class="arch-flow">
-            <div class="arch-step">
-                <div class="arch-node">
-                    <div class="arch-label">Project Sources</div>
-                    <div class="arch-detail">Filesystem · Git · S3 · Lua · host-provided changes</div>
-                </div>
-                <div class="arch-arrow">&rarr;</div>
-            </div>
-            <div class="arch-step">
-                <div class="arch-node">
-                    <div class="arch-label">Ingest + Refresh</div>
-                    <div class="arch-detail">Full discovery or bounded targeted updates</div>
-                </div>
-                <div class="arch-arrow">&rarr;</div>
-            </div>
-            <div class="arch-step">
-                <div class="arch-node">
-                    <div class="arch-label">Index</div>
-                    <div class="arch-detail">Extract · chunk · embed · synchronize</div>
-                </div>
-                <div class="arch-arrow">&rarr;</div>
-            </div>
-            <div class="arch-step">
-                <div class="arch-node active">
-                    <div class="arch-label">SQLite Store</div>
-                    <div class="arch-detail">Documents + Chunks + FTS5 + Embeddings</div>
-                </div>
-                <div class="arch-arrow">&rarr;</div>
-            </div>
-            <div class="arch-step">
-                <div class="arch-node">
-                    <div class="arch-label">Knowledge API</div>
-                    <div class="arch-detail">Keyword · semantic · hybrid · source-scoped</div>
-                </div>
-                <div class="arch-arrow">&rarr;</div>
-            </div>
-            <div class="arch-step">
-                <div class="arch-node">
-                    <div class="arch-label">Choose Execution</div>
-                    <div class="arch-detail">MCP profiles in your client · governed agents in Context Harness</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="arch-details">
-            <div class="arch-detail-card">
-                <h4>Document Model</h4>
-                <pre><code>{
-  "id": "uuid",
-  "source": "filesystem",
-  "source_id": "docs/auth.md",
-  "title": "Auth Module",
-  "body": "...",
-  "chunks": [
-    { "index": 0, "text": "..." }
-  ]
-}</code></pre>
-            </div>
-            <div class="arch-detail-card">
-                <h4>Configuration</h4>
-                <pre><code>[db]
-path = "./data/ctx.sqlite"
-
-[chunking]
-max_tokens = 700
-
-[retrieval]
-hybrid_alpha = 0.6
-final_limit = 12
-
-[connectors.filesystem.local]
-root = "./my-project"
-include_globs = ["**/*.md"]</code></pre>
-            </div>
-        </div>
-    </div>
-</section>
-
-<section id="use-cases" class="use-cases">
-    <div class="container">
-        <h2 class="section-title">Built for real workflows</h2>
-        <p class="section-sub">Adopt the layer you need today without handing over more authority than the work requires</p>
-
-        <div class="use-case-grid">
-            <div class="use-case-card featured">
-                <div class="use-case-badge">Foundation</div>
-                <div class="use-case-icon">🧩</div>
-                <h3>Project Knowledge Layer</h3>
-                <p>Index code, decisions, runbooks, and research once. Search it from the CLI, serve it over MCP, or embed the public APIs while keeping canonical data <strong>inspectable and local</strong>.</p>
-                <div class="use-case-tags">
-                    <span class="tag">SQLite + FTS5</span>
-                    <span class="tag">Hybrid Retrieval</span>
-                    <span class="tag">Source Scoped</span>
-                </div>
-            </div>
-            <div class="use-case-card featured">
-                <div class="use-case-badge">Client-Owned Execution</div>
-                <div class="use-case-icon">🤖</div>
-                <h3>Reusable AI Profiles via MCP</h3>
-                <p>Give Cursor, Claude, and custom clients named roles such as reviewer, architect, or incident responder, grounded in the same <strong>local project context</strong>.</p>
-                <div class="use-case-tags">
-                    <span class="tag">Cursor</span>
-                    <span class="tag">Claude</span>
-                    <span class="tag">MCP Protocol</span>
-                </div>
-            </div>
-            <div class="use-case-card featured">
-                <div class="use-case-badge">Runtime-Owned Execution</div>
-                <div class="use-case-icon">🔌</div>
-                <h3>Governed Durable Agents</h3>
-                <p>Run direct or queued model-and-tool work with explicit permissions, budgets, typed outcomes, inspectable history, and safe recovery — <strong>without surrendering project control</strong>.</p>
-                <div class="use-case-tags">
-                    <span class="tag">OpenAI + Ollama</span>
-                    <span class="tag">Durable Tasks</span>
-                    <span class="tag">Safe Recovery</span>
-                </div>
-            </div>
-            <div class="use-case-card">
-                <div class="use-case-icon">📚</div>
-                <h3>Application Agent Foundation</h3>
-                <p>Register trusted providers and scoped tools, submit durable work, operate bounded workers, and refresh known changed documents through <strong>supported public Rust APIs</strong>.</p>
-                <div class="use-case-tags">
-                    <span class="tag">Public APIs</span>
-                    <span class="tag">Domain Neutral</span>
-                </div>
-            </div>
-            <div class="use-case-card">
-                <div class="use-case-icon">🏗️</div>
-                <h3>Engineering Onboarding</h3>
-                <p>Index incident reports, ADRs, and runbooks. Give engineers and AI tools one source-scoped place to retrieve the decisions behind the code.</p>
-                <div class="use-case-tags">
-                    <span class="tag">Knowledge Base</span>
-                    <span class="tag">Natural Language</span>
-                </div>
-            </div>
-            <div class="use-case-card">
-                <div class="use-case-icon">📝</div>
-                <h3>Personal Knowledge Agent</h3>
-                <p>Index your Obsidian vault, meeting notes, or research docs. Connect it to your AI tools and ask questions across your entire body of knowledge.</p>
-                <div class="use-case-tags">
-                    <span class="tag">Obsidian</span>
-                    <span class="tag">Personal AI</span>
-                </div>
-            </div>
-        </div>
-
-        <div class="use-case-cta">
-            <a href="{{ get_url(path='@/docs/profiles/overview.md') }}" class="btn btn-primary">Start with Profiles →</a>
-            <a href="{{ get_url(path='@/docs/agents/overview.md') }}" class="btn btn-secondary">Explore Agents →</a>
-            <span class="use-case-cta-note">Choose who should own the conversation, then build on the same local context.</span>
-        </div>
-    </div>
-</section>
-
-<section id="quickstart" class="quickstart">
-    <div class="container">
-        <h2 class="section-title">Start with knowledge. Add execution deliberately.</h2>
-        <p class="section-sub">The first four commands build a useful local index. Profiles and agents are separate next steps, not prerequisites.</p>
-        <div class="steps">
-            <div class="step">
-                <div class="step-num">1</div>
-                <div class="step-content">
-                    <h3>Install</h3>
-                    <pre><code><span class="comment"># Download a pre-built binary (macOS, Linux, Windows)</span>
-<span class="prompt">$</span> curl -L https://github.com/parallax-labs/context-harness/releases/latest/download/ctx-<span class="placeholder">PLATFORM</span>.tar.gz | tar xz
-<span class="prompt">$</span> sudo mv ctx /usr/local/bin/
-
-<span class="comment"># Or install from source</span>
-<span class="prompt">$</span> cargo install --git https://github.com/parallax-labs/context-harness</code></pre>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-num">2</div>
-                <div class="step-content">
-                    <h3>Configure</h3>
-                    <pre><code><span class="prompt">$</span> mkdir -p config
-<span class="prompt">$</span> cat > config/ctx.toml << 'EOF'
-[db]
-path = "./data/ctx.sqlite"
-
-[chunking]
-max_tokens = 700
-
-[connectors.filesystem.local]
-root = "./my-project"
-include_globs = ["**/*.md", "**/*.rs"]
-EOF</code></pre>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-num">3</div>
-                <div class="step-content">
-                    <h3>Initialize &amp; Sync</h3>
-                    <pre><code><span class="prompt">$</span> ctx init --config ./config/ctx.toml
-<span class="prompt">$</span> ctx sync filesystem --config ./config/ctx.toml</code></pre>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-num">4</div>
-                <div class="step-content">
-                    <h3>Search</h3>
-                    <pre><code><span class="prompt">$</span> ctx search "authentication flow" --config ./config/ctx.toml</code></pre>
-                </div>
-            </div>
-        </div>
-        <div class="cta-block">
-            <p>Choose who should own the conversation.</p>
-            <a href="{{ get_url(path='@/docs/profiles/overview.md') }}" class="btn btn-primary">Connect an AI Client</a>
-            <a href="{{ get_url(path='@/docs/agents/overview.md') }}" class="btn btn-secondary">Run a Governed Agent</a>
-            <a href="{{ get_url(path='@/docs/agents/embed-an-agent-host.md') }}" class="btn btn-secondary">Embed the Runtime</a>
-        </div>
-    </div>
-</section>
+</main>
 
 <footer class="footer">
     <div class="container">
@@ -529,21 +261,22 @@ EOF</code></pre>
 </footer>
 
 <script>
-document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-    anchor.addEventListener('click', function (e) {
-        e.preventDefault();
-        const target = document.querySelector(this.getAttribute('href'));
-        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+(function() {
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener('click', function(e) {
+            const hash = this.getAttribute('href');
+            if (!hash || hash === '#') return;
+            const target = document.getElementById(decodeURIComponent(hash.slice(1)));
+            if (!target) return;
+            e.preventDefault();
+            history.pushState(null, '', hash);
+            target.scrollIntoView({ behavior: reduceMotion.matches ? 'auto' : 'smooth', block: 'start' });
+        });
     });
-});
-const obs = new IntersectionObserver(entries => {
-    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
-}, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
-document.querySelectorAll('.feature-card, .arch-step, .step, .arch-detail-card, .use-case-card').forEach(el => obs.observe(el));
-const terminalLines = document.querySelectorAll('.terminal-line');
-terminalLines.forEach(line => { line.style.animationDelay = `${parseFloat(line.style.getPropertyValue('--delay')) || 0}s`; });
-const nav = document.querySelector('.nav');
-window.addEventListener('scroll', () => { nav.classList.toggle('scrolled', window.scrollY > 50); });
+    const nav = document.querySelector('.nav');
+    window.addEventListener('scroll', () => nav.classList.toggle('scrolled', window.scrollY > 50), { passive: true });
+})();
 
 // Platform detection & download CTA
 (function() {
@@ -632,34 +365,48 @@ window.addEventListener('scroll', () => { nav.classList.toggle('scrolled', windo
     });
 })();
 
-// Mobile nav
+// Accessible homepage navigation drawer
 (function() {
-    const btn = document.getElementById('mobile-menu-btn');
-    const closeBtn = document.getElementById('mobile-nav-close');
+    const trigger = document.getElementById('mobile-menu-btn');
+    const closeButton = document.getElementById('mobile-nav-close');
     const backdrop = document.getElementById('mobile-nav-backdrop');
     const drawer = document.getElementById('mobile-nav');
-
     function openNav() {
+        drawer.inert = false;
+        backdrop.inert = false;
         drawer.classList.add('open');
         backdrop.classList.add('open');
-        btn.setAttribute('aria-expanded', 'true');
         drawer.setAttribute('aria-hidden', 'false');
+        backdrop.setAttribute('aria-hidden', 'false');
+        trigger.setAttribute('aria-expanded', 'true');
         document.body.style.overflow = 'hidden';
+        closeButton.focus();
     }
-    function closeNav() {
+    function closeNav(restoreFocus = true) {
+        if (!drawer.classList.contains('open')) return;
         drawer.classList.remove('open');
         backdrop.classList.remove('open');
-        btn.setAttribute('aria-expanded', 'false');
         drawer.setAttribute('aria-hidden', 'true');
+        backdrop.setAttribute('aria-hidden', 'true');
+        drawer.inert = true;
+        backdrop.inert = true;
+        trigger.setAttribute('aria-expanded', 'false');
         document.body.style.overflow = '';
+        if (restoreFocus) trigger.focus();
     }
-
-    btn.addEventListener('click', openNav);
-    closeBtn.addEventListener('click', closeNav);
-    backdrop.addEventListener('click', closeNav);
-    document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeNav(); });
-    drawer.querySelectorAll('.mobile-nav-links a').forEach(function(a) {
-        a.addEventListener('click', closeNav);
+    trigger.addEventListener('click', openNav);
+    closeButton.addEventListener('click', () => closeNav());
+    backdrop.addEventListener('click', () => closeNav());
+    drawer.querySelectorAll('a').forEach(link => link.addEventListener('click', () => closeNav()));
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') closeNav();
+        if (event.key === 'Tab' && drawer.classList.contains('open')) {
+            const items = Array.from(drawer.querySelectorAll('a, button')).filter(item => !item.disabled);
+            const first = items[0];
+            const last = items[items.length - 1];
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+        }
     });
 })();
 </script>

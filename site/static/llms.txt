@@ -1,13 +1,14 @@
 # Context Harness
 
-> Context Harness is an open-source, local-first knowledge and agent runtime. It indexes project knowledge in SQLite, equips external AI clients through MCP profiles, and runs governed agents with scoped tools, durable tasks, typed outcomes, checkpoints, and conservative recovery. Built in Rust by Parallax Labs. AGPL-3.0 licensed.
+> Run project agents with relevant context, scoped tools, and inspectable history. Keep your index local and use the model you configure.
 
-Context Harness creates one inspectable local knowledge layer from filesystem, Git,
-S3, or custom Lua sources. Cursor, Claude, and custom clients can use that layer while
-owning their own conversations. When Context Harness should own execution, its agent
-runtime adds model/tool policy, cumulative budgets, durable history, background tasks,
-bounded context, and explicit recovery. Cloud models are optional, explicit providers;
-local embeddings and native loopback-only Ollama generation are supported.
+Context Harness indexes project documents locally and supports bounded agent runs with scoped tools and durable history. Start with the project researcher guide. Existing AI clients can use the same index over MCP, and application developers can integrate through public Rust host APIs. Local storage does not imply local model processing: configured clients, models, connectors, and tools determine which data leaves the machine.
+
+## Start here
+
+- [Run a project agent](https://parallax-labs.github.io/context-harness/docs/agents/build-local-agents/): Configure the project researcher, ask for an answer with file citations, and inspect the run.
+- [Connect your AI client](https://parallax-labs.github.io/context-harness/docs/getting-started/quick-start/): Index project documents and expose search through MCP. Your client keeps control of the conversation.
+- [Embed the runtime](https://parallax-labs.github.io/context-harness/docs/agents/embed-an-agent-host/): Register trusted tools and providers, enqueue work, and inspect results through the public Rust host APIs.
 
 ## Key Capabilities
 
@@ -27,8 +28,8 @@ local embeddings and native loopback-only Ollama generation are supported.
 
 ## Documentation
 
-- [Getting Started](https://parallax-labs.github.io/context-harness/docs/getting-started/quick-start/): Install and build your first knowledge base in 5 minutes
-- [Installation](https://parallax-labs.github.io/context-harness/docs/getting-started/installation/): Install from source (cargo install) or Docker
+- [Search your project documents](https://parallax-labs.github.io/context-harness/docs/getting-started/quick-start/): Index local documents, verify keyword search, and optionally connect an AI client
+- [Installation](https://parallax-labs.github.io/context-harness/docs/getting-started/installation/): Install from release binaries or choose another supported installation option
 - [Configuration Reference](https://parallax-labs.github.io/context-harness/docs/reference/configuration/): Complete ctx.toml reference for db, chunking, embedding, retrieval, server, and connectors
 - [CLI Reference](https://parallax-labs.github.io/context-harness/docs/reference/cli/): Every ctx command, flag, and option
 - [Search & Retrieval](https://parallax-labs.github.io/context-harness/docs/reference/search/): Keyword, semantic, and hybrid search modes with scoring and tuning
@@ -59,7 +60,7 @@ local embeddings and native loopback-only Ollama generation are supported.
 
 - [Registry Overview](https://parallax-labs.github.io/context-harness/docs/registry/overview/): How Git-backed extension registries work
 - [Usage Guide](https://parallax-labs.github.io/context-harness/docs/registry/usage-guide/): Install, browse, and use community extensions
-- [Available Extensions](https://parallax-labs.github.io/context-harness/docs/registry/available-extensions/): Complete catalog of community connectors, tools, and agents
+- [Available Extensions](https://parallax-labs.github.io/context-harness/docs/registry/available-extensions/): Complete catalog of community connectors, tools, and profiles
 
 ## Connectors
 

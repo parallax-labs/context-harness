@@ -5,21 +5,21 @@ weight = 2
 aliases = ["/docs/guides/local-agents/"]
 +++
 
-Context Harness can run standalone agents directly in a project. These agents
-use a configured model, select a small set of local tools, and record their runs
-in the project's SQLite database. They are different from MCP **profiles**: a
-standalone agent owns a bounded model/tool loop and can be inspected or resumed
-locally, while a profile only prepares a conversation owned by another client.
-See [Profiles Overview](@/docs/profiles/overview.md) for a direct comparison.
+Build a read-only project researcher that searches your indexed files and is
+instructed to cite the evidence behind its answer. You will configure one
+source, a model, an agent, and two scoped retrieval tools, then inspect a run.
 
-This guide builds a generic project researcher. The same structure works for
-code review, release preparation, incident analysis, migration planning, and
-other workflows without assuming that your context lives in a wiki.
+[Install Context Harness](@/docs/getting-started/installation.md) first and work
+from your project's root. This walkthrough uses OpenAI and requires API
+credentials and a model available to your account. Context included in model
+requests is sent to that provider. For local generation, the runtime also
+supports a separately running Ollama service with a compatible model already
+installed; see the [model configuration reference](@/docs/reference/configuration.md).
 
-You can follow the configuration manually below or have Codex apply the same
-workflow with the [Agent Setup Skill](@/docs/agents/setup-skill.md). The
-skill is useful when adapting an existing project; the manual path is useful when
-you want to understand or author every resource yourself.
+If you want your existing AI client to own the conversation, use the
+[document-search quick start](@/docs/getting-started/quick-start.md) instead. For
+assisted configuration, the [Agent Setup Skill](@/docs/agents/setup-skill.md)
+follows the same resource layout described below.
 
 ### Configuration map
 
@@ -99,9 +99,9 @@ credential in the process that runs `ctx`:
 export OPENAI_API_KEY="..."
 ```
 
-The local runtime currently includes an OpenAI Responses adapter. The runtime
-interface itself is provider-neutral, so embedding hosts can register other model
-providers in code.
+The built-in generation adapters are OpenAI Responses and native Ollama. This
+example uses OpenAI. Embedding hosts can register additional trusted model
+providers in code; that is a separate integration step.
 
 ### 2. Bind source-scoped retrieval tools
 
@@ -226,11 +226,22 @@ it does not auto-approve them.
 ```sh
 ctx agent history --limit 20
 ctx agent inspect <run-id>
-ctx agent resume <run-id>
 ```
 
 History records model usage, tool calls, approval decisions, binding identities,
 and terminal state without storing credential values or provider response bodies.
+
+Inspect the outcome before taking another action. `ctx agent resume <run-id>`
+recovers eligible interrupted runs after configuration and tool-effect checks.
+It does not restart a completed run or answer a suspended agent's question.
+
+If an agent declares `run.blocked` or `run.request_user_input` and suspends an
+eligible standalone run, use `ctx agent continue <run-id> "Your answer or environment update"`
+to supply explicit continuation input. The researcher defined above does not
+declare those control tools. Continuation is a separate capability, not a step
+required for this example. MCP-backed and delegated runs have additional recovery
+restrictions; see the [continuation contract](https://github.com/parallax-labs/context-harness/blob/main/docs/spec/0030-suspended-run-continuation.md).
+
 Resume rejects a changed agent, model binding, tool schema, fixed configuration,
 restriction, or uncertain side effect. MCP-backed runs are non-resumable because
 their external session cannot be reconstructed safely.
@@ -320,3 +331,5 @@ The repository example includes:
 
 See `examples/local-agents` or continue with the
 [CLI reference](@/docs/reference/cli.md).
+
+[Operate background tasks](https://github.com/parallax-labs/context-harness/blob/main/docs/runbook/0020-operate-agent-task-worker.md) describes how to submit durable jobs and run a separate worker.

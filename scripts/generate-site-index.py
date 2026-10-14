@@ -62,10 +62,10 @@ def main():
     entries.append({
         "title": "Context Harness",
         "url": base_url + "/",
-        "description": "Local-first context engine for AI tools",
+        "description": "Run project agents with relevant context, scoped tools, and inspectable history. Keep your index local and use the model you configure.",
     })
     entries.append({
-        "title": "Demo",
+        "title": "Search demo",
         "url": base_url + "/demo/",
         "description": "Search a pre-built knowledge base in your browser",
     })

@@ -4,7 +4,14 @@ description = "Complete reference for every setting in ctx.toml."
 weight = 1
 +++
 
-Context Harness uses a TOML config file passed via `--config` (defaults to `./config/ctx.toml`). Here's a fully annotated example:
+`--config` selects one explicit configuration file. Without it, Context Harness
+checks `CTX_CONFIG`, then the workspace's `.ctx/config.toml` or legacy
+`config/ctx.toml`, then the global configuration and built-in defaults. Explicit
+`--config` or `CTX_CONFIG` bypasses merging; discovered workspace configuration
+is merged over global defaults. See the [configuration resolution contract](https://github.com/parallax-labs/context-harness/blob/main/docs/spec/0013-config-resolution.md).
+
+The annotated configuration below is an example of available settings; it does
+not enable every feature by default.
 
 ### Full reference
 
@@ -147,6 +154,24 @@ readonly = true                        # Don't write to this registry
 auto_update = true                     # Pull on startup
 ```
 
+### Local agent generation with Ollama
+
+```toml
+[models.local]
+provider = "ollama"
+model = "qwen3" # Example ID; use a compatible model already installed locally.
+base_url = "http://127.0.0.1:11434"
+timeout_seconds = 120
+```
+
+Set an agent's `model` field to `"local"` to select this alias. Run the Ollama
+service and provision a compatible model separately. This generation adapter
+requires a literal loopback HTTP address; `localhost` and remote hosts are not
+accepted. It does not download models or fall back to a cloud provider. Generation
+configuration under `[models.*]` is separate from retrieval embeddings under
+`[embedding]`. Model suitability for a task still needs to be evaluated. See the
+[complete native adapter contract](https://github.com/parallax-labs/context-harness/blob/main/docs/spec/0016-model-runtime.md).
+
 ### Standalone local resources
 
 Standalone local agents and declarative tool bindings live beside the effective
@@ -194,7 +219,7 @@ workspace = "acme"                      # Plain string, no expansion
 | `[retrieval]` | Hybrid alpha, candidate counts, result limits |
 | `[server]` | HTTP bind address |
 | `[models.*]` | Model aliases used by standalone local agents |
-| `[connectors.filesystem.*]` | Named filesystem connector instances (see [Built-in connectors](/docs/connectors/built-in/#supported-file-formats) for supported formats) |
+| `[connectors.filesystem.*]` | Named filesystem connector instances (see [Built-in connectors](@/docs/connectors/built-in.md#supported-file-formats) for supported formats) |
 | `[connectors.git.*]` | Named git connector instances |
 | `[connectors.s3.*]` | Named S3 connector instances |
 | `[connectors.script.*]` | Named Lua scripted connector instances |
