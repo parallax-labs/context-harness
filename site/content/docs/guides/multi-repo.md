@@ -1,275 +1,179 @@
 +++
-title = "Multi-Repo Context"
-description = "Index multiple repositories and data sources into a single searchable knowledge base."
-weight = 2
+title = "Connect the repositories behind your change"
+description = "Configure related repositories in one index and make their source and documentation searchable from your coding assistant."
+weight = 1
 +++
 
-A common pattern is indexing multiple repositories, wikis, and data sources into a single Context Harness instance. This gives your AI agents unified search across your entire engineering organization's knowledge.
+Start with two or three repositories you routinely consult together. This guide uses one Context Harness configuration and one index; you do not need a separate Context Harness workspace for each repository.
 
-### The idea
+## 1. Configure existing checkouts
 
-Configure multiple named Git connectors, filesystem mounts, S3 buckets, and Lua scripts — all feeding into the same SQLite database. When an agent searches, it gets results from *all* sources ranked together.
-
-```
-┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-│ git:platform │  │  git:infra   │  │ s3:runbooks  │  │ script:jira  │
-└──────┬───────┘  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘
-       │                 │                 │                 │
-       └─────────────────┴─────────────────┴─────────────────┘
-                                   │
-                          ┌────────▼────────┐
-                          │  SQLite (single  │
-                          │   database)      │
-                          └────────┬────────┘
-                                   │
-                          ┌────────▼────────┐
-                          │  ctx serve mcp  │
-                          │  :7331          │
-                          └─────────────────┘
-```
-
-### Complete multi-repo config
-
-Here's a real-world config indexing an engineering org's docs, multiple services, and external knowledge sources:
+Create a configuration file outside the repositories you are indexing, for
+example `~/context-harness/config/ctx.toml`. Replace each absolute path below
+with an existing local checkout. Keep the database and state paths in a
+directory you control. The example uses keyword search and needs no model or API
+key.
 
 ```toml
-# config/ctx.toml — Multi-repo engineering context
-
 [db]
-path = "./data/ctx.sqlite"
+path = "/Users/you/context-harness/data/ctx.sqlite"
 
 [chunking]
 max_tokens = 700
 overlap_tokens = 80
 
 [embedding]
-provider = "openai"
-model = "text-embedding-3-small"
-dims = 1536
-batch_size = 64
+provider = "disabled"
 
 [retrieval]
-final_limit = 15
+final_limit = 12
 hybrid_alpha = 0.6
-candidate_k_keyword = 100
-candidate_k_vector = 100
 
 [server]
 bind = "127.0.0.1:7331"
 
-# ── Local project docs ──────────────────────────────────────
+[connectors.filesystem.order_processing]
+root = "/Users/you/src/order-processing"
+include_globs = ["**/*.rs", "**/*.ts", "**/*.tsx", "**/*.json", "**/*.md", "**/AGENTS.md", "**/CLAUDE.md"]
+exclude_globs = ["**/.git/**", "**/target/**", "**/node_modules/**", "**/dist/**", "**/build/**", "**/generated/**"]
 
-[connectors.filesystem.local]
-root = "./docs"
-include_globs = ["**/*.md", "**/*.txt"]
+[connectors.filesystem.event_framework]
+root = "/Users/you/src/event-framework"
+include_globs = ["**/*.rs", "**/*.ts", "**/*.tsx", "**/*.json", "**/*.md", "**/AGENTS.md", "**/CLAUDE.md"]
+exclude_globs = ["**/.git/**", "**/target/**", "**/node_modules/**", "**/dist/**", "**/build/**", "**/generated/**"]
 
-# ── Main platform service ───────────────────────────────────
+[connectors.filesystem.lake_contracts]
+root = "/Users/you/src/lake-contracts"
+include_globs = ["**/*.sql", "**/*.json", "**/*.md", "**/AGENTS.md", "**/CLAUDE.md"]
+exclude_globs = ["**/.git/**", "**/target/**", "**/node_modules/**", "**/dist/**", "**/build/**", "**/generated/**"]
+```
 
-[connectors.git.platform]
-url = "https://github.com/acme/platform.git"
+The paths above are examples: change `/Users/you` and repository names to match
+your machine. Include globs select source and Markdown guidance files; exclude
+globs skip common vendor, build, and generated directories. Add or remove file
+patterns to fit the languages and material you need. Indexing `AGENTS.md` or
+`CLAUDE.md` makes its text searchable. It does not automatically apply those
+instructions to your coding assistant; load the applicable repository and
+directory guidance for the task.
+
+If you prefer not to have a local checkout for one source, add a named Git
+connector to the same configuration, replacing the URL with an accessible
+repository:
+
+```toml
+[connectors.git.lake_pipeline]
+url = "https://github.com/your-org/lake-pipeline.git" # Placeholder: replace with an accessible repository URL.
 branch = "main"
-root = "."
-include_globs = [
-    "docs/**/*.md",
-    "src/**/*.rs",
-    "README.md",
-    "CHANGELOG.md",
-    "ADR/**/*.md",
-]
-exclude_globs = ["**/target/**", "**/node_modules/**"]
+include_globs = ["transforms/**/*.sql", "docs/**/*.md", "README.md"]
+exclude_globs = ["**/generated/**", "**/vendor/**"]
 shallow = true
-cache_dir = "./data/.git-cache/platform"
-
-# ── Additional Git repos ────────────────────────────────────
-
-[connectors.git.infra]
-url = "https://github.com/acme/infrastructure.git"
-branch = "main"
-root = "docs/"
-include_globs = ["**/*.md"]
-shallow = true
-
-[connectors.git.auth-service]
-url = "https://github.com/acme/auth-service.git"
-branch = "main"
-include_globs = ["src/**/*.rs", "docs/**/*.md", "README.md"]
-shallow = true
-
-[connectors.git.payments]
-url = "https://github.com/acme/payments.git"
-branch = "main"
-include_globs = ["src/**/*.rs", "docs/**/*.md"]
-shallow = true
-
-# ── Runbooks from S3 ────────────────────────────────────────
-
-[connectors.s3.runbooks]
-bucket = "acme-engineering"
-prefix = "runbooks/"
-region = "us-east-1"
-include_globs = ["**/*.md"]
-
-# ── Jira issues ─────────────────────────────────────────────
-
-[connectors.script.jira]
-path = "connectors/jira.lua"
-timeout = 60
-url = "https://acme.atlassian.net"
-project = "PLATFORM"
-api_token = "${JIRA_API_TOKEN}"
 ```
 
-### Syncing all sources
+A remote clone does not include uncommitted local edits. Use the
+[connector reference](@/docs/connectors/built-in.md) for Git options.
 
-Sync everything in one command — connectors run in parallel:
+## 2. Initialize and sync the index
 
-```bash
-$ ctx sync all
-Syncing 7 connector instances (parallel scan)...
-sync filesystem:local
-  fetched: 47 items
-  upserted documents: 47
-  chunks written: 203
-ok
-sync git:auth-service
-  fetched: 24 items
-  upserted documents: 24
-  chunks written: 112
-ok
-sync git:infra
-  fetched: 31 items
-  upserted documents: 31
-  chunks written: 89
-ok
-sync git:payments
-  fetched: 18 items
-  upserted documents: 18
-  chunks written: 67
-ok
-sync git:platform
-  fetched: 89 items
-  upserted documents: 89
-  chunks written: 412
-ok
-sync s3:runbooks
-  fetched: 34 items
-  upserted documents: 34
-  chunks written: 156
-ok
-sync script:jira
-  fetched: 142 items
-  upserted documents: 142
-  chunks written: 284
-ok
+Use the same explicit configuration path for every command. Replace the example
+path with the absolute path to the file you created:
+
+```sh
+ctx --config /Users/you/context-harness/config/ctx.toml init
+ctx --config /Users/you/context-harness/config/ctx.toml sync all
+ctx --config /Users/you/context-harness/config/ctx.toml sources
 ```
 
-Or sync specific types or instances:
+Each filesystem connector is a named source. Sync again when you want to refresh
+the indexed material; search does not automatically read changed files.
 
-```bash
-$ ctx sync git               # All git connectors (parallel)
-$ ctx sync git:platform      # Just one repo
-$ ctx sync s3                # All S3 connectors
-$ ctx sync script:jira       # One Lua connector
+## 3. Search across repositories
+
+Search the shared collection from the CLI:
+
+```sh
+ctx --config /Users/you/context-harness/config/ctx.toml search "OrderCreated fulfillment_region"
 ```
 
-### Filtering by source
+You can narrow a search to a named source with `--source filesystem:event_framework`.
+See [quick start](@/docs/getting-started/quick-start.md) for the single-source
+path and [search reference](@/docs/reference/search.md) for search options.
 
-When searching, you can filter results to a specific source:
+## 4. Connect Claude Code over MCP
 
-```bash
-# Search only the platform repo
-$ ctx search "auth middleware" --source git:platform
+Start the HTTP MCP server in one terminal. Keep it running while your client
+uses the connection:
 
-# Search only Jira issues
-$ ctx search "payment timeout" --source script:jira
-
-# Search everything (default)
-$ ctx search "deployment procedure"
+```sh
+ctx --config /Users/you/context-harness/config/ctx.toml serve mcp
 ```
 
-Via the API:
+In another terminal, register the endpoint once at Claude Code user scope so it
+is available across your projects:
 
-```bash
-$ curl -s localhost:7331/tools/search \
-    -d '{"query": "error handling", "source": "git:auth-service"}' | jq .
+```sh
+claude mcp add --transport http --scope user context-harness http://127.0.0.1:7331/mcp
+claude mcp list
 ```
 
-### Cursor workspace with multi-repo context
+The CLI registration configures the client; the Context Harness server still
+needs to be running and reachable. Start a new Claude Code session or inspect
+`/mcp` to confirm the connection. See the official
+[Claude Code MCP guide](https://code.claude.com/docs/en/mcp) for client options.
+Other MCP-compatible clients can use the same URL with their own registration
+steps.
 
-If you work in a Cursor workspace with multiple repos, a single Context Harness instance can provide unified context across all of them.
+Give your coding assistant a focused investigation prompt, for example:
 
-**Setup:**
+> Trace how `fulfillment_region` would move from the order producer through the
+> event framework into the data lake. Search the configured repositories, cite
+> the files you use, check the applicable repository instructions, and list the
+> implementation and compatibility tests I should inspect. Do not edit files.
 
-1. Create a shared config directory:
+Connecting MCP makes tools available. It does not ensure the client calls them,
+searches every source, or loads each repository's instructions. Verify source
+coverage and inspect current files before relying on a result.
 
-```
-~/ctx-workspace/
-├── config/
-│   └── ctx.toml          # Multi-repo config (as above)
-├── data/
-│   └── ctx.sqlite         # Shared database
-├── connectors/
-│   └── jira.lua           # Lua connector for Jira
-└── scripts/
-    └── sync-all.sh        # Sync script
-```
+## Optional: add local semantic search
 
-2. Add to every Cursor workspace — create `.cursor/mcp.json`:
+Keyword search is ready with the configuration above. To add local embeddings,
+replace `[embedding]` with:
 
-```json
-{
-  "mcpServers": {
-    "org-context": {
-      "url": "http://127.0.0.1:7331/mcp"
-    }
-  }
-}
+```toml
+[embedding]
+provider = "local"
 ```
 
-3. Start the server once and use it everywhere:
+The local embedding model downloads on first use and is reused from the local
+model cache afterward. Run `embed pending` after syncing to create embeddings
+for chunks that do not have them:
 
-```bash
-$ cd ~/ctx-workspace
-$ ctx serve mcp --config ./config/ctx.toml
+```sh
+ctx --config /Users/you/context-harness/config/ctx.toml embed pending
 ```
 
-Now every Cursor window in every repo has access to the full org knowledge base.
+That warm model-cache reuse is separate from Claude Code input tokens: retrieved
+source text the client sends is still part of its model request. Local embeddings
+do not mean the assistant's conversation or
+other configured providers stay local. A later source sync refreshes indexed
+content; it does not make search a live filesystem read.
 
-### CI-based multi-repo index
+## More than one organization context?
 
-For teams, build the index in CI so everyone gets fresh context:
+For separate indexes and configurations, register one workspace per context;
+each workspace can contain several repository sources. This shared-server mode
+does not use the guide's `--config` option or `CTX_CONFIG`; do not combine them
+with `--workspaces`. The
+[multi-workspace MCP routing runbook](https://github.com/parallax-labs/context-harness/blob/main/docs/runbook/0018-multi-workspace-mcp-routing.md)
+explains registration and the shared endpoint:
 
-```yaml
-# .github/workflows/build-context.yml
-name: Build Context Index
-on:
-  schedule:
-    - cron: '0 */6 * * *'  # Every 6 hours
-  workflow_dispatch:
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - run: cargo install --git https://github.com/parallax-labs/context-harness
-
-      - name: Sync all sources
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
-        run: |
-          ctx init --config ./config/ctx.toml
-          ctx sync all --full --config ./config/ctx.toml
-          ctx embed pending --config ./config/ctx.toml
-
-      - name: Upload database
-        uses: actions/upload-artifact@v4
-        with:
-          name: ctx-database
-          path: data/ctx.sqlite
+```sh
+ctx serve mcp --workspaces
 ```
 
-Team members download the latest `ctx.sqlite` and run `ctx serve mcp` locally — instant multi-repo context without needing API keys or waiting for syncs.
+Initialize and sync each workspace independently before starting the router.
+The router does not refresh their stores. Built-in requests select a workspace
+or use the configured default; searching across workspaces is explicit. Search
+results use workspace-qualified document IDs, while retrieval selects a single
+workspace using that workspace's ID. The router currently covers built-in tools, not complete
+workspace-local tool and profile routing. Workspace selection is not an access
+control boundary; use this mode only in a trusted local environment.

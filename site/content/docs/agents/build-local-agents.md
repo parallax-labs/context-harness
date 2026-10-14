@@ -299,6 +299,8 @@ behavior:
 - **MCP alias:** a resource refers to `mcp.<server>.<remote-tool>`. Static
   inspection reports remote metadata as unresolved. Authorized startup discovers
   the schema, rejects drift, and preserves normal per-call approval requirements.
+  See the [MCP client tool contract](https://github.com/parallax-labs/context-harness/blob/main/docs/spec/0020-mcp-client-tools.md) for the
+  supported stdio transport and its permission boundary.
 
 All selected tools still pass through the same validation, policy, approval,
 cancellation, output-bound, history, and recovery lifecycle.

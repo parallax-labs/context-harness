@@ -1,58 +1,32 @@
 {% extends "base.html" %}
 
-{% block title %}Context Harness — Project context for inspectable agents{% endblock %}
-{% block description %}Run project agents with relevant context, scoped tools, and inspectable history. Keep your index local and use the model you configure.{% endblock %}
+{% block title %}Context Harness — A toolkit for context-aware agents{% endblock %}
+{% block description %}{{ section.description }}{% endblock %}
 {% block body_class %}landing{% endblock %}
-
-{% block og_title %}Context Harness — Project context for inspectable agents{% endblock %}
-{% block twitter_title %}Context Harness — Project context for inspectable agents{% endblock %}
+{% block og_title %}Context Harness — A toolkit for context-aware agents{% endblock %}
+{% block twitter_title %}Context Harness — A toolkit for context-aware agents{% endblock %}
 
 {% block structured_data %}
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@graph": [
-    {
-      "@type": "WebSite",
-      "name": "Context Harness",
-      "url": "{{ config.base_url | safe }}",
-      "description": "Run project agents with relevant context, scoped tools, and inspectable history. Keep your index local and use the model you configure.",
-      "publisher": {"@type": "Organization", "name": "Parallax Labs", "url": "{{ config.base_url | safe }}"}
-    },
-    {
-      "@type": "SoftwareApplication",
-      "name": "Context Harness",
-      "applicationCategory": "DeveloperApplication",
-      "operatingSystem": "macOS, Linux, Windows",
-      "description": "Run project agents with relevant context, scoped tools, and inspectable history. Keep your index local and use the model you configure.",
-      "url": "{{ config.base_url | safe }}",
-      "downloadUrl": "https://github.com/parallax-labs/context-harness/releases/latest",
-      "license": "https://www.gnu.org/licenses/agpl-3.0.html",
-      "programmingLanguage": "Rust",
-      "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
-      "featureList": [
-        "Search indexed project documents",
-        "Run agents with scoped tools and configured limits",
-        "Inspect durable run history and recover eligible runs",
-        "Share project context with external AI clients over MCP",
-        "Submit durable background tasks through CLI or host APIs"
-      ]
-    },
-    {
-      "@type": "FAQPage",
-      "mainEntity": [
-        {"@type":"Question","name":"Do I need to run an agent to use Context Harness?","acceptedAnswer":{"@type":"Answer","text":"No. You can index and search project documents from the CLI, or expose them over MCP to an existing AI client. Profiles provide reusable starting instructions; the external client owns execution and permissions."}},
-        {"@type":"Question","name":"Does local storage mean all processing stays on my machine?","acceptedAnswer":{"@type":"Answer","text":"No. The index and run history are local. Cloud model providers, external AI clients, connectors, and tools may send data over the network. Use local models and appropriately configured tools when processing must stay local."}},
-        {"@type":"Question","name":"Can I use Claude?","acceptedAnswer":{"@type":"Answer","text":"A compatible Claude client can use Context Harness context and profiles over MCP. The built-in agent runtime currently includes OpenAI and Ollama generation adapters. It does not include a native Anthropic generation adapter."}},
-        {"@type":"Question","name":"Can a webhook start an agent?","acceptedAnswer":{"@type":"Answer","text":"Your application can receive a webhook and submit a durable task through the CLI or host APIs. Context Harness does not currently provide a built-in webhook receiver. Your application supplies verification, event filtering, and result delivery; a separately started worker executes accepted tasks."}},
-        {"@type":"Question","name":"What happens when a run is interrupted or needs input?","acceptedAnswer":{"@type":"Answer","text":"Eligible interrupted runs can resume after recovery checks. Eligible standalone runs suspended as blocked or needing input can be continued explicitly. Changed definitions, uncertain tool effects, MCP-backed runs, and delegated runs can restrict recovery. Consult the lifecycle documentation for the supported cases."}}
-      ]
-    }
+    {"@type":"WebSite","name":"Context Harness","url":"{{ config.base_url | safe }}","description":"{{ section.description }}","publisher":{"@type":"Organization","name":"Parallax Labs","url":"{{ config.base_url | safe }}"}},
+    {"@type":"SoftwareApplication","name":"Context Harness","applicationCategory":"DeveloperApplication","operatingSystem":"macOS, Linux, Windows","description":"{{ section.description }}","url":"{{ config.base_url | safe }}","downloadUrl":"https://github.com/parallax-labs/context-harness/releases/latest","license":"https://www.gnu.org/licenses/agpl-3.0.html","programmingLanguage":"Rust","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"featureList":["Search selected knowledge with keyword and optional semantic retrieval.","Use context in existing MCP-compatible clients.","Run agents with selected tools and explicit execution policy.","Inspect recorded activity and submit durable tasks.","Route built-in context tools across registered workspaces through one MCP endpoint."]},
+    {"@type":"FAQPage","mainEntity":[
+        {"@type":"Question","name":"Is this a context layer or an agent runtime?","acceptedAnswer":{"@type":"Answer","text":"Both. Context Harness provides searchable context and an optional runtime for executing agents with selected tools. Use that runtime directly or inside an application, or expose context to an existing AI client over MCP."}},
+        {"@type":"Question","name":"Can agents use live information and take actions?","acceptedAnswer":{"@type":"Answer","text":"Yes, through configured tools and permitted operations. The runtime includes support for selected stdio MCP tools. External-service compatibility depends on the server and authentication setup; direct remote MCP transports and OAuth are not provided by this client path yet."}},
+        {"@type":"Question","name":"Can a webhook trigger work?","acceptedAnswer":{"@type":"Answer","text":"Your application can receive and verify a webhook, filter the event, and submit a durable task. Context Harness does not provide a built-in webhook receiver. A separately operated worker executes accepted work; your application owns result delivery and publication policy."}},
+        {"@type":"Question","name":"Do I need a separate database service?","acceptedAnswer":{"@type":"Answer","text":"No. Context Harness stores its knowledge index and runtime history in SQLite, with no separate database service required. Configured models, clients, connectors, and tools may send data over the network. Local storage does not mean every operation stays on the machine."}},
+        {"@type":"Question","name":"Does search automatically refresh files or apply repository instructions?","acceptedAnswer":{"@type":"Answer","text":"No. Search uses the indexed material; sync configured sources when you need to refresh them. Including AGENTS.md or CLAUDE.md makes those documents searchable, but does not automatically apply their rules. The client or workflow must load the applicable guidance."}},
+        {"@type":"Question","name":"Do permissions and history mean every run can recover safely?","acceptedAnswer":{"@type":"Answer","text":"No. Eligible interrupted runs can resume after recovery checks, but not every run is resumable. MCP-backed runs currently do not support resume. Inspect external state before repeating an operation whose outcome is uncertain; recorded activity is not a guarantee of correctness or exactly-once effects."}},
+        {"@type":"Question","name":"Can I use Claude or another existing assistant?","acceptedAnswer":{"@type":"Answer","text":"A compatible client can use Context Harness over MCP while keeping its own model and execution controls. The built-in runtime does not currently include a native Anthropic generation adapter. Client integration and runtime provider support are different paths."}},
+        {"@type":"Question","name":"Will this reduce token costs?","acceptedAnswer":{"@type":"Answer","text":"Focused retrieval can reduce how much material you choose to include, but savings depend on the task, model, client, and tool responses. Embedding reuse and model-input token costs are separate. Compare representative workflows; no fixed reduction is promised."}}
+    ]}
   ]
 }
 </script>
 {% endblock %}
-
 
 {% block body %}
 <nav class="nav" aria-label="Main navigation">
@@ -61,8 +35,8 @@
             <span class="nav-logo">⚡</span><span class="nav-name">Context Harness</span>
         </a>
         <div class="nav-links">
-            <a href="#use-cases">Use cases</a>
-            <a href="#architecture">How it works</a>
+            <a href="#architecture">How it fits</a>
+            <a href="#use-cases">Examples</a>
             <a href="{{ get_url(path='@/docs/_index.md') }}">Docs</a>
             <a href="{{ get_url(path='@/blog/_index.md') }}">Blog</a>
             <a href="{{ config.extra.github_url }}" class="nav-github" target="_blank" rel="noopener" aria-label="Context Harness on GitHub">
@@ -77,6 +51,16 @@
         </div>
     </div>
 </nav>
+<noscript>
+    <style>#search-trigger, #mobile-menu-btn { display: none !important; }</style>
+    <nav class="noscript-nav" aria-label="Page navigation">
+        <a href="#workflow">Examples</a>
+        <a href="#architecture">How it fits</a>
+        <a href="{{ get_url(path='@/docs/agents/build-local-agents.md') }}">Build an agent</a>
+        <a href="{{ get_url(path='@/docs/_index.md') }}">Docs</a>
+        <a href="{{ get_url(path='@/blog/_index.md') }}">Blog</a>
+    </nav>
+</noscript>
 <div class="mobile-nav-backdrop" id="mobile-nav-backdrop" aria-hidden="true" inert></div>
 <nav class="mobile-nav" id="mobile-nav" aria-label="Mobile navigation" aria-hidden="true" inert>
     <div class="mobile-nav-header">
@@ -84,11 +68,11 @@
         <button class="mobile-nav-close" id="mobile-nav-close" aria-label="Close menu"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     </div>
     <div class="mobile-nav-links">
-        <a href="#use-cases">Use cases</a>
-        <a href="#architecture">How it works</a>
+        <a href="#architecture">How it fits</a>
+        <a href="#use-cases">Examples</a>
         <a href="{{ get_url(path='@/docs/_index.md') }}">Docs</a>
         <a href="{{ get_url(path='@/blog/_index.md') }}">Blog</a>
-        <a href="{{ get_url(path='@/docs/agents/build-local-agents.md') }}">Run a project agent</a>
+        <a href="{{ get_url(path='@/docs/agents/build-local-agents.md') }}">Build an agent</a>
         <a href="https://github.com/parallax-labs/context-harness/releases/latest" id="mobile-download-link" class="mobile-nav-download">Download</a>
         <a href="{{ config.extra.github_url }}" target="_blank" rel="noopener">GitHub</a>
     </div>
@@ -99,86 +83,99 @@
     <div class="hero-glow" aria-hidden="true"></div>
     <div class="container">
         <div class="hero-copy">
-            <p class="hero-eyebrow">Local context. Inspectable agent runs.</p>
-            <h1 class="hero-title">Give your agent the project knowledge it needs.</h1>
-            <p class="hero-sub">Turn your code, decisions, and runbooks into context an agent can search. Run a focused task with scoped tools and inspect its history, or bring that context into the AI client you already use.</p>
+            <p class="hero-eyebrow">A TOOLKIT FOR CONTEXT-AWARE AGENTS</p>
+            <h1 class="hero-title">Build agents that know your systems and can work with them.</h1>
+            <p class="hero-sub">Combine searchable knowledge, live tools, and controlled execution. Run agents in your own workflows—or bring Context Harness context into the AI assistant you already use.</p>
             <div class="hero-actions">
-                <a href="{{ get_url(path='@/docs/agents/build-local-agents.md') }}" class="btn btn-primary">Run a project agent</a>
-                <a href="{{ get_url(path='@/docs/getting-started/quick-start.md') }}" class="btn btn-secondary">Connect your AI client</a>
+                <a href="{{ get_url(path='@/docs/agents/build-local-agents.md') }}" class="btn btn-primary">Build an agent</a>
+                <a href="{{ get_url(path='@/docs/getting-started/quick-start.md') }}" class="btn btn-secondary">Use with your assistant</a>
             </div>
-            <a class="hero-install" href="{{ get_url(path='@/docs/getting-started/installation.md') }}">Install Context Harness</a>
+            <a class="hero-install" href="#use-cases">Explore the examples</a>
         </div>
-    </div>
-</section>
-
-<section id="workflow" class="workflow landing-section">
-    <div class="container">
-        <h2 class="section-title">Start with one project question</h2>
-        <div class="workflow-grid">
-            <div class="workflow-copy">
-                <p class="workflow-question">“How does authentication work here, and which decisions explain it?”</p>
-                <p>Configure a read-only project researcher to search your indexed files and cite the sources it uses. Read its answer, then inspect the run to see the recorded model and tool activity.</p>
-                <p class="workflow-prerequisite">After completing the <a href="{{ get_url(path='@/docs/agents/build-local-agents.md') }}">project researcher setup</a>, run these commands from that project's root. Agent execution uses your configured model.</p>
-            </div>
-            <div class="command-panel">
-                <pre><code>ctx agent validate
-ctx tool bindings validate
-ctx init
-ctx sync filesystem:project
-ctx search "authentication" --source "filesystem:project"
-ctx agent run project-researcher "How does authentication work here? Cite the files you use."
-ctx agent history --limit 5</code></pre>
-            </div>
-        </div>
-        <p class="workflow-note">Use the run ID from history with <code>ctx agent inspect &lt;run-id&gt;</code>. If direct search finds no relevant documents, check the source configuration and sync before asking the agent. Review the answer and citations; a completed run is not a guarantee of correctness.</p>
-        <a href="{{ get_url(path='@/docs/agents/build-local-agents.md') }}" class="text-link">Build the project researcher <span aria-hidden="true">→</span></a>
     </div>
 </section>
 
 <section id="features" class="features landing-section">
     <div class="container">
-        <h2 class="section-title">Know what your agent can use—and what happened</h2>
-        <p class="section-sub">Useful project work needs relevant information, clear limits, and a record you can inspect when something goes wrong.</p>
+        <h2 class="section-title">Give your agents context, capabilities, and control.</h2>
+        <p class="section-sub">Choose the knowledge they can consult, the tools they can call, and how their work runs.</p>
         <div class="benefit-grid">
-            <article class="benefit-card"><h3>Consult project evidence</h3><p>Index code, decisions, and runbooks so an agent can search for relevant passages and retrieve the source documents.</p></article>
-            <article class="benefit-card"><h3>Set the scope</h3><p>Choose the agent's tools, restrict supported tools to specific sources or paths, and configure execution limits.</p></article>
-            <article class="benefit-card"><h3>Inspect the run</h3><p>Review recorded model and tool activity, approvals, usage, and outcomes. Eligible interrupted runs can resume after safety checks.</p></article>
-            <article class="benefit-card"><h3>Own the local state</h3><p>Keep the knowledge index and run history in SQLite, without a separate database service. Model and tool configuration determines what leaves the machine.</p></article>
-        </div>
-    </div>
-</section>
-
-<section id="use-cases" class="use-cases landing-section">
-    <div class="container">
-        <h2 class="section-title">Choose how you want to work</h2>
-        <p class="section-sub">Start with a project question. Use the same indexed knowledge in your existing AI client or in an application you build.</p>
-        <div class="path-grid">
-            <article class="path-card path-primary"><span class="path-badge">Start here</span><h3>Ask a project question</h3><p>Trace an architecture decision or find the conventions behind the code. Configure the project researcher, request a cited answer, and inspect the run.</p><a class="btn btn-primary" href="{{ get_url(path='@/docs/agents/build-local-agents.md') }}">Run a project agent</a></article>
-            <article class="path-card"><h3>Use your AI client</h3><p>Give an MCP-compatible client access to indexed project documents. Add a reusable profile when you want consistent starting instructions.</p><a class="btn btn-secondary" href="{{ get_url(path='@/docs/getting-started/quick-start.md') }}">Connect your AI client</a></article>
-            <article class="path-card"><span class="path-badge path-badge-quiet">For application developers</span><h3>Embed an agent in your application</h3><p>Register trusted tools and model providers, submit durable tasks, and inspect outcomes through public Rust APIs. Your application owns its events and user experience.</p><a class="btn btn-secondary" href="{{ get_url(path='@/docs/agents/embed-an-agent-host.md') }}">Explore the host APIs</a></article>
+            <article class="benefit-card"><h3>Context they can search</h3><p>Index selected files, Git repositories, and other configured sources. Retrieve relevant passages and source documents without loading the entire collection into every conversation.</p><p class="card-supporting">Keyword search works without embeddings. Add semantic retrieval when it helps.</p></article>
+            <article class="benefit-card"><h3>Tools for live work</h3><p>Connect current information and useful actions through selected tools, including configured stdio MCP servers. Let a runtime agent look things up or request an action during a task.</p><p class="card-supporting">Tool availability and execution depend on your configuration and permissions.</p></article>
+            <article class="benefit-card"><h3>Execution you can inspect</h3><p>Run bounded model-and-tool loops with explicit permissions, approvals, execution limits, and recorded activity. Submit durable tasks when an application needs background work.</p><p class="card-supporting">Unattended workers deny operations that require interactive approval.</p></article>
         </div>
     </div>
 </section>
 
 <section id="architecture" class="architecture landing-section">
     <div class="container">
-        <h2 class="section-title">From project knowledge to an inspectable run</h2>
-        <ol class="process-list">
-            <li class="process-step"><span class="process-number">1</span><h3>Index your sources.</h3><p>Bring selected files into a local, searchable index.</p></li>
-            <li class="process-step"><span class="process-number">2</span><h3>Choose tools and limits.</h3><p>Configure a model, an agent role, and scoped tools.</p></li>
-            <li class="process-step"><span class="process-number">3</span><h3>Run a focused task.</h3><p>Ask the agent to work from the project evidence it can access.</p></li>
-            <li class="process-step"><span class="process-number">4</span><h3>Inspect the outcome.</h3><p>Review the answer, recorded activity, and reason the run stopped.</p></li>
-        </ol>
-        <p class="client-path">Already using an AI client? Serve the same index over MCP. Your client owns the conversation and decides which exposed tools to call; Context Harness serves the configured tools. Profiles provide reusable starting instructions. Read the <a href="{{ get_url(path='@/docs/profiles/overview.md') }}">profiles guide</a>.</p>
+        <h2 class="section-title">Run your own agents. Or bring your assistant.</h2>
+        <p class="section-sub">The context foundation is reusable. Choose who owns the conversation and execution.</p>
+        <div class="ownership-grid">
+            <article class="ownership-card">
+                <h3>Own the execution</h3>
+                <p>Configure a standalone agent, or embed the runtime in your application. Combine indexed context and selected tools, set execution policy, and inspect the resulting activity.</p>
+                <div class="ownership-actions"><a class="btn btn-primary" href="{{ get_url(path='@/docs/agents/build-local-agents.md') }}">Build an agent</a><a class="text-link" href="{{ get_url(path='@/docs/agents/embed-an-agent-host.md') }}">Embed the runtime</a></div>
+                <p class="ownership-line">Context Harness runs the model/tool loop. Your application supplies its domain rules, events, and result delivery.</p>
+            </article>
+            <article class="ownership-card">
+                <h3>Keep your existing assistant</h3>
+                <p>Expose indexed context over MCP and use reusable profiles for starting instructions. Your compatible client can consult that context alongside the other tools it already uses.</p>
+                <div class="ownership-actions"><a class="btn btn-secondary" href="{{ get_url(path='@/docs/getting-started/quick-start.md') }}">Connect your assistant</a><a class="text-link" href="{{ get_url(path='@/docs/profiles/overview.md') }}">Explore profiles</a></div>
+                <p class="ownership-line">Your client owns the conversation, model, edits, and permissions. Connecting MCP does not automatically activate a profile.</p>
+            </article>
+        </div>
+        <aside class="multi-context-note">
+            <h3>Multiple contexts. One MCP connection.</h3>
+            <p>Keep separate configurations and indexes for different organizations or projects, and access them through one Context Harness MCP endpoint. Each context can include several repositories and document sources.</p>
+            <p class="note-supporting">The current router supports built-in context discovery, search, and document retrieval with explicit or configured-default workspace selection. Workspace-local tools and profiles are not all routed by this mode yet. Workspace routing is not tenant access control.</p>
+            <a class="text-link" href="https://github.com/parallax-labs/context-harness/blob/main/docs/runbook/0018-multi-workspace-mcp-routing.md">Serve multiple workspaces over one endpoint <span aria-hidden="true">→</span></a>
+        </aside>
+    </div>
+</section>
+
+<section id="use-cases" class="use-cases landing-section">
+    <span id="workflow" class="anchor-alias" aria-hidden="true"></span>
+    <div class="container">
+        <h2 class="section-title">Put the pieces to work.</h2>
+        <p class="section-sub">Different workflows use the same building blocks: relevant knowledge, selected tools, and a clear execution owner.</p>
+        <p class="example-label">Illustrative workflows — not captured runs or bundled integrations.</p>
+        <div class="workflow-cards">
+            <article class="workflow-card">
+                <h3>Investigate a change across repositories</h3>
+                <dl>
+                    <div><dt>Task</dt><dd>“Add a field to order events and carry it into the data lake. What needs to change?”</dd></div>
+                    <div><dt>Context</dt><dd>Source and guidance from the producer, shared event framework, lake contracts, and ingestion pipeline.</dd></div>
+                    <div><dt>Tools</dt><dd>Search the configured index, then inspect current files with the tools available to your assistant or runtime agent.</dd></div>
+                    <div><dt>Useful output</dt><dd>A change checklist covering the producer schema, framework validation, lake compatibility, and ingestion mapping, with source references to verify.</dd></div>
+                </dl>
+                <p class="boundary-note">The assistant still needs to inspect current implementations, load applicable repository instructions, and test the change.</p>
+                <a class="text-link" href="{{ get_url(path='@/docs/guides/multi-repo.md') }}">Set up multi-repo context <span aria-hidden="true">→</span></a>
+            </article>
+            <article class="workflow-card">
+                <h3>Prepare a response when a request arrives</h3>
+                <dl>
+                    <div><dt>Task</dt><dd>When a support escalation arrives, gather the relevant guidance and current ticket details, then prepare a response for review.</dd></div>
+                    <div><dt>Context</dt><dd>Indexed runbooks and product documentation, combined with current details from a configured external tool.</dd></div>
+                    <div><dt>Tools</dt><dd>A trusted application accepts the event and submits a durable task. The agent searches guidance, calls the selected live-lookup tool, and produces a draft.</dd></div>
+                    <div><dt>Useful output</dt><dd>A reviewable response with supporting sources, unresolved questions, and a proposed next action. Publishing requires a separately authorized tool or application step.</dd></div>
+                </dl>
+                <p class="boundary-note">You supply the event receiver, authentication, external integration, and result delivery. A worker must be operated separately; required interactive approvals are denied.</p>
+                <a class="text-link" href="{{ get_url(path='@/docs/agents/embed-an-agent-host.md') }}">Build an application workflow <span aria-hidden="true">→</span></a>
+            </article>
+        </div>
     </div>
 </section>
 
 <section id="quickstart" class="quickstart landing-section">
     <div class="container">
-        <h2 class="section-title">Ready to try it on your project?</h2>
-        <p class="section-sub">Install Context Harness, configure one source and a model, and run the project researcher. The guide includes the agent and tool definitions you need.</p>
+        <h2 class="section-title">Start with one useful task.</h2>
+        <p class="section-sub">Choose the context it needs and the tools it may use. Start with a standalone agent or connect your existing assistant, then expand the workflow as you verify it.</p>
         <div class="setup-actions">
-            <a href="{{ get_url(path='@/docs/agents/build-local-agents.md') }}" class="btn btn-primary">Run a project agent</a>
+            <a href="{{ get_url(path='@/docs/agents/build-local-agents.md') }}" class="btn btn-primary">Build an agent</a>
+            <a href="{{ get_url(path='@/docs/getting-started/quick-start.md') }}" class="btn btn-secondary">Connect your assistant</a>
+        </div>
+        <div class="download-actions">
             <div class="download-cta">
                 <a href="https://github.com/parallax-labs/context-harness/releases/latest" class="btn btn-primary btn-download" id="download-btn">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -221,26 +218,29 @@ ctx agent history --limit 5</code></pre>
                     </div>
                 </div>
             </div>
-            </div>
-        <p class="requirements-note">Keyword search needs no model or API key. Agent runs need a configured model: use OpenAI with API credentials, or a separately running local Ollama service with a compatible model already installed. Cloud models receive the context included in their requests.</p>
-        <div class="setup-links"><a href="{{ get_url(path='@/docs/getting-started/installation.md') }}">Installation options</a><a href="{{ get_url(path='demo/') }}">Try the search demo</a><span>Browser retrieval demo; no agent runs.</span></div>
+        </div>
+        <p class="requirements-note">Keyword search needs no model or API key. Runtime agents need a configured model: the built-in generation adapters support OpenAI and local Ollama. Cloud models receive the context included in their requests.</p>
+        <div class="setup-links"><a href="{{ get_url(path='@/docs/getting-started/installation.md') }}">Installation options</a><a href="{{ get_url(path='demo/') }}">Try the search demo</a><span>Browser retrieval only; no agent execution.</span></div>
     </div>
 </section>
 
 <section id="faq" class="faq landing-section">
     <div class="container">
-        <h2 class="section-title">Before you start</h2>
+        <h2 class="section-title">Before you build</h2>
         <div class="faq-list">
-            <article><h3>Do I need to run an agent to use Context Harness?</h3><p>No. You can index and search project documents from the CLI, or expose them over MCP to an existing AI client. Profiles provide reusable starting instructions; the external client owns execution and permissions.</p></article>
-            <article><h3>Does local storage mean all processing stays on my machine?</h3><p>No. The index and run history are local. Cloud model providers, external AI clients, connectors, and tools may send data over the network. Use local models and appropriately configured tools when processing must stay local.</p></article>
-            <article><h3>Can I use Claude?</h3><p>A compatible Claude client can use Context Harness context and profiles over MCP. The built-in agent runtime currently includes OpenAI and Ollama generation adapters. It does not include a native Anthropic generation adapter.</p></article>
-            <article><h3>Can a webhook start an agent?</h3><p>Your application can receive a webhook and submit a durable task through the CLI or host APIs. Context Harness does not currently provide a built-in webhook receiver. Your application supplies verification, event filtering, and result delivery; a separately started worker executes accepted tasks.</p></article>
-            <article><h3>What happens when a run is interrupted or needs input?</h3><p>Eligible interrupted runs can resume after recovery checks. Eligible standalone runs suspended as blocked or needing input can be continued explicitly. Changed definitions, uncertain tool effects, MCP-backed runs, and delegated runs can restrict recovery. Consult the lifecycle documentation for the supported cases.</p></article>
+            <article><h3>Is this a context layer or an agent runtime?</h3><p>Both. Context Harness provides searchable context and an optional runtime for executing agents with selected tools. Use that runtime directly or inside an application, or expose context to an existing AI client over MCP.</p></article>
+            <article><h3>Can agents use live information and take actions?</h3><p>Yes, through configured tools and permitted operations. The runtime includes support for selected stdio MCP tools. External-service compatibility depends on the server and authentication setup; direct remote MCP transports and OAuth are not provided by this client path yet.</p></article>
+            <article><h3>Can a webhook trigger work?</h3><p>Your application can receive and verify a webhook, filter the event, and submit a durable task. Context Harness does not provide a built-in webhook receiver. A separately operated worker executes accepted work; your application owns result delivery and publication policy.</p></article>
+            <article><h3>Do I need a separate database service?</h3><p>No. Context Harness stores its knowledge index and runtime history in SQLite, with no separate database service required. Configured models, clients, connectors, and tools may send data over the network. Local storage does not mean every operation stays on the machine.</p></article>
+            <article><h3>Does search automatically refresh files or apply repository instructions?</h3><p>No. Search uses the indexed material; sync configured sources when you need to refresh them. Including AGENTS.md or CLAUDE.md makes those documents searchable, but does not automatically apply their rules. The client or workflow must load the applicable guidance.</p></article>
+            <article><h3>Do permissions and history mean every run can recover safely?</h3><p>No. Eligible interrupted runs can resume after recovery checks, but not every run is resumable. MCP-backed runs currently do not support resume. Inspect external state before repeating an operation whose outcome is uncertain; recorded activity is not a guarantee of correctness or exactly-once effects.</p></article>
+            <article><h3>Can I use Claude or another existing assistant?</h3><p>A compatible client can use Context Harness over MCP while keeping its own model and execution controls. The built-in runtime does not currently include a native Anthropic generation adapter. Client integration and runtime provider support are different paths.</p></article>
+            <article><h3>Will this reduce token costs?</h3><p>Focused retrieval can reduce how much material you choose to include, but savings depend on the task, model, client, and tool responses. Embedding reuse and model-input token costs are separate. Compare representative workflows; no fixed reduction is promised.</p></article>
         </div>
-        <a class="text-link" href="{{ get_url(path='@/docs/agents/build-local-agents.md') }}">Run lifecycle and recovery <span aria-hidden="true">→</span></a>
     </div>
 </section>
 </main>
+
 
 <footer class="footer">
     <div class="container">

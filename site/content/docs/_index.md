@@ -1,15 +1,10 @@
 +++
-title = "Start with a project task"
-description = "Run a project researcher, connect your AI client, or embed the runtime. Choose a guide and build on the same local project index."
+title = "Build with Context Harness"
+description = "Give agents searchable context and useful tools. Run them with Context Harness, connect an existing assistant, or embed the runtime in your application."
 sort_by = "weight"
 template = "docs/section.html"
 
 [extra]
 +++
 
-Start by asking a question about your own project. The project researcher guide
-walks through indexing one source, configuring a read-only agent, and inspecting
-its run.
-
-If an existing AI client or your own application should own the experience,
-choose one of the other paths below.
+Choose who owns execution. Build a standalone agent to use Context Harness's runtime, connect your existing assistant to indexed context, or use the Rust host APIs to integrate agent work into an application.

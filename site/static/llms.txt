@@ -1,20 +1,20 @@
-# Context Harness
+# Context Harness — A toolkit for context-aware agents
 
-> Run project agents with relevant context, scoped tools, and inspectable history. Keep your index local and use the model you configure.
+> A toolkit for context-aware agents. Combine searchable knowledge, live tools, and controlled execution—or bring context to your existing AI assistant.
 
-Context Harness indexes project documents locally and supports bounded agent runs with scoped tools and durable history. Start with the project researcher guide. Existing AI clients can use the same index over MCP, and application developers can integrate through public Rust host APIs. Local storage does not imply local model processing: configured clients, models, connectors, and tools determine which data leaves the machine.
+Build agents around shared context and selected tools. Use Context Harness to own execution, connect a compatible existing assistant over MCP, or embed the runtime in an application.
 
 ## Start here
 
-- [Run a project agent](https://parallax-labs.github.io/context-harness/docs/agents/build-local-agents/): Configure the project researcher, ask for an answer with file citations, and inspect the run.
-- [Connect your AI client](https://parallax-labs.github.io/context-harness/docs/getting-started/quick-start/): Index project documents and expose search through MCP. Your client keeps control of the conversation.
-- [Embed the runtime](https://parallax-labs.github.io/context-harness/docs/agents/embed-an-agent-host/): Register trusted tools and providers, enqueue work, and inspect results through the public Rust host APIs.
+- [Build an agent](https://parallax-labs.github.io/context-harness/docs/agents/build-local-agents/): Configure a model, indexed context, selected tools, and execution limits; run a focused task and inspect activity.
+- [Connect your assistant](https://parallax-labs.github.io/context-harness/docs/getting-started/quick-start/): Index selected documents and expose context over MCP while your client owns the conversation and its tools.
+- [Embed the runtime](https://parallax-labs.github.io/context-harness/docs/agents/embed-an-agent-host/): Compose agent execution and durable tasks with application events, policies, and result delivery.
 
 ## Key Capabilities
 
 - **Extension registry**: install community connectors for Jira, Confluence, Slack, RSS, and more from Git-backed registries
 - **Connector-driven ingestion**: filesystem, Git, S3, and custom Lua scripts
-- **Local-first storage**: SQLite with WAL mode, FTS5 full-text search, vector embeddings (local fastembed/tract, Ollama, or OpenAI)
+- **SQLite storage**: SQLite with WAL mode, FTS5 full-text search, and optional vector embeddings (local fastembed/tract, Ollama, or OpenAI)
 - **Hybrid search**: BM25 keyword scoring + cosine semantic scoring with configurable alpha blending
 - **MCP server**: Streamable HTTP endpoint for Cursor, Claude Desktop, and any MCP-compatible agent
 - **Reusable profiles**: named external-client roles, tool suggestions, arguments, and optional startup context without taking over the conversation
@@ -52,7 +52,7 @@ Context Harness indexes project documents locally and supports bounded agent run
 
 - [Connect External AI Clients](https://parallax-labs.github.io/context-harness/docs/guides/agent-integration/): Connect Cursor, Claude Desktop, Continue.dev, and custom applications
 - [Cursor & IDE Integration](https://parallax-labs.github.io/context-harness/docs/guides/cursor-extension/): Workspace-level context for Cursor, VS Code, and JetBrains
-- [Multi-Repo Context](https://parallax-labs.github.io/context-harness/docs/guides/multi-repo/): Index multiple repositories into one searchable knowledge base
+- [Connect the repositories behind your change](https://parallax-labs.github.io/context-harness/docs/guides/multi-repo/): Configure related repositories in one index and make their source and documentation searchable from your coding assistant
 - [Build a RAG Agent](https://parallax-labs.github.io/context-harness/docs/guides/rag-agent/): Python agent with search, retrieval, and grounded answers
 - [Build a Chatbot](https://parallax-labs.github.io/context-harness/docs/guides/chatbot/): TypeScript chatbot with streaming and conversation history
 

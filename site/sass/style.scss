@@ -865,6 +865,8 @@ body.landing :is(a, button):focus-visible {
 }
 body.landing .nav-inner { gap: 16px; }
 body.landing .nav-links { gap: clamp(14px, 2vw, 28px); }
+.noscript-nav { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 20px; margin-top: 72px; padding: 12px 20px; border-top: 1px solid var(--border); background: var(--bg); font-size: 14px; }
+.noscript-nav a { display: inline-flex; min-height: 44px; align-items: center; color: var(--accent-bright); text-decoration: underline; text-underline-offset: 3px; }
 .nav-controls { display: flex; align-items: center; gap: 8px; }
 body.landing .nav-search-btn {
     min-height: 44px;
@@ -897,60 +899,69 @@ body.landing .hero-sub { max-width: 65ch; margin: 0 auto 30px; font-size: 18px; 
 .landing-section, body.landing .features, body.landing .architecture, body.landing .use-cases, body.landing .quickstart { padding: 80px 0; }
 body.landing .section-title { font-size: 32px; line-height: 1.2; margin: 0 auto 16px; max-width: 26ch; }
 body.landing .section-sub { max-width: 65ch; margin: 0 auto 36px; font-size: 18px; line-height: 1.6; }
-.workflow { background: linear-gradient(180deg, #0e0e16 0%, var(--bg) 100%); }
-.workflow-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 32px; align-items: start; }
-.workflow-copy, .command-panel, .benefit-card, .path-card, .process-step, .faq-list article { min-width: 0; }
-.workflow-copy { color: var(--text-dim); font-size: 16px; line-height: 1.7; text-align: left; }
-.workflow-copy p + p { margin-top: 16px; }
-.workflow-copy a, .workflow-note a, .client-path a, .text-link { color: var(--accent-bright); text-decoration: underline; text-underline-offset: 3px; }
-.workflow-question { color: var(--text); font-size: 20px; font-weight: 650; line-height: 1.45; text-align: left; }
-.workflow-prerequisite { padding: 14px 16px; border-left: 3px solid var(--accent); background: rgba(79, 143, 255, .08); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
-.command-panel { max-width: 100%; overflow-x: auto; background: var(--bg-terminal); border: 1px solid var(--border-light); border-radius: var(--radius); }
-.command-panel pre { min-width: max-content; margin: 0; padding: 22px 24px; color: var(--text); font: 13px/1.9 var(--font-mono); }
-.command-panel code { font: inherit; }
-.workflow-note { max-width: 75ch; margin: 20px 0 8px; color: var(--text-dim); font-size: 16px; line-height: 1.65; text-align: left; }
-.text-link { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; font-weight: 600; }
-.benefit-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; }
-.benefit-card, .path-card { padding: 24px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); }
-.benefit-card h3, .path-card h3 { margin-bottom: 10px; color: var(--text); font-size: 18px; line-height: 1.35; }
-.benefit-card p, .path-card p { color: var(--text-dim); font-size: 16px; line-height: 1.65; }
-.path-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: stretch; }
-.path-card { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; }
-.path-card p { flex: 1; }
-.path-card .btn { align-self: flex-start; padding: 10px 16px; font-size: 14px; }
-.path-primary { border-color: var(--accent); background: linear-gradient(145deg, rgba(79,143,255,.12), var(--bg-card) 65%); }
-.path-badge { display: inline-flex; color: var(--accent-bright); font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
-.path-badge-quiet { color: var(--text-dim); }
-.process-list { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; list-style: none; padding: 0; margin: 36px 0 28px; counter-reset: none; }
-.process-step { position: relative; padding: 22px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); }
-.process-number { display: inline-flex; width: 36px; height: 36px; align-items: center; justify-content: center; margin-bottom: 16px; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 800; }
-.process-step h3 { margin-bottom: 8px; font-size: 17px; color: var(--text); }
-.process-step p, .client-path { color: var(--text-dim); font-size: 16px; line-height: 1.65; }
-.client-path { max-width: 80ch; margin: 0 auto; text-align: center; }
+/* Homepage composition: compact, content-driven grids that collapse before tablet widths. */
+body.landing .hero { padding: 132px 0 56px; }
+.hero-copy { max-width: 760px; margin: 0 auto; position: relative; text-align: center; }
+.hero-eyebrow { margin: 0 0 18px; color: var(--accent-bright); font-size: 14px; font-weight: 700; letter-spacing: .06em; }
+body.landing .hero-title { max-width: 760px; margin: 0 auto 20px; font-size: clamp(2.5rem, 5vw, 3.5rem); line-height: 1.08; letter-spacing: -1px; }
+body.landing .hero-sub { max-width: 68ch; margin: 0 auto 28px; font-size: 18px; line-height: 1.6; }
+.hero-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin: 0; }
+.hero-actions .btn { min-width: 220px; }
+.hero-install { display: inline-flex; min-height: 44px; align-items: center; justify-content: center; margin-top: 8px; color: var(--accent-bright); text-decoration: underline; text-underline-offset: 3px; }
+.landing-section, body.landing .features, body.landing .architecture, body.landing .use-cases, body.landing .quickstart { padding: 72px 0; }
+body.landing .section-title { max-width: 32ch; margin: 0 auto 14px; font-size: 32px; line-height: 1.2; text-align: center; }
+body.landing .section-sub { max-width: 68ch; margin: 0 auto 34px; font-size: 17px; line-height: 1.6; text-align: center; }
+body.landing .features { padding-top: 42px; }
 body.landing .architecture { background: linear-gradient(180deg, var(--bg) 0%, #0e0e16 100%); }
-.setup-actions { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; align-items: center; }
+body.landing .use-cases, .faq { background: linear-gradient(180deg, #0e0e16 0%, var(--bg) 100%); }
+.benefit-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; }
+.benefit-card, .ownership-card, .workflow-card { min-width: 0; padding: 26px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); }
+.benefit-card h3, .ownership-card h3, .workflow-card h3 { margin: 0 0 12px; color: var(--text); font-size: 19px; line-height: 1.35; }
+.benefit-card p, .ownership-card > p, .workflow-card dd { color: var(--text-dim); font-size: 16px; line-height: 1.65; }
+.benefit-card .card-supporting { margin: 16px 0 0; padding-top: 14px; border-top: 1px solid var(--border); color: var(--text); font-size: 14px; line-height: 1.55; }
+.ownership-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; align-items: stretch; }
+.ownership-card { display: flex; flex-direction: column; align-items: flex-start; }
+.ownership-card > p { margin: 0 0 16px; }
+.ownership-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin: auto 0 12px; }
+.ownership-actions .btn { min-width: 180px; }
+.ownership-actions .text-link, .text-link { display: inline-flex; min-height: 44px; align-items: center; gap: 6px; color: var(--accent-bright); font-size: 15px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.ownership-card .ownership-line { width: 100%; margin: 0; padding-top: 14px; border-top: 1px solid var(--border); font-size: 14px; line-height: 1.6; }
+.multi-context-note { margin-top: 22px; padding: 20px 24px; border: 1px solid var(--border); border-radius: var(--radius); background: rgba(17, 17, 25, .72); }
+.multi-context-note h3 { margin: 0 0 8px; color: var(--text); font-size: 18px; }
+.multi-context-note p { max-width: 90ch; margin: 0 0 8px; color: var(--text-dim); font-size: 15px; line-height: 1.6; }
+.multi-context-note .note-supporting { font-size: 13px; }
+.multi-context-note .text-link { margin-top: 2px; }
+.anchor-alias { display: block; position: relative; top: -90px; visibility: hidden; }
+.example-label { margin: -10px auto 24px; color: var(--text-dim); font-size: 14px; line-height: 1.5; text-align: center; }
+.workflow-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; align-items: stretch; }
+.workflow-card { display: flex; flex-direction: column; }
+.workflow-card dl { margin: 0; }
+.workflow-card dl > div { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); }
+.workflow-card dt { color: var(--accent-bright); font-size: 14px; font-weight: 700; }
+.workflow-card dd { margin: 0; }
+.boundary-note { margin: auto 0 10px; padding: 14px 16px; border-left: 3px solid var(--accent); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; background: rgba(79, 143, 255, .08); color: var(--text-dim); font-size: 14px; line-height: 1.6; }
+.workflow-card .text-link { align-self: flex-start; }
+.setup-actions { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 12px; margin-bottom: 28px; }
 .setup-actions > .btn { min-width: 220px; }
+.download-actions { display: flex; justify-content: center; margin: 0 auto 18px; }
 .setup-actions .download-cta { align-items: center; }
 .setup-actions .btn-download { min-height: 48px; padding: 12px 22px; font-size: 15px; }
 .setup-actions .btn-download { box-sizing: border-box; min-width: 0; max-width: 100%; white-space: normal; }
 .setup-actions .download-label { min-width: 0; white-space: normal; overflow-wrap: anywhere; text-align: center; line-height: 1.3; }
 .platform-toggle { min-height: 44px; color: var(--text-dim); }
-.requirements-note { max-width: 75ch; margin: 24px auto 12px; color: var(--text-dim); font-size: 16px; line-height: 1.65; text-align: center; }
+.requirements-note { max-width: 75ch; margin: 24px auto 12px; color: var(--text-dim); font-size: 15px; line-height: 1.65; text-align: center; }
 .setup-links { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; justify-content: center; color: var(--text-dim); font-size: 15px; }
 .setup-links a { display: inline-flex; min-height: 44px; align-items: center; color: var(--accent-bright); text-decoration: underline; text-underline-offset: 3px; }
-.faq { background: linear-gradient(180deg, #0e0e16 0%, var(--bg) 100%); }
-.faq-list { max-width: 900px; margin: 30px auto 20px; }
+.faq-list { max-width: 900px; margin: 28px auto 0; }
 .faq-list article { padding: 20px 0; border-bottom: 1px solid var(--border); }
-.faq-list h3 { margin-bottom: 8px; color: var(--text); font-size: 18px; line-height: 1.4; }
-.faq-list p { color: var(--text-dim); font-size: 16px; line-height: 1.7; }
+.faq-list h3 { margin: 0 0 8px; color: var(--text); font-size: 18px; line-height: 1.4; }
+.faq-list p { margin: 0; color: var(--text-dim); font-size: 16px; line-height: 1.7; }
 
 @media (min-width: 1024px) {
-    .workflow-grid { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); }
+    .benefit-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
-@media (min-width: 768px) and (max-width: 1023px) {
-    .workflow-grid, .path-grid { grid-template-columns: minmax(0, 1fr); }
-    .benefit-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .process-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 1023px) {
+    .benefit-grid, .ownership-grid, .workflow-cards { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 767px) {
     .nav-inner { padding: 0 20px; }
@@ -963,25 +974,40 @@ body.landing .architecture { background: linear-gradient(180deg, var(--bg) 0%, #
     .mobile-nav-backdrop.open { visibility: visible; }
     .mobile-nav-links a { min-height: 48px; }
     body.landing .container { padding-left: 20px; padding-right: 20px; }
-    body.landing .hero { padding: 116px 0 56px; }
-    body.landing .hero-title { font-size: clamp(2.25rem, 9vw, 3rem); letter-spacing: -.6px; }
-    body.landing .hero-sub { font-size: 16px; }
+    body.landing .hero { padding: 112px 0 42px; }
+    body.landing .hero-title { font-size: clamp(2.125rem, 9vw, 2.375rem); letter-spacing: -.6px; }
+    body.landing .hero-copy { width: 100%; }
+    body.landing .hero-title { width: 100%; overflow-wrap: anywhere; }
+    body.landing .hero-sub { font-size: 16px; overflow-wrap: anywhere; }
+    body.landing .nav-inner { gap: 8px; }
+    body.landing .nav-brand { min-width: 0; gap: 5px; font-size: 16px; }
+    body.landing .nav-logo { font-size: 21px; }
+    body.landing .nav-controls { flex: 0 0 auto; gap: 4px; }
+    body.landing .nav-search-btn { min-width: 48px; padding: 6px 8px; font-size: 13px; }
     .hero-actions { flex-direction: column; align-items: stretch; }
     .hero-actions .btn { width: 100%; min-width: 0; }
     .landing-section, body.landing .features, body.landing .architecture, body.landing .use-cases, body.landing .quickstart { padding: 48px 0; }
+    body.landing .features { padding-top: 32px; }
     body.landing .section-title { font-size: 26px; }
-    body.landing .section-sub { font-size: 16px; margin-bottom: 28px; }
-    .workflow-grid, .benefit-grid, .path-grid, .process-list { grid-template-columns: minmax(0, 1fr); }
-    .workflow-grid { gap: 20px; }
-    .command-panel pre { padding: 18px; font-size: 12px; }
-    .benefit-card, .path-card, .process-step { padding: 24px; }
-    .setup-actions { flex-direction: column; align-items: stretch; }
-    .setup-actions > .btn, .setup-actions .download-cta { width: 100%; }
-    .setup-actions .download-cta { max-width: 100%; margin-inline: auto; }
-    .setup-actions .btn-download { box-sizing: border-box; width: 100%; min-width: 0; padding: 12px 16px; white-space: normal; }
+    body.landing .section-sub { font-size: 16px; margin-bottom: 26px; }
+    .benefit-card, .ownership-card, .workflow-card { padding: 22px; }
+    .workflow-card dl > div { grid-template-columns: 1fr; gap: 4px; }
+    .ownership-actions { align-items: stretch; flex-direction: column; width: 100%; }
+    .ownership-actions .btn { width: 100%; }
+    .download-actions { width: 100%; }
+    .download-actions .download-cta { width: 100%; max-width: 100%; }
+    .download-actions .btn-download { box-sizing: border-box; width: 100%; min-width: 0; padding: 12px 16px; white-space: normal; }
+    .download-actions .download-label { overflow-wrap: anywhere; }
     .platform-dropdown { left: 0; right: 0; transform: none; min-width: 100%; }
     .setup-links { flex-direction: column; gap: 0; }
     .footer-inner { flex-direction: column; gap: 16px; text-align: center; }
+}
+@media (max-width: 360px) {
+    body.landing .container { padding-left: 16px; padding-right: 16px; }
+    .benefit-card, .ownership-card, .workflow-card { padding: 18px; }
+    body.landing .hero-title { font-size: 34px; }
+    body.landing .nav-search-btn { min-width: 44px; padding: 6px 6px; font-size: 12px; }
+    body.landing .nav-brand { font-size: 15px; }
 }
 @media (prefers-reduced-motion: reduce) {
     html { scroll-behavior: auto !important; }

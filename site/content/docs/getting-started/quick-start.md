@@ -16,6 +16,8 @@ Create `config/ctx.toml` from your project root. The example uses `./docs`, so
 run it from a project containing that directory, or change `root` to an existing
 document directory. Connector paths resolve from the command's working directory.
 The initial configuration uses keyword-only retrieval and does not need a model.
+It includes a server bind address because `Config.server` is required when the
+configuration loads, even when you do not start the optional MCP server.
 
 ```toml
 [db]
@@ -27,6 +29,9 @@ overlap_tokens = 80
 
 [embedding]
 provider = "disabled"
+
+[server]
+bind = "127.0.0.1:7331"
 
 [retrieval]
 final_limit = 12
@@ -142,6 +147,8 @@ ctx --config ./config/ctx.toml sync all
 ```
 
 ### What's next?
+
+- [Connect the repositories behind your change](@/docs/guides/multi-repo.md) — configure several local checkouts in one searchable index.
 
 - [Configuration](@/docs/reference/configuration.md) — full reference for `ctx.toml`
 - [Connectors](@/docs/connectors/built-in.md) — filesystem, Git, and S3 setup
