@@ -34,9 +34,11 @@ one response SHALL execute sequentially in provider order.
 Completed model responses SHALL produce the completed outcome and persist their text
 as run output. Failures, execution limits, cancellation, and explicit runtime control
 calls SHALL map to the canonical outcomes and reasons in SPEC-0025 while retaining its
-legacy status projection. The runtime SHALL NOT silently retry model or tool calls.
-Tool exception text SHALL be replaced with a fixed error category rather than copied
-into history.
+legacy status projection. The model runtime MAY retry only the categorized transient
+provider failures defined in SPEC-0016, at most three provider attempts per
+conversational turn; every attempt and retry decision SHALL be visible in durable
+model events. Tool calls SHALL never be automatically retried. Tool exception text
+SHALL be replaced with a fixed error category rather than copied into history.
 
 `max_turns` SHALL count model invocations. The runtime SHALL NOT execute tool calls
 from the final allowed turn, because no turn remains to consume their results.

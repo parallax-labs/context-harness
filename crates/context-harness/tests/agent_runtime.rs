@@ -894,6 +894,52 @@ async fn turn_limit_stops_before_tools_and_unknown_tool_calls_never_dispatch() {
     }
 }
 
+#[tokio::test]
+async fn model_retries_consume_turn_budget_before_tool_execution() {
+    let tmp = TempDir::new().unwrap();
+    let runtime = AgentRuntime::new(
+        config(tmp.path()),
+        tmp.path(),
+        registry(Arc::new(FakeModel::new([
+            Err(ModelError::new(ModelErrorKind::Timeout)),
+            Ok(call("search", "c1", json!({"query":"x"}))),
+        ]))),
+    )
+    .await
+    .unwrap();
+    let (_sender, cancel) = watch::channel(false);
+
+    let run = runtime
+        .run(&resource(&["search"], 2, 10), "query", cancel)
+        .await
+        .unwrap();
+
+    assert_eq!(run.outcome, Some(RunOutcomeKind::LimitExceeded));
+    assert_eq!(run.reason_code.as_deref(), Some("model_turns"));
+    assert_eq!(run.usage.model_turns, 2);
+    assert!(runtime
+        .store()
+        .tool_invocations(&run.id)
+        .await
+        .unwrap()
+        .is_empty());
+    let events = runtime.store().events(&run.id, 0, 50).await.unwrap();
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event.event_type == "model.requested")
+            .count(),
+        2
+    );
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event.event_type == "model.retrying")
+            .count(),
+        1
+    );
+}
+
 struct Slow {
     calls: Arc<AtomicUsize>,
 }

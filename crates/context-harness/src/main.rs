@@ -495,8 +495,12 @@ enum AgentAction {
         queue_limit: u32,
         #[arg(long)]
         json: bool,
+        /// Include workspace_write in the host policy without per-call approval.
+        /// Use the same value on enqueue and worker so accepted task identity matches.
+        #[arg(long)]
+        allow_workspace_write: bool,
     },
-    /// Run a foreground worker until interrupted.
+    /// Run a worker until interrupted; use a service manager for background operation.
     Worker {
         #[arg(long)]
         worker_id: Option<String>,
@@ -512,6 +516,9 @@ enum AgentAction {
         max_attempts: u32,
         #[arg(long, default_value_t = 30, value_parser = clap::value_parser!(u64).range(1..=3600))]
         shutdown_seconds: u64,
+        /// Include workspace_write in the host policy without per-call approval.
+        #[arg(long)]
+        allow_workspace_write: bool,
     },
     /// List this workspace's durable agent jobs.
     Jobs {
@@ -1255,6 +1262,7 @@ async fn main() -> anyhow::Result<()> {
                 request_key,
                 queue_limit,
                 json,
+                allow_workspace_write,
             } => {
                 agent_runtime::cli::enqueue(
                     cfg,
@@ -1265,6 +1273,7 @@ async fn main() -> anyhow::Result<()> {
                     &request_key,
                     queue_limit,
                     json,
+                    allow_workspace_write,
                 )
                 .await?;
             }
@@ -1276,6 +1285,7 @@ async fn main() -> anyhow::Result<()> {
                 poll_ms,
                 max_attempts,
                 shutdown_seconds,
+                allow_workspace_write,
             } => {
                 agent_runtime::cli::worker(
                     cfg,
@@ -1288,6 +1298,7 @@ async fn main() -> anyhow::Result<()> {
                     poll_ms,
                     max_attempts,
                     shutdown_seconds,
+                    allow_workspace_write,
                 )
                 .await?;
             }

@@ -1,43 +1,50 @@
 //! A cancellable terminal-only approval reader. Piped stdin never grants consent.
 use super::policy::{ApprovalHandler, ApprovalRequest};
+use anyhow::Context;
 use async_trait::async_trait;
 
 pub(super) struct TerminalApprovals;
 #[async_trait]
 impl ApprovalHandler for TerminalApprovals {
     async fn approve(&self, request: &ApprovalRequest) -> bool {
-        read_approval(request).await.unwrap_or(false)
+        match read_approval(request).await {
+            Ok(granted) => granted,
+            Err(error) => {
+                eprintln!("Agent approval unavailable; denying invocation: {error:#}");
+                false
+            }
+        }
     }
 }
 
 #[cfg(unix)]
-async fn read_approval(request: &ApprovalRequest) -> std::io::Result<bool> {
+async fn read_approval(request: &ApprovalRequest) -> anyhow::Result<bool> {
     use std::{fs::OpenOptions, io::IsTerminal, os::unix::fs::OpenOptionsExt};
 
     if !std::io::stdin().is_terminal() || !std::io::stderr().is_terminal() {
+        eprintln!("Agent approval unavailable; stdin and stderr must both be terminals.");
         return Ok(false);
     }
     let tty = OpenOptions::new()
         .read(true)
         .write(true)
         .custom_flags(libc::O_NONBLOCK)
-        .open("/dev/tty")?;
+        .open("/dev/tty")
+        .context("opening /dev/tty")?;
     read_from_tty(tty, request).await
 }
 
 #[cfg(unix)]
-async fn read_from_tty(tty: std::fs::File, request: &ApprovalRequest) -> std::io::Result<bool> {
+async fn read_from_tty(mut tty: std::fs::File, request: &ApprovalRequest) -> anyhow::Result<bool> {
     use std::{
         io::{Read, Write},
         os::fd::AsRawFd,
     };
-    use tokio::io::unix::AsyncFd;
     // Discard queued answers before exposing a new invocation. Consent must be
     // entered after this prompt, never reused from a previous pasted line.
     if unsafe { libc::tcflush(tty.as_raw_fd(), libc::TCIFLUSH) } != 0 {
-        return Err(std::io::Error::last_os_error());
+        return Err(std::io::Error::last_os_error()).context("flushing queued terminal input");
     }
-    let tty = AsyncFd::new(tty)?;
     // JSON escapes terminal control characters in untrusted model arguments.
     let details = serde_json::json!({"run":request.run_id,"call":request.call_id,
         "tool":request.tool,"capabilities":request.capabilities,"arguments":request.arguments});
@@ -53,6 +60,7 @@ async fn read_from_tty(tty: std::fs::File, request: &ApprovalRequest) -> std::io
         .collect();
     // Never ask a user to approve incomplete/truncated invocation details.
     if details.len() > 32 * 1024 {
+        eprintln!("Agent approval unavailable; invocation details exceed the display limit.");
         return Ok(false);
     }
     let warning = if request.tool == "process.exec"
@@ -67,15 +75,13 @@ async fn read_from_tty(tty: std::fs::File, request: &ApprovalRequest) -> std::io
     std::io::stderr().flush()?;
     let mut answer = Vec::new();
     loop {
-        let mut ready = tty.readable().await?;
         let mut buf = [0u8; 128];
-        let result = ready.try_io(|inner| {
-            let mut file = inner.get_ref();
-            file.read(&mut buf)
-        });
-        match result {
-            Ok(Ok(0)) => return Ok(false),
-            Ok(Ok(n)) => {
+        match tty.read(&mut buf) {
+            Ok(0) => {
+                eprintln!("Agent approval denied; terminal input closed before a response.");
+                return Ok(false);
+            }
+            Ok(n) => {
                 answer.extend_from_slice(&buf[..n]);
                 if answer.len() > 128 {
                     return Ok(false);
@@ -84,13 +90,20 @@ async fn read_from_tty(tty: std::fs::File, request: &ApprovalRequest) -> std::io
                     return Ok(answer == b"yes\n" || answer == b"yes\r\n");
                 }
             }
-            Ok(Err(error)) => return Err(error),
-            Err(_) => continue,
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                // macOS kqueue cannot register every terminal device with
+                // AsyncFd. The descriptor is nonblocking, so poll it without
+                // tying up a runtime thread or leaving a blocking read behind
+                // if this approval future is cancelled.
+                tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error).context("reading terminal approval response"),
         }
     }
 }
 #[cfg(not(unix))]
-async fn read_approval(_: &ApprovalRequest) -> std::io::Result<bool> {
+async fn read_approval(_: &ApprovalRequest) -> anyhow::Result<bool> {
     // No cancellable native terminal adapter yet; fail closed on these hosts.
     Ok(false)
 }
