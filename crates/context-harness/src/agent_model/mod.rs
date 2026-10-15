@@ -14,8 +14,11 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
+use std::{
+    collections::{BTreeMap, HashSet},
+    time::Duration,
+};
 use uuid::Uuid;
 
 use crate::agent_resource::ModelDefinition;
@@ -174,6 +177,28 @@ pub struct ModelResponse {
 pub struct RecordedModelResponse {
     pub response: ModelResponse,
     pub limit: Option<LimitReason>,
+    /// Number of provider requests consumed by this conversational turn.
+    pub attempts: u32,
+}
+
+const MODEL_MAX_ATTEMPTS: u32 = 3;
+
+fn model_retry_delay(failed_attempt: u32) -> Duration {
+    match failed_attempt {
+        1 => Duration::from_millis(250),
+        _ => Duration::from_millis(750),
+    }
+}
+
+fn model_error_is_retryable(kind: ModelErrorKind) -> bool {
+    matches!(
+        kind,
+        ModelErrorKind::InvalidResponse
+            | ModelErrorKind::RateLimited
+            | ModelErrorKind::Unavailable
+            | ModelErrorKind::Timeout
+            | ModelErrorKind::Transport
+    )
 }
 impl ModelResponse {
     pub fn text(text: impl Into<String>) -> Self {
@@ -439,7 +464,8 @@ impl ModelRegistry {
         ensure!(run.model == alias, "model alias does not match run binding");
         let call_id = Uuid::new_v4().to_string();
         let decision = store.record_model_requested(run_id, &json!({
-            "call_id": call_id, "model_alias": alias, "provider": model.provider_name,
+            "call_id": call_id, "attempt": 1, "max_attempts": MODEL_MAX_ATTEMPTS,
+            "model_alias": alias, "provider": model.provider_name,
             "model": model.model_name, "message_count": request.messages.len(),
             "tool_count": request.tools.len(), "structured_output": request.output_schema.is_some()
         })).await?;
@@ -447,45 +473,101 @@ impl ModelRegistry {
             return Ok(RecordedModelResponse {
                 response: ModelResponse::text(String::new()),
                 limit: Some(reason),
+                attempts: 0,
             });
         }
-        let result = model.provider.generate(request).await.and_then(|response| {
-            response.validate(request)?;
-            Ok(response)
-        });
-        match result {
-            Ok(response) => {
-                let usage = response
-                    .usage
-                    .as_ref()
-                    .map(|usage| (usage.input_tokens, usage.output_tokens, usage.total_tokens));
-                let decision = store
+        let mut attempts = 1;
+        let mut call_id = call_id;
+        loop {
+            let result = model.provider.generate(request).await.and_then(|response| {
+                response.validate(request)?;
+                Ok(response)
+            });
+            match result {
+                Ok(response) => {
+                    let usage = response
+                        .usage
+                        .as_ref()
+                        .map(|usage| (usage.input_tokens, usage.output_tokens, usage.total_tokens));
+                    let decision = store
                     .record_model_responded(
                         run_id,
                         &json!({
-                            "call_id": call_id, "finish_reason": response.finish_reason,
+                            "call_id": call_id, "attempt": attempts,
+                            "max_attempts": MODEL_MAX_ATTEMPTS,
+                            "finish_reason": response.finish_reason,
                             "usage": response.usage, "tool_call_count": response.tool_calls.len()
                         }),
                         usage,
                     )
                     .await?;
-                Ok(RecordedModelResponse {
-                    response,
-                    limit: match decision {
-                        BudgetDecision::Allowed => None,
-                        BudgetDecision::Exceeded(reason) => Some(reason),
-                    },
-                })
-            }
-            Err(error) => {
-                store
-                    .append_event(
-                        run_id,
-                        "model.failed",
-                        &json!({"call_id": call_id, "error": "model request failed"}),
-                    )
-                    .await?;
-                Err(error.into())
+                    return Ok(RecordedModelResponse {
+                        response,
+                        limit: match decision {
+                            BudgetDecision::Allowed => None,
+                            BudgetDecision::Exceeded(reason) => Some(reason),
+                        },
+                        attempts,
+                    });
+                }
+                Err(error) => {
+                    let retryable = model_error_is_retryable(error.kind);
+                    let will_retry = attempts < MODEL_MAX_ATTEMPTS && retryable;
+                    store
+                        .append_event(
+                            run_id,
+                            "model.failed",
+                            &json!({
+                                "call_id": call_id,
+                                "attempt": attempts,
+                                "max_attempts": MODEL_MAX_ATTEMPTS,
+                                "error": "model request failed",
+                                "error_kind": error.kind,
+                                "http_status": error.http_status,
+                                "retryable": retryable,
+                                "will_retry": will_retry,
+                            }),
+                        )
+                        .await?;
+                    if !will_retry {
+                        return Err(error.into());
+                    }
+                    let delay = model_retry_delay(attempts);
+                    store
+                        .append_event(
+                            run_id,
+                            "model.retrying",
+                            &json!({
+                                "call_id": call_id,
+                                "failed_attempt": attempts,
+                                "next_attempt": attempts + 1,
+                                "max_attempts": MODEL_MAX_ATTEMPTS,
+                                "error_kind": error.kind,
+                                "http_status": error.http_status,
+                                "delay_ms": delay.as_millis(),
+                            }),
+                        )
+                        .await?;
+                    tokio::time::sleep(delay).await;
+                    attempts += 1;
+                    let retry_of = call_id;
+                    call_id = Uuid::new_v4().to_string();
+                    let decision = store.record_model_requested(run_id, &json!({
+                        "call_id": call_id, "attempt": attempts,
+                        "max_attempts": MODEL_MAX_ATTEMPTS,
+                        "retry_of": retry_of,
+                        "model_alias": alias, "provider": model.provider_name,
+                        "model": model.model_name, "message_count": request.messages.len(),
+                        "tool_count": request.tools.len(), "structured_output": request.output_schema.is_some()
+                    })).await?;
+                    if let BudgetDecision::Exceeded(reason) = decision {
+                        return Ok(RecordedModelResponse {
+                            response: ModelResponse::text(String::new()),
+                            limit: Some(reason),
+                            attempts: attempts - 1,
+                        });
+                    }
+                }
             }
         }
     }

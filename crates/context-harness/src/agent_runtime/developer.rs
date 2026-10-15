@@ -18,11 +18,12 @@ use tokio::{io::AsyncReadExt, process::Command};
 
 const FILE_LIMIT: usize = 1024 * 1024;
 const OUTPUT_LIMIT: usize = 128 * 1024;
-const NAMES: [&str; 6] = [
+const NAMES: [&str; 7] = [
     "workspace.read",
     "workspace.search",
     "git.status",
     "git.diff",
+    "workspace.create",
     "workspace.patch",
     "process.exec",
 ];
@@ -32,7 +33,7 @@ pub(super) fn capability(name: &str) -> Option<Capability> {
         "workspace.read" | "workspace.search" | "git.status" | "git.diff" => {
             Some(Capability::ReadOnly)
         }
-        "workspace.patch" => Some(Capability::WorkspaceWrite),
+        "workspace.create" | "workspace.patch" => Some(Capability::WorkspaceWrite),
         "process.exec" => Some(Capability::ProcessExecute),
         _ => None,
     }
@@ -69,6 +70,12 @@ struct PatchArgs {
     path: String,
     old_text: String,
     new_text: String,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CreateArgs {
+    path: String,
+    text: String,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -132,6 +139,39 @@ fn confined(root: &Path, path: &str) -> Result<PathBuf> {
     );
     Ok(resolved)
 }
+fn new_file_path(root: &Path, path: &str) -> Result<PathBuf> {
+    relative(path)?;
+    let target = root.join(path);
+    let parent = target.parent().context("workspace file has no parent")?;
+    let parent = parent
+        .canonicalize()
+        .context("workspace parent directory does not exist")?;
+    let relative_parent = parent
+        .strip_prefix(root)
+        .context("workspace parent escapes root")?;
+    let mut components = relative_parent.components();
+    let is_runtime_history = components.next().is_some_and(|component| {
+        component
+            .as_os_str()
+            .to_string_lossy()
+            .eq_ignore_ascii_case(".ctx")
+    }) && components.next().is_some_and(|component| {
+        component
+            .as_os_str()
+            .to_string_lossy()
+            .eq_ignore_ascii_case("runs")
+    });
+    ensure!(
+        !is_runtime_history,
+        "runtime history and artifacts cannot be created"
+    );
+    match std::fs::symlink_metadata(&target) {
+        Ok(_) => bail!("workspace file already exists"),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error).context("checking workspace file path"),
+    }
+    Ok(parent.join(target.file_name().context("invalid workspace filename")?))
+}
 pub(super) fn validate(root: &Path, name: &str, args: &Value) -> Result<()> {
     match name {
         "workspace.read" => relative(&serde_json::from_value::<ReadArgs>(args.clone())?.path)?,
@@ -153,6 +193,11 @@ pub(super) fn validate(root: &Path, name: &str, args: &Value) -> Result<()> {
                 "invalid replacement"
             );
         }
+        "workspace.create" => {
+            let a: CreateArgs = serde_json::from_value(args.clone())?;
+            new_file_path(root, &a.path)?;
+            ensure!(a.text.len() <= FILE_LIMIT, "file exceeds 1 MiB limit");
+        }
         "process.exec" => {
             let a: ProcessArgs = serde_json::from_value(args.clone())?;
             relative(&a.cwd)?;
@@ -171,12 +216,14 @@ pub(super) fn validate(root: &Path, name: &str, args: &Value) -> Result<()> {
         }
         _ => bail!("unsupported developer tool"),
     }
-    if let Some(path) = args
-        .get("path")
-        .or_else(|| args.get("cwd"))
-        .and_then(Value::as_str)
-    {
-        confined(root, path)?;
+    if name != "workspace.create" {
+        if let Some(path) = args
+            .get("path")
+            .or_else(|| args.get("cwd"))
+            .and_then(Value::as_str)
+        {
+            confined(root, path)?;
+        }
     }
     Ok(())
 }
@@ -300,6 +347,9 @@ impl Tool for DeveloperTool {
             "workspace.patch" => {
                 "Replace one unique old_text with new_text in an existing workspace UTF-8 file"
             }
+            "workspace.create" => {
+                "Create a new UTF-8 workspace file without overwriting an existing file"
+            }
             _ => {
                 "Execute explicit argv in a workspace directory; UNSANDBOXED with host permissions"
             }
@@ -331,6 +381,10 @@ impl Tool for DeveloperTool {
                 json!({"path":{"type":"string"},"old_text":{"type":"string","minLength":1},"new_text":{"type":"string"}}),
                 json!(["path", "old_text", "new_text"]),
             ),
+            "workspace.create" => (
+                json!({"path":{"type":"string"},"text":{"type":"string"}}),
+                json!(["path", "text"]),
+            ),
             "process.exec" => (
                 json!({"argv":{"type":"array","minItems":1,"maxItems":128,"items":{"type":"string"}},"cwd":{"type":"string","default":"."},"timeout_seconds":{"type":"integer","minimum":1,"maximum":60,"default":30}}),
                 json!(["argv"]),
@@ -350,6 +404,19 @@ impl Tool for DeveloperTool {
 impl DeveloperTool {
     async fn execute_validated(&self, args: Value) -> Result<Value> {
         match self.name {
+            "workspace.create" => {
+                let a: CreateArgs = serde_json::from_value(args)?;
+                let path = new_file_path(&self.root, &a.path)?;
+                let mut file = std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&path)
+                    .context("creating new workspace file")?;
+                use std::io::Write;
+                file.write_all(a.text.as_bytes())
+                    .context("writing new workspace file")?;
+                Ok(json!({"path":a.path,"created":true,"bytes_written":a.text.len()}))
+            }
             "workspace.read" => {
                 let a: ReadArgs = serde_json::from_value(args)?;
                 let path = confined(&self.root, &a.path)?;
@@ -554,6 +621,25 @@ mod tests {
             .execute_validated(json!({"path":"sample","old_text":"missing","new_text":"x"}))
             .await
             .is_err());
+        let created = tool("workspace.create", root.path())
+            .execute_validated(json!({"path":"new-page.md","text":"# New page\n"}))
+            .await
+            .unwrap();
+        assert_eq!(created["created"], true);
+        assert_eq!(
+            std::fs::read_to_string(root.path().join("new-page.md")).unwrap(),
+            "# New page\n"
+        );
+        assert!(tool("workspace.create", root.path())
+            .execute_validated(json!({"path":"new-page.md","text":"overwrite"}))
+            .await
+            .is_err());
+        assert!(validate(
+            root.path(),
+            "workspace.create",
+            &json!({"path":"missing-dir/page.md", "text":"x"})
+        )
+        .is_err());
         std::fs::write(root.path().join("overlap"), "aaa").unwrap();
         assert!(tool("workspace.patch", root.path())
             .execute_validated(json!({"path":"overlap","old_text":"aa","new_text":"x"}))
@@ -565,6 +651,12 @@ mod tests {
             root.path(),
             "workspace.patch",
             &json!({"path":".ctx/runs/history", "old_text":"old", "new_text":"new"})
+        )
+        .is_err());
+        assert!(validate(
+            root.path(),
+            "workspace.create",
+            &json!({"path":".ctx/runs/new", "text":"blocked"})
         )
         .is_err());
         std::fs::write(root.path().join("big"), vec![b'a'; FILE_LIMIT + 1]).unwrap();

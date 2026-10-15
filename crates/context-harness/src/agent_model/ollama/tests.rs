@@ -188,6 +188,41 @@ async fn maps_tools_results_schema_limits_and_deterministic_call_ids() {
 }
 
 #[tokio::test]
+async fn maps_canonical_tool_name_returned_by_local_model() {
+    let mut tool_response = answer("");
+    tool_response["message"]["tool_calls"] = json!([{"type":"function", "function":{
+        "name":"workspace.read", "arguments":{"path":"src/main.rs"}
+    }}]);
+    let (provider, _, _server) = fixture(StatusCode::OK, tool_response).await;
+    let mut req = request();
+    req.tools.push(ModelTool {
+        name: "workspace.read".into(),
+        description: "Read files".into(),
+        parameters: json!({"type":"object","properties":{"path":{"type":"string"}}}),
+    });
+
+    let response = provider.generate(&req).await.unwrap();
+
+    assert_eq!(response.finish_reason, FinishReason::ToolCalls);
+    assert_eq!(response.tool_calls[0].name, "workspace.read");
+    assert_eq!(
+        response.tool_calls[0].arguments,
+        json!({"path":"src/main.rs"})
+    );
+}
+
+#[tokio::test]
+async fn rejects_tool_call_markup_returned_as_plain_text() {
+    let text =
+        "<function=tool-hash>\n<parameter=path>src/main.rs</parameter>\n</function></tool_call>";
+    let (provider, _, _server) = fixture(StatusCode::OK, answer(text)).await;
+
+    let error = provider.generate(&request()).await.unwrap_err();
+
+    assert_eq!(error.kind, ModelErrorKind::InvalidResponse);
+}
+
+#[tokio::test]
 async fn maps_structured_output_length_and_missing_usage() {
     let mut structured = answer("{\"ok\":true}");
     structured

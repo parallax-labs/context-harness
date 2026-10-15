@@ -137,7 +137,8 @@ in the plist.
 | `request_conflict` | The request key already identifies different work | Generate a new key or resend the byte-identical request |
 | `queue_full` | The configured queued-work bound was reached | Allow workers to drain the queue before retrying |
 | Heartbeat validation error | Heartbeat is not less than half the lease | Lower `--heartbeat-seconds` or raise `--lease-seconds` |
-| Approval-required tool fails | Workers never prompt | Adjust trusted policy/resources before enqueueing; do not add an interactive service account prompt |
+| Approval-required tool fails | A background worker has no interactive terminal, or the foreground worker denied the request | Run `ctx agent worker` in an interactive terminal to receive per-call prompts; unattended workers remain fail-closed |
+| Agent run reports `model_error` | The provider failed or returned an invalid response | Inspect `ctx agent inspect <run-id>` for safe `model.failed` categories/status and any bounded `model.retrying` attempts; fix the provider/configuration cause before resubmitting |
 | No durable agent jobs | The database or task migrations do not exist | Enqueue a validated job or start the worker to initialize migrations |
 
 ## Rollback

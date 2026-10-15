@@ -123,6 +123,11 @@ impl OllamaProvider {
             .iter()
             .map(|tool| (wire_name(&tool.name), tool.name.clone()))
             .collect();
+        let declared_names: BTreeMap<_, _> = request
+            .tools
+            .iter()
+            .map(|tool| (tool.name.as_str(), tool.name.clone()))
+            .collect();
         let assistant_ordinal = request
             .messages
             .iter()
@@ -132,10 +137,21 @@ impl OllamaProvider {
             None | Some(Value::Null) => &[][..],
             Some(value) => value.as_array().ok_or_else(invalid)?.as_slice(),
         };
+        if raw_calls.is_empty() && looks_like_unstructured_tool_call(&text) {
+            return Err(invalid());
+        }
         let mut tool_calls = Vec::with_capacity(raw_calls.len());
         for (index, call) in raw_calls.iter().enumerate() {
             let wire = call["function"]["name"].as_str().ok_or_else(invalid)?;
-            let name = names.get(wire).ok_or_else(invalid)?.clone();
+            // Some local models return the canonical name from the tool
+            // description instead of the hashed name supplied in the
+            // function schema. Accept it only when it exactly matches a tool
+            // declared for this request.
+            let name = names
+                .get(wire)
+                .or_else(|| declared_names.get(wire))
+                .ok_or_else(invalid)?
+                .clone();
             let arguments = call["function"]["arguments"].clone();
             if !arguments.is_object() {
                 return Err(invalid());
@@ -185,6 +201,10 @@ impl OllamaProvider {
         response.validate(request)?;
         Ok(response)
     }
+}
+
+fn looks_like_unstructured_tool_call(text: &str) -> bool {
+    text.contains("<function=") && text.contains("<parameter=") && text.contains("</tool_call>")
 }
 
 pub(crate) fn validate_definition(definition: &ModelDefinition) -> anyhow::Result<()> {

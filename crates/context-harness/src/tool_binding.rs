@@ -320,10 +320,14 @@ fn normalize_resource_path(value: &str) -> Result<PathBuf> {
             }
         }
     }
-    ensure!(
-        !normalized.as_os_str().is_empty(),
-        "invalid restricted path"
-    );
+    if normalized.as_os_str().is_empty() {
+        ensure!(
+            path.components()
+                .all(|component| matches!(component, Component::CurDir)),
+            "invalid restricted path"
+        );
+        return Ok(PathBuf::from("."));
+    }
     Ok(normalized)
 }
 
@@ -1536,6 +1540,10 @@ max_output_bytes = 65536
             "description = \"Read release files\"\nunknown = true"
         ))
         .is_err());
+        let workspace_root = RESOURCE
+            .replace("release.read", "project.read")
+            .replace("release", ".");
+        assert!(ToolBindingResource::parse(&workspace_root).is_ok());
     }
 
     #[test]

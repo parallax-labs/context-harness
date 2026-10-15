@@ -143,10 +143,12 @@ async fn model_failure_is_recorded_but_does_not_finish_the_run() {
             "reasoning",
             "fake",
             "scripted",
-            Arc::new(FakeModel::new([Err(ModelError {
-                kind: ModelErrorKind::RateLimited,
-                http_status: Some(429),
-            })])),
+            Arc::new(FakeModel::new((0..3).map(|_| {
+                Err(ModelError {
+                    kind: ModelErrorKind::RateLimited,
+                    http_status: Some(429),
+                })
+            }))),
         )
         .unwrap();
     assert!(registry
@@ -154,11 +156,105 @@ async fn model_failure_is_recorded_but_does_not_finish_the_run() {
         .await
         .is_err());
     let events = store.events(&run.id, 0, 10).await.unwrap();
-    assert_eq!(events[2].event_type, "model.failed");
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event.event_type.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "run.started",
+            "model.requested",
+            "model.failed",
+            "model.retrying",
+            "model.requested",
+            "model.failed",
+            "model.retrying",
+            "model.requested",
+            "model.failed",
+        ]
+    );
     assert_eq!(events[2].payload["error"], "model request failed");
+    assert_eq!(events[2].payload["error_kind"], "rate_limited");
+    assert_eq!(events[2].payload["http_status"], 429);
+    assert!(events[2].payload["retryable"].as_bool().unwrap());
+    assert!(events[8].payload["retryable"].as_bool().unwrap());
+    assert!(!events[8].payload["will_retry"].as_bool().unwrap());
+    assert_eq!(
+        store
+            .get_run(&run.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .usage
+            .model_turns,
+        3
+    );
     assert_eq!(
         store.get_run(&run.id).await.unwrap().unwrap().status,
         "running"
+    );
+}
+
+#[tokio::test]
+async fn transient_model_error_retries_once_and_correlates_attempts() {
+    let tmp = TempDir::new().unwrap();
+    let cfg = config(&tmp);
+    SqliteAppStore::initialize_config(&cfg).await.unwrap();
+    let app = SqliteAppStore::connect(&cfg).await.unwrap();
+    let store = app.agent_runs("workspace").unwrap();
+    let run = store
+        .create_run("agent", "v1", "reasoning", "task")
+        .await
+        .unwrap();
+    let mut registry = ModelRegistry::default();
+    registry
+        .register(
+            "reasoning",
+            "fake",
+            "scripted",
+            Arc::new(FakeModel::new([
+                Err(ModelError::new(ModelErrorKind::Timeout)),
+                Ok(ModelResponse::text("recovered")),
+            ])),
+        )
+        .unwrap();
+
+    let response = registry
+        .generate_recorded_with_budget(&store, &run.id, "reasoning", &request())
+        .await
+        .unwrap();
+
+    assert_eq!(response.response.text, "recovered");
+    assert_eq!(response.attempts, 2);
+    let events = store.events(&run.id, 0, 10).await.unwrap();
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event.event_type.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "run.started",
+            "model.requested",
+            "model.failed",
+            "model.retrying",
+            "model.requested",
+            "model.responded",
+        ]
+    );
+    assert_eq!(events[2].payload["error_kind"], "timeout");
+    assert!(events[2].payload["retryable"].as_bool().unwrap());
+    assert_eq!(events[4].payload["retry_of"], events[1].payload["call_id"]);
+    assert_eq!(events[5].payload["call_id"], events[4].payload["call_id"]);
+    assert_eq!(events[5].payload["attempt"], 2);
+    assert_eq!(
+        store
+            .get_run(&run.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .usage
+            .model_turns,
+        2
     );
 }
 

@@ -646,7 +646,8 @@ impl AgentRuntime {
                     }),
                 )
                 .await?;
-            for turn in start_turn..agent.execution.max_turns {
+            let mut turn = start_turn;
+            while turn < agent.execution.max_turns {
                 let (mut request, projection) = if let Some(max_bytes) = bounded {
                     let working = match self.store.working_state(id).await {
                         Ok(working) => working,
@@ -703,6 +704,7 @@ impl AgentRuntime {
                         });
                     }
                 };
+                turn = turn.saturating_add(recorded.attempts);
                 if let Some(code) = recorded.limit {
                     return Ok(RunOutcome::LimitExceeded { code });
                 }
@@ -779,7 +781,7 @@ impl AgentRuntime {
                     return Ok(outcome);
                 }
                 // Do not execute tools if the run cannot consume their results.
-                if turn + 1 >= agent.execution.max_turns {
+                if turn >= agent.execution.max_turns {
                     return Ok(RunOutcome::LimitExceeded {
                         code: LimitReason::ModelTurns,
                     });

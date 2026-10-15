@@ -975,7 +975,7 @@ impl AgentRuntime {
                     attempts = attempts.checked_add(1).context("too many model attempts")?;
                 }
                 if event.sequence > checkpoint.sequence {
-                    ensure!(matches!(event.event_type.as_str(),"model.requested"|"model.responded"|"model.failed"|"run.failed"|"run.cancelled"|"run.resumed"|"run.continued"|"context.resolved"|"context.projected"),
+                    ensure!(matches!(event.event_type.as_str(),"model.requested"|"model.responded"|"model.failed"|"model.retrying"|"run.failed"|"run.cancelled"|"run.resumed"|"run.continued"|"context.resolved"|"context.projected"),
                         "run has activity beyond its safe checkpoint; manual reconciliation required");
                 }
             }

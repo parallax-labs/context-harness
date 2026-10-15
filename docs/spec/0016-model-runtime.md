@@ -110,9 +110,9 @@ semantics. Structured output SHALL use `text.format` with `json_schema` and
 `strict: true`; callers supply a provider-compatible schema.
 
 The HTTP client SHALL use a 60-second request timeout and 10-second connect timeout,
-reject redirects, and cap response bodies at 4 MiB. It SHALL NOT automatically
-retry failed calls. Error bodies SHALL NOT be logged or propagated. Diagnostics
-SHALL expose only error category and optional HTTP status. Authentication,
+reject redirects, and cap response bodies at 4 MiB. Each adapter call SHALL issue one
+HTTP request without adapter-level retry. Error bodies SHALL NOT be logged or
+propagated. Diagnostics SHALL expose only error category and optional HTTP status. Authentication,
 rate-limit, service-unavailable, timeout, transport and malformed-response errors
 remain distinguishable. Missing/empty credentials SHALL fail before sending.
 
@@ -137,9 +137,11 @@ append `/api/chat` itself and SHALL reject every redirect.
 
 `timeout_seconds` defaults to 120 and SHALL be in `1..=3600`. The connect timeout is
 fixed at 10 seconds. Serialized request and response bodies SHALL each be limited to
-4 MiB. The adapter SHALL make one request with no automatic retry and no authorization
+4 MiB. Each adapter call SHALL make one request and SHALL NOT add an authorization
 header. It SHALL set `stream: false` and `think: false`; it SHALL NOT set `keep_alive`
-or call discovery, readiness, pull, create or delete endpoints.
+or call discovery, readiness, pull, create or delete endpoints. The agent model runtime
+may retry selected failures under the bounded policy below; that policy applies to a
+new adapter call and is not adapter-level retry.
 
 System and user messages SHALL map to native messages with the same role and content.
 Assistant text and tool calls SHALL replay as one assistant message. Each tool result
@@ -201,12 +203,23 @@ and its model alias matches the requested alias. It SHALL append `model.requeste
 before contacting the provider; if this append fails, the model SHALL NOT run.
 Terminal runs reject this append through the existing store API.
 
-A UUID `call_id` SHALL correlate each requested event with `model.responded` or
-`model.failed`. The requested payload contains model alias, provider/model names,
-message/tool counts and a structured-output flag. Responses contain finish reason,
-usage and tool-call count. Failures contain only categorized errors and status.
-These payloads SHALL omit prompt text, tool arguments/results, output text,
+A UUID `call_id` SHALL correlate each provider attempt's `model.requested` event with
+its `model.responded` or `model.failed` event. Requested events contain model alias,
+provider/model names, message/tool counts, structured-output flag, attempt number and
+maximum attempts. Responses contain finish reason, usage, tool-call count and attempt
+number. Failures contain a stable error category, optional HTTP status, attempt
+number, maximum attempts, whether the category is retryable and whether this attempt
+will retry. If another attempt will be made, `model.retrying` SHALL record the failed
+call ID, next attempt and bounded delay. These payloads SHALL omit prompt text, tool arguments/results, output text,
 continuation items, HTTP bodies/headers and credential values.
+
+The runtime SHALL make at most three provider attempts for one conversational turn.
+It MAY retry only `invalid_response`, `rate_limited`, `unavailable`, `timeout` and
+`transport` errors, using 250 ms then 750 ms delays. Other categories SHALL fail
+without retry. Every provider attempt SHALL emit its own durable `model.requested`
+event and consume one `model_turns` unit. A retry SHALL occur only after the prior
+failure event is persisted. Persistence failures SHALL propagate and SHALL NOT cause
+the provider call to be repeated.
 
 The API SHALL return the model response only after the response event is persisted.
 A persistence failure after a provider call SHALL propagate without retrying the

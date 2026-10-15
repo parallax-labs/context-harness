@@ -187,13 +187,21 @@ fn cli_host_builder(
     root: &Path,
     directories: &[ResourceDirectory],
     tool_directories: &[ResourceDirectory],
+    allow_workspace_write: bool,
 ) -> Result<AgentHostBuilder> {
     let (catalog, authority) = cli_tool_bindings(&config, root)?;
+    let mut policy = RuntimePolicy::default();
+    if allow_workspace_write {
+        policy.allow.push(Capability::WorkspaceWrite);
+        policy
+            .require_approval
+            .retain(|capability| *capability != Capability::WorkspaceWrite);
+    }
     Ok(
         AgentHostBuilder::new(config, root, ModelProviderCatalog::with_builtins()?)?
             .with_agent_resources(directories.to_vec())
             .with_tool_bindings(tool_directories.to_vec(), catalog, authority)
-            .with_policy(RuntimePolicy::default(), Arc::new(DenyApprovals)),
+            .with_policy(policy, Arc::new(super::terminal::TerminalApprovals)),
     )
 }
 
@@ -207,11 +215,18 @@ pub async fn enqueue(
     request_key: &str,
     queue_limit: u32,
     json_output: bool,
+    allow_workspace_write: bool,
 ) -> Result<()> {
     let root = std::env::current_dir()?;
-    let submitter = cli_host_builder(config, &root, directories, tool_directories)?
-        .build_task_submitter(name)
-        .await?;
+    let submitter = cli_host_builder(
+        config,
+        &root,
+        directories,
+        tool_directories,
+        allow_workspace_write,
+    )?
+    .build_task_submitter(name)
+    .await?;
     let result = submitter
         .submit_with_queue_limit(request_key, input, Vec::new(), queue_limit)
         .await?;
@@ -259,6 +274,7 @@ pub async fn worker(
     poll_ms: u64,
     max_attempts: u32,
     shutdown_seconds: u64,
+    allow_workspace_write: bool,
 ) -> Result<()> {
     let root = std::env::current_dir()?;
     let options = AgentWorkerOptions {
@@ -270,9 +286,15 @@ pub async fn worker(
         max_claim_attempts: max_attempts,
         graceful_shutdown_timeout: Duration::from_secs(shutdown_seconds),
     };
-    let worker = cli_host_builder(config, &root, directories, tool_directories)?
-        .build_worker(options)
-        .await?;
+    let worker = cli_host_builder(
+        config,
+        &root,
+        directories,
+        tool_directories,
+        allow_workspace_write,
+    )?
+    .build_worker(options)
+    .await?;
     let (sender, receiver) = watch::channel(false);
     let signal = tokio::spawn(async move {
         if tokio::signal::ctrl_c().await.is_ok() {
