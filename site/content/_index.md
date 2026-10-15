@@ -1,5 +1,5 @@
 +++
-title = "Context Harness"
-description = "A local-first knowledge and agent runtime. Index project context, equip existing AI clients, or run governed durable agents."
+title = "Context Harness — A toolkit for context-aware agents"
+description = "A toolkit for context-aware agents. Combine searchable knowledge, live tools, and controlled execution—or bring context to your existing AI assistant."
 template = "index.html"
 +++

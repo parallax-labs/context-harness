@@ -60,12 +60,12 @@ def main():
 
     # Static entries for top-level pages (no content file or special)
     entries.append({
-        "title": "Context Harness",
+        "title": "Context Harness — A toolkit for context-aware agents",
         "url": base_url + "/",
-        "description": "Local-first context engine for AI tools",
+        "description": "A toolkit for context-aware agents. Combine searchable knowledge, live tools, and controlled execution—or bring context to your existing AI assistant.",
     })
     entries.append({
-        "title": "Demo",
+        "title": "Search demo",
         "url": base_url + "/demo/",
         "description": "Search a pre-built knowledge base in your browser",
     })

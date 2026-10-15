@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
-{% block title %}Documentation — Context Harness{% endblock %}
-{% block description %}Complete documentation for Context Harness — local-first context indexing and retrieval for AI tools.{% endblock %}
+{% block title %}{{ section.title }} — Context Harness{% endblock %}
+{% block description %}{{ section.description | default(value=config.description) }}{% endblock %}
 
 {% block head_extra %}
 <style>
@@ -37,7 +37,7 @@
 
     .nav-link {
         display: block; padding: 4px 16px 4px 28px;
-        font-size: 13px; color: #55556a;
+        font-size: 13px; color: #b8b8c8;
         border-left: 2px solid transparent;
         transition: all 0.15s;
         -webkit-tap-highlight-color: transparent;
@@ -101,6 +101,15 @@
 
     .lead { font-size: 17px; color: #8888a0; margin-bottom: 32px; line-height: 1.8; }
 
+    .start-paths { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 28px 0 48px; }
+    .start-path-card { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; padding: 22px; background: #12121a; border: 1px solid #1e1e2e; border-radius: 12px; text-decoration: none; }
+    .start-path-card.primary { border-color: #4f8fff; background: linear-gradient(145deg, rgba(79,143,255,.12), #12121a 70%); }
+    .start-path-card h3 { margin: 0 0 8px; color: #e4e4ec; font-size: 18px; }
+    .start-path-card p { flex: 1; color: #b8b8c8; font-size: 15px; line-height: 1.65; }
+    .start-path-card .start-path-link { display: inline-flex; align-items: center; min-height: 44px; margin-top: 10px; font-weight: 600; }
+    .start-path-card:focus-visible { outline: 3px solid #6ba3ff; outline-offset: 3px; }
+    .browse-docs-title { margin-top: 0 !important; }
+
     /* Section cards on landing */
     .section-grid {
         display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-top: 32px;
@@ -115,11 +124,11 @@
     }
     .section-card-icon { font-size: 28px; margin-bottom: 12px; }
     .section-card h3 { font-size: 18px; font-weight: 700; margin-bottom: 6px; color: #e4e4ec; }
-    .section-card p { font-size: 14px; color: #55556a; line-height: 1.6; margin: 0; }
+    .section-card p { font-size: 14px; color: #b8b8c8; line-height: 1.6; margin: 0; }
     .section-card-pages { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px; }
     .section-card-pages span {
         padding: 3px 10px; background: #0a0a0f; border: 1px solid #1e1e2e;
-        border-radius: 100px; font-size: 11px; color: #55556a; font-family: 'JetBrains Mono', monospace;
+        border-radius: 100px; font-size: 11px; color: #b8b8c8; font-family: 'JetBrains Mono', monospace;
     }
 
     /* Search trigger */
@@ -127,7 +136,7 @@
         display: flex; align-items: center; gap: 6px;
         padding: 6px 12px; border-radius: 8px; cursor: pointer;
         background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
-        color: #55556a; font-size: 13px; transition: all 0.15s; font-family: inherit;
+        color: #b8b8c8; font-size: 13px; transition: all 0.15s; font-family: inherit;
     }
     .header-search:hover { border-color: rgba(255,255,255,0.2); color: #8888a0; }
     .header-search kbd {
@@ -169,6 +178,7 @@
         .nav-link { padding: 10px 16px 10px 28px; min-height: 44px; display: flex; align-items: center; }
         .header-search { min-height: 44px; padding: 8px 12px; }
         .section-grid { grid-template-columns: 1fr; }
+        .start-paths { grid-template-columns: 1fr; }
         .section-card { min-height: 48px; }
         .doc-content pre { -webkit-overflow-scrolling: touch; }
     }
@@ -220,6 +230,9 @@
     <p class="lead">{{ section.description | default(value="") }}</p>
 
     {{ section.content | safe }}
+
+    {% include "partials/start_paths.html" %}
+    <h2 class="browse-docs-title">Browse documentation</h2>
 
     <div class="section-grid">
         {% for sub_path in docs.subsections %}

@@ -10,12 +10,16 @@ weight = 4
 ctx [OPTIONS] <COMMAND>
 
 Options:
-  -c, --config <PATH>  Config file path [default: ./config/ctx.toml]
+      --config <PATH>  Path to configuration file (TOML)
   -h, --help           Show help
   -V, --version        Show version
 ```
 
-All commands respect the `--config` flag. If omitted, Context Harness looks for `./config/ctx.toml` relative to the current directory.
+`--config` selects one explicit configuration file. Without it, Context Harness
+checks `CTX_CONFIG`, then the workspace's `.ctx/config.toml` or legacy
+`config/ctx.toml`, then the global configuration and built-in defaults. Explicit
+`--config` or `CTX_CONFIG` bypasses merging; discovered workspace configuration
+is merged over global defaults. See [Configuration](@/docs/reference/configuration.md) for details.
 
 ---
 
@@ -624,3 +628,37 @@ $ ctx completions zsh > ~/.zfunc/_ctx
 # Fish
 $ ctx completions fish > ~/.config/fish/completions/ctx.fish
 ```
+
+---
+
+### Continue an eligible suspended run
+
+```sh
+ctx agent continue <run-id> "Your answer or environment update"
+```
+
+Use this only for an eligible standalone run suspended as blocked or needing
+input by its declared control tools. Continuation supplies explicit input; it
+does not resume every run. Changed definitions, uncertain tool effects,
+MCP-backed runs, and delegated runs can restrict recovery. See the
+[continuation contract](https://github.com/parallax-labs/context-harness/blob/main/docs/spec/0030-suspended-run-continuation.md).
+
+### Submit and operate durable jobs
+
+These commands require a configured standalone agent and its model/tool resources.
+Validate those resources and provide provider credentials before accepting work.
+Enqueue returns accepted work, not the run result. Reusing a request key returns
+the existing task only when the input and accepted identity are identical; changed
+work under the same key conflicts. A separately started worker executes accepted
+jobs, and workers deny operations that require interactive approval.
+
+```sh
+ctx agent enqueue project-researcher "Explain the architecture and cite sources" --request-key architecture-review-001 --json
+ctx agent worker --worker-id local-worker
+ctx agent jobs --limit 20
+ctx agent job inspect <task-id> --json
+ctx agent job cancel <task-id> --json
+```
+
+The worker runs in the foreground until interrupted. It is not started automatically.
+See the [durable worker runbook](https://github.com/parallax-labs/context-harness/blob/main/docs/runbook/0020-operate-agent-task-worker.md) for operations and service-manager guidance.

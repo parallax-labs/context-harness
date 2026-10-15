@@ -1,94 +1,87 @@
 +++
-title = "Quick Start"
-description = "Go from zero to searchable knowledge base in 5 minutes."
+title = "Search your project documents"
+description = "Index local documents, verify keyword search, and optionally connect an AI client."
 weight = 2
 +++
 
-This guide takes you from installation to having an AI agent searching your codebase in 5 minutes.
+Install Context Harness before starting. This guide creates a local document
+index and verifies search; it does not configure a standalone agent. To run the
+project researcher, follow [Build Local Agents](@/docs/agents/build-local-agents.md).
+See the [installation guide](@/docs/getting-started/installation.md) for release
+binaries and other installation options.
 
 ### 1. Create a config file
 
-```bash
-$ mkdir -p config
-$ cat > config/ctx.toml << 'EOF'
+Create `config/ctx.toml` from your project root. The example uses `./docs`, so
+run it from a project containing that directory, or change `root` to an existing
+document directory. Connector paths resolve from the command's working directory.
+The initial configuration uses keyword-only retrieval and does not need a model.
+It includes a server bind address because `Config.server` is required when the
+configuration loads, even when you do not start the optional MCP server.
+
+```toml
 [db]
 path = "./data/ctx.sqlite"
 
 [chunking]
-max_tokens = 700          # ~2800 chars per chunk
-overlap_tokens = 80       # overlap between chunks for context
+max_tokens = 700
+overlap_tokens = 80
 
-[retrieval]
-final_limit = 12          # max results per query
-hybrid_alpha = 0.6        # blend: 0 = keyword only, 1 = semantic only
+[embedding]
+provider = "disabled"
 
 [server]
 bind = "127.0.0.1:7331"
+
+[retrieval]
+final_limit = 12
+hybrid_alpha = 0.6
 
 [connectors.filesystem.local]
 root = "./docs"
 include_globs = ["**/*.md", "**/*.rs", "**/*.txt"]
 exclude_globs = ["**/target/**", "**/node_modules/**"]
-# Optional: add "**/*.pdf", "**/*.docx" to include_globs to index PDF/Office (extracted automatically)
-EOF
 ```
 
 ### 2. Initialize and sync
 
-```bash
-$ ctx init
-Database initialized successfully.
-
-$ ctx sync filesystem
-sync filesystem:local
-  fetched: 47 items
-  upserted documents: 47
-  chunks written: 203
-ok
+```sh
+ctx --config ./config/ctx.toml init
+ctx --config ./config/ctx.toml sync filesystem
 ```
 
-Every matching file is now chunked and indexed in SQLite with FTS5 full-text search.
+The indexed documents and their keyword-search data are stored in the configured local SQLite database. Actual output depends on your sources and configuration.
 
 ### 3. Search from the CLI
 
-```bash
-$ ctx search "authentication flow"
-1. [0.94] filesystem / src/auth.rs
-   "JWT signing key loaded from AWS Secrets Manager on startup..."
-2. [0.81] filesystem / docs/deployment.md
-   "Key rotation procedure for production auth services..."
-3. [0.72] filesystem / docs/architecture.md
-   "Authentication middleware intercepts requests before routing..."
+```sh
+ctx --config ./config/ctx.toml search "deployment"
 ```
 
-### 4. Start the MCP server
+Choose a term present in your documents. If no results appear, check the
+connector root, include globs, and sync result before connecting an AI client.
 
-```bash
-$ ctx serve mcp
-Listening on 127.0.0.1:7331
+### 4. Start the MCP server (optional)
+
+Start the server from your project root with the same explicit configuration:
+
+```sh
+ctx --config ./config/ctx.toml serve mcp
 ```
 
-In another terminal, verify it works:
+In another terminal, you can check the server health and search endpoint. The
+responses reflect the server and documents you have configured:
 
-```bash
-$ curl -s localhost:7331/health
-{"status":"ok"}
-
-$ curl -s localhost:7331/tools/search \
+```sh
+curl -s localhost:7331/health
+curl -s localhost:7331/tools/search \
     -H "Content-Type: application/json" \
-    -d '{"query": "auth"}' | jq '.results[0]'
-{
-  "id": "a1b2c3d4-...",
-  "source": "filesystem:local",
-  "title": "src/auth.rs",
-  "score": 0.94,
-  "snippet": "JWT signing key loaded from..."
-}
+    -d '{"query": "auth"}'
 ```
 
-### 5. Connect to Cursor
+### 5. Connect an MCP-compatible client
 
-Create `.cursor/mcp.json` in your project root:
+For example, create `.cursor/mcp.json` in your project root:
 
 ```json
 {
@@ -100,17 +93,18 @@ Create `.cursor/mcp.json` in your project root:
 }
 ```
 
-Cursor connects to the `/mcp` endpoint, which speaks the MCP Streamable HTTP protocol (JSON-RPC). Now ask Cursor's agent: *"Search our docs for the deployment procedure"* — it will call Context Harness automatically.
+Ask your client to search the indexed docs for the deployment procedure. Tool
+use depends on the client's configuration and behavior; verify that it calls
+Context Harness.
 
 ### 6. Enable semantic search (optional)
 
-Keyword search works great out of the box. For hybrid search that understands *meaning*, add embeddings:
+Keyword search needs no model. To add cloud embeddings, first configure API
+credentials for your provider. Cloud embeddings send text to that provider.
+Local embeddings may require an initial model download.
 
-```bash
-$ export OPENAI_API_KEY="sk-..."
-```
-
-Add to `config/ctx.toml`:
+Replace the initial `[embedding]` section in `config/ctx.toml` with this OpenAI
+example; do not add a second `[embedding]` table:
 
 ```toml
 [embedding]
@@ -120,56 +114,49 @@ dims = 1536
 batch_size = 64
 ```
 
-Generate embeddings:
+Then use the embedding and search commands with the same explicit configuration:
 
-```bash
-$ ctx embed pending
-Embedding 203 chunks... done (4.2s)
-
-$ ctx search "how does the system handle failures" --mode hybrid
-# Now finds conceptually related docs, not just keyword matches
+```sh
+ctx --config ./config/ctx.toml embed pending
+ctx --config ./config/ctx.toml search "how does the system handle failures" --mode hybrid
 ```
 
-You can also use **Ollama** (`provider = "ollama"`) or **local** models (`provider = "local"`) for fully offline embeddings. All release binaries include the local provider (fastembed on primary platforms, tract on musl and Intel Mac). See the [configuration reference](/docs/reference/configuration/) for the platform table.
+Ollama and local embedding providers are also available. See the
+[configuration reference](@/docs/reference/configuration.md) for provider and
+platform details.
 
-### 7. Add a remote repo (optional)
+### 7. Add a remote repository (optional)
 
-Index a GitHub repo alongside your local files:
+To index a Git repository, replace this placeholder with an accessible repository
+URL before syncing it:
 
 ```toml
-# Add to config/ctx.toml:
 [connectors.git.platform]
-url = "https://github.com/acme/platform.git"
+url = "https://github.com/acme/platform.git" # Placeholder: replace with an accessible repository URL.
 branch = "main"
 include_globs = ["docs/**/*.md", "src/**/*.rs"]
 shallow = true
 ```
 
-```bash
-$ ctx sync git:platform
-sync git:platform
-  cloning https://github.com/acme/platform.git...
-  fetched: 89 items
-  upserted documents: 89
-  chunks written: 412
-ok
+Use the same explicit config for Git sync and any later search:
 
-# Search now returns results from both filesystem and git sources
-$ ctx search "deploy" --mode hybrid
-
-# Or sync everything at once:
-$ ctx sync all
+```sh
+ctx --config ./config/ctx.toml sync git:platform
+ctx --config ./config/ctx.toml search "deploy" --mode hybrid
+ctx --config ./config/ctx.toml sync all
 ```
 
 ### What's next?
+
+- [Connect the repositories behind your change](@/docs/guides/multi-repo.md) — configure several local checkouts in one searchable index.
 
 - [Configuration](@/docs/reference/configuration.md) — full reference for `ctx.toml`
 - [Connectors](@/docs/connectors/built-in.md) — filesystem, Git, and S3 setup
 - [Lua Connectors](@/docs/connectors/lua-connectors.md) — index Jira, Slack, Notion, anything
 - [Lua Tools](@/docs/connectors/lua-tools.md) — give AI agents custom actions
-- [Profiles Overview](@/docs/profiles/overview.md) — give Cursor, Claude, or your own client a reusable project role
-- [Agents Overview](@/docs/agents/overview.md) — run durable, policy-controlled agents in a project
+- [Profiles Overview](@/docs/profiles/overview.md) — give an external client reusable project instructions
+- [Build Local Agents](@/docs/agents/build-local-agents.md) — configure, run, and inspect the project researcher
 - [Connect External AI Clients](@/docs/guides/agent-integration.md) — connect to Cursor, Claude Desktop, and Continue.dev
-- [Multi-Repo Context](@/docs/guides/multi-repo.md) — unified search across multiple repos
+- [Multi-Repo Context](@/docs/guides/multi-repo.md) — index multiple repositories into one searchable knowledge base
 - [Build a RAG Agent](@/docs/guides/rag-agent.md) — build a Python agent with your knowledge base
 - [Deployment](@/docs/reference/deployment.md) — Docker, systemd, CI/CD
