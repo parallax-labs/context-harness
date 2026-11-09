@@ -63,6 +63,8 @@ contributions will be licensed under the same license.
 
 ## Reporting Issues
 
+Use the [issue forms](.github/ISSUE_TEMPLATE/config.yml) for bugs, features, and connector or Lua extensions, and the [pull request template](.github/PULL_REQUEST_TEMPLATE.md) when you open a pull request.
+
 Please include:
 
 - Steps to reproduce

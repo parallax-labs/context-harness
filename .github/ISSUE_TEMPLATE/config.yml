@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://parallax-labs.github.io/context-harness/
+    about: Guides, installation, configuration, CLI, connectors, profiles, and local agents.
+  - name: Questions and troubleshooting
+    url: https://github.com/parallax-labs/context-harness/discussions/categories/q-a
+    about: Ask how to use ctx. Use a bug report only when something fails against the documented behavior.
