@@ -35,6 +35,7 @@ it. A spec references both for traceability from product intent to implementatio
 | [0015](0015-local-generation-providers.md) | Local Generation Providers | Delivered |
 | [0016](0016-durable-background-agent-tasks.md) | Durable Background Agent Tasks | Delivered |
 | [0017](0017-targeted-document-refresh.md) | Targeted Document Refresh | Delivered |
+| [0018](0018-anthropic-generation-provider.md) | Claude (Anthropic) Generation Provider | Draft |
 
 ## Creating a New PRD
 

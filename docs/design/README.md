@@ -38,6 +38,7 @@ See [DESIGN-0000](0000-design-policy.md) for the full policy.
 | [0016](0016-durable-background-agent-tasks.md) | Durable Background Agent Tasks | Reference |
 | [0017](0017-targeted-document-refresh.md) | Targeted Document Refresh | Reference |
 | [0018](0018-local-agent-application-foundation-plan.md) | Local Agent Application Foundation Implementation Plan | Reference |
+| [0019](0019-anthropic-generation-provider.md) | Claude (Anthropic) Generation Provider | Draft |
 
 ## Creating a New Design Doc
 
