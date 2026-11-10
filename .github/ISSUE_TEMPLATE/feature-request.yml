@@ -1,0 +1,43 @@
+name: Feature request
+description: A change to ctx, the MCP server, profiles, or local agents.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Product intent lives in [`docs/prd/`](https://github.com/parallax-labs/context-harness/tree/main/docs/prd). Behavior contracts live in [`docs/spec/`](https://github.com/parallax-labs/context-harness/tree/main/docs/spec). An ADR records a decision after it is made; it is not the place to propose a feature ([ADR-0000](https://github.com/parallax-labs/context-harness/blob/main/docs/adr/0000-adr-policy.md)).
+
+        A new data source, Lua script, or compiled extension belongs on the [connector or Lua extension](https://github.com/parallax-labs/context-harness/issues/new?template=lua-extension.yml) form.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Who is blocked, and what they cannot do with the current CLI, MCP server, or local agents.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: The behavior you want. If this changes a contract, name the spec that would change with it ([ADR-0015](https://github.com/parallax-labs/context-harness/blob/main/docs/adr/0015-spec-driven-development.md)).
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Other approaches you considered, including doing nothing. Write "None" if there are none.
+    validations:
+      required: true
+  - type: textarea
+    id: related-docs
+    attributes:
+      label: Related PRD or spec
+      description: Paths under `docs/prd/` or `docs/spec/`. Leave blank if nothing existing covers this.
+      placeholder: |
+        docs/prd/0001-core-context-engine.md
+        docs/spec/0005-usage-contract.md
+    validations:
+      required: false

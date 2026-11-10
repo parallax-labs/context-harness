@@ -1,0 +1,154 @@
+name: Bug report
+description: A defect in ctx, the MCP server, profiles, or local agents.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Search [open issues](https://github.com/parallax-labs/context-harness/issues) first. Questions belong in [Discussions](https://github.com/parallax-labs/context-harness/discussions/categories/q-a). Common failures are listed in [RUNBOOK-0017](https://github.com/parallax-labs/context-harness/blob/main/docs/runbook/0017-common-errors.md).
+
+        Do not paste tokens or API keys. Config values support `${VAR_NAME}` expansion; keep the reference, not the value.
+  - type: input
+    id: version
+    attributes:
+      label: ctx version
+      description: Output of `ctx --version`.
+      placeholder: ctx 0.9.0
+    validations:
+      required: true
+  - type: input
+    id: rust-version
+    attributes:
+      label: Rust version
+      description: Output of `rustc --version`, when you built from source. Leave blank for a release binary, Nix package, or Docker image.
+      placeholder: rustc 1.85.0 (...)
+    validations:
+      required: false
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      description: The six release targets from `.github/workflows/ci.yml`, or NixOS / Other.
+      options:
+        - Linux x86_64 (glibc)
+        - Linux x86_64 (musl)
+        - Linux aarch64
+        - macOS Apple Silicon (aarch64)
+        - macOS Intel (x86_64)
+        - Windows x86_64
+        - NixOS
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Install method
+      description: See the [installation guide](https://parallax-labs.github.io/context-harness/docs/getting-started/installation/).
+      options:
+        - Release binary
+        - Nix (nix build / nix profile)
+        - Cargo (cargo install or cargo build)
+        - Docker
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: release-asset
+    attributes:
+      label: Release asset or Nix package
+      description: "Release archive name, such as `ctx-linux-x86_64.tar.gz` or `ctx-linux-x86_64-musl.tar.gz`, or the Nix package (`.#default` or `.#no-local-embeddings`)."
+      placeholder: ctx-linux-x86_64.tar.gz
+    validations:
+      required: false
+  - type: dropdown
+    id: features
+    attributes:
+      label: Enabled features
+      description: "Default is `local-embeddings-fastembed`. Check & Test also runs `--no-default-features --features local-embeddings-tract,zvec-bundled`. The release matrix compiles tract alone on musl and macOS Intel, and default features on Windows. Select every Cargo feature you enabled, or \"Release binary defaults\" when you did not compile."
+      multiple: true
+      options:
+        - Release binary defaults
+        - default (local-embeddings-fastembed)
+        - local-embeddings-tract
+        - zvec-bundled
+        - "--no-default-features"
+        - Not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Install or packaging
+        - CLI
+        - Sync or connectors
+        - Search or embeddings
+        - MCP server
+        - Profiles
+        - Local agents
+        - Registry
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Config snippet
+      description: "The config ctx loaded. `--config` or `CTX_CONFIG` selects a file; otherwise resolution is `./.ctx/config.toml`, then `./config/ctx.toml`, then the XDG global file ([SPEC-0013](https://github.com/parallax-labs/context-harness/blob/main/docs/spec/0013-config-resolution.md)). See `config/ctx.example.toml` and the [configuration reference](https://parallax-labs.github.io/context-harness/docs/reference/configuration/)."
+      render: toml
+      placeholder: |
+        [db]
+        path = ".ctx/data/ctx.sqlite"
+
+        [embedding]
+        provider = "local"
+
+        [connectors.filesystem.local]
+        root = "./"
+        include_globs = ["**/*.md"]
+    validations:
+      required: false
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Commands, in order, including subcommands and flags.
+      placeholder: |
+        1. ctx init
+        2. ctx sync all
+        3. ctx search "query" --mode hybrid
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the exit status when the command failed.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: stdout and stderr from the failing command. Warnings and Lua `log` calls are printed to stderr. There is no separate log file.
+      render: shell
+    validations:
+      required: false
+  - type: checkboxes
+    id: redacted
+    attributes:
+      label: Redaction
+      options:
+        - label: Secrets are removed from the config snippet and logs.
+          required: true

@@ -1,0 +1,96 @@
+name: Connector or Lua extension
+description: A Lua connector, tool, or profile, or a compiled Rust extension.
+title: "[Extension]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Extensions are Lua scripts or compiled Rust traits. Read [PRD-0003](https://github.com/parallax-labs/context-harness/blob/main/docs/prd/0003-extensibility-platform.md) and check the [registry](https://parallax-labs.github.io/context-harness/docs/registry/available-extensions/) before requesting something that already ships.
+
+        Contracts:
+
+        - Connector: `connector.scan(config)` returns source items. Config lives under `[connectors.script.<name>]`. Sync with `ctx sync script:<name>`. [SPEC-0008](https://github.com/parallax-labs/context-harness/blob/main/docs/spec/0008-lua-connectors.md).
+        - Tool: `tool.execute(params, context)`. [SPEC-0009](https://github.com/parallax-labs/context-harness/blob/main/docs/spec/0009-lua-tools.md).
+        - Profile: `profile.resolve(args, config, context)`. This is the canonical prompt surface. `agent.resolve` and `[agents.script.*]` remain compatibility aliases. [SPEC-0024](https://github.com/parallax-labs/context-harness/blob/main/docs/spec/0024-profiles-and-agent-compatibility.md).
+        - Rust traits: `Connector` and `Tool` ([SPEC-0010](https://github.com/parallax-labs/context-harness/blob/main/docs/spec/0010-rust-extension-traits.md)). `Profile` is the compiled prompt surface ([SPEC-0024](https://github.com/parallax-labs/context-harness/blob/main/docs/spec/0024-profiles-and-agent-compatibility.md)).
+
+        Authoring steps: [RUNBOOK-0015](https://github.com/parallax-labs/context-harness/blob/main/docs/runbook/0015-author-lua-extension.md). Published guide: [Lua connectors](https://parallax-labs.github.io/context-harness/docs/connectors/lua-connectors/).
+
+        A change to the local agent runtime itself is a feature request. Use this form when you need a new connector, tool, profile, or registry package. Secrets stay in `${ENV_VAR}` values.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Extension kind
+      options:
+        - Lua connector (connector.scan)
+        - Lua tool (tool.execute)
+        - Lua profile (profile.resolve)
+        - Rust trait (Connector, Tool, or Profile)
+        - Registry package
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: System or capability
+      description: The external system to ingest, or the action the tool or profile should perform.
+      placeholder: GitHub Issues, Jira, or a team-specific HTTP API
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What the built-in filesystem, Git, and S3 connectors, or an existing registry extension, do not cover.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Items the connector would return, tool parameters and result, or the profile prompt. Name the config keys the script would read.
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Config sketch
+      description: TOML you would add to `ctx.toml`. Use `${ENV_VAR}` for secrets.
+      render: toml
+      placeholder: |
+        [connectors.script.example]
+        path = "connectors/example.lua"
+        base_url = "https://example.invalid"
+        token = "${EXAMPLE_TOKEN}"
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: A built-in connector, a registry extension, or a script you already tried. Write "None" if there are none.
+    validations:
+      required: true
+  - type: textarea
+    id: related-docs
+    attributes:
+      label: Related PRD or spec
+      description: Paths that already constrain this extension. PRD-0003, SPEC-0008, SPEC-0009, SPEC-0010, and SPEC-0024 are the usual ones.
+      placeholder: |
+        docs/prd/0003-extensibility-platform.md
+        docs/spec/0008-lua-connectors.md
+    validations:
+      required: false
+  - type: dropdown
+    id: contribution
+    attributes:
+      label: Can you contribute the extension?
+      options:
+        - I can open a pull request with the Lua or Rust and a test
+        - I can share a script, but I need help landing it
+        - I am requesting the extension only
+    validations:
+      required: true
